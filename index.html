@@ -17,9 +17,6 @@
     <script>if (window.tempModule) { module = window.tempModule; window.tempModule = undefined; }</script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    
-    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
@@ -33,7 +30,8 @@
             white-space: normal !important;
             text-overflow: clip !important;
             overflow: visible !important;
-        }        
+        }
+        
         html, body { height: 100vh; width: 100%; margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: #f8fafc; overflow: hidden; }
         input, textarea, select { user-select: text !important; -webkit-user-select: text !important; cursor: text !important; }
         #app-layout { display: flex; flex-direction: column; height: 100vh; }
@@ -712,27 +710,9 @@
 
             
     <script>
-// =========================================================
-// CONEXÃO COM O BANCO DE DADOS NA NUVEM (FIREBASE)
-// =========================================================
-const firebaseConfig = {
-  apiKey: "AIzaSyCuI9eAzkgwpUnz_RrLPYhy4A0ysEndSIA",
-  authDomain: "senac-roteiros-app.firebaseapp.com",
-  projectId: "senac-roteiros-app",
-  storageBucket: "senac-roteiros-app.firebasestorage.app",
-  messagingSenderId: "461286595194",
-  appId: "1:461286595194:web:fec54f9d02fcb481bdf9c3"
-};
-
-// Liga o motor do Firebase usando as bibliotecas do Topo
-firebase.initializeApp(firebaseConfig);
-const firestore = firebase.firestore();
-
-
-const REGIONS_FALLBACK = ["APUCARANA", "CAMPO MOURÃO", "CASCAVEL", "CASTRO", "CORNÉLIO PROCÓPIO", "CURITIBA", "FOZ DO IGUAÇU", "FRANCISCO BELTRÃO", "GUARAPUAVA", "IRATI", "IVAIPORÃ", "JACAREZINHO", "LONDRINA", "MARINGÁ", "MATINHOS", "MEDIANEIRA", "PARANAGUÁ", "PARANAVAÍ", "PATO BRANCO", "PONTA GROSSA", "PRUDENTÓPOLIS", "RIO NEGRO", "SANTO ANTÔNIO DA PLATINA", "TOLEDO", "UMUARAMA", "UNIÃO DA VITÓRIA"];
-let DB = { quali: [], tec: [], regioes_map: {}, cc_map: {}, finance_logs: [], custom_passwords: {}, planning: {}, planning_logistics: {}, planning_lunch: {}, planning_admin: {}, doc_template: "" };
-let STATE = { scope: 'qualificacao', filter: [], page: 1, perPage: 30, kpi: 'all', userRegion: null, userType: 'guest', editingId: null, planContext: null, emailMode: 'agendamento' };
-// ... (seu código continua igual daqui para baixo)
+        const REGIONS_FALLBACK = ["APUCARANA", "CAMPO MOURÃO", "CASCAVEL", "CASTRO", "CORNÉLIO PROCÓPIO", "CURITIBA", "FOZ DO IGUAÇU", "FRANCISCO BELTRÃO", "GUARAPUAVA", "IRATI", "IVAIPORÃ", "JACAREZINHO", "LONDRINA", "MARINGÁ", "MATINHOS", "MEDIANEIRA", "PARANAGUÁ", "PARANAVAÍ", "PATO BRANCO", "PONTA GROSSA", "PRUDENTÓPOLIS", "RIO NEGRO", "SANTO ANTÔNIO DA PLATINA", "TOLEDO", "UMUARAMA", "UNIÃO DA VITÓRIA"];
+        let DB = { quali: [], tec: [], regioes_map: {}, cc_map: {}, finance_logs: [], custom_passwords: {}, planning: {}, planning_logistics: {}, planning_lunch: {}, planning_admin: {}, doc_template: "" };
+        let STATE = { scope: 'qualificacao', filter: [], page: 1, perPage: 30, kpi: 'all', userRegion: null, userType: 'guest', editingId: null, planContext: null, emailMode: 'agendamento' };
         const PASS_ADMIN = "supervisao2026"; 
         const LEGACY_VALUE = 122; 
         let TIMEOUT_DEBOUNCE = null; let CHART_INSTANCES = { status: null, visitas: null, regioes: null };
@@ -824,59 +804,7 @@ let STATE = { scope: 'qualificacao', filter: [], page: 1, perPage: 30, kpi: 'all
         if (isElectron) { try { fs = window.require('fs'); path = window.require('path'); appDataPath = window.process.env.APPDATA || (window.process.platform == 'darwin' ? window.process.env.HOME + '/Library/Preferences' : window.process.env.HOME + "/.local/share"); appDataPath = path.join(appDataPath, 'SenacBI'); if (!fs.existsSync(appDataPath)) fs.mkdirSync(appDataPath, { recursive: true }); dbFilePath = path.join(appDataPath, 'senac_db.json'); document.title += " (Modo Executável)"; } catch (e) { console.warn("Electron detectado mas falha ao carregar módulos nativos:", e); } }
         const dbPromise = new Promise((resolve, reject) => { const request = indexedDB.open(DB_NAME, 9); request.onupgradeneeded = (event) => { const db = event.target.result; if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME); }; request.onsuccess = (event) => resolve(event.target.result); request.onerror = (event) => reject(event.target.error); });
         
-        async function saveToStorage() { 
-            updateSaveStatus(true); 
-            
-            const dataToSave = { 
-                quali: DB.quali, 
-                tec: DB.tec, 
-                regioes_map: DB.regioes_map, 
-                cc_map: DB.cc_map, 
-                finance_logs: DB.finance_logs, 
-                custom_passwords: DB.custom_passwords, 
-                planning: DB.planning, 
-                planning_logistics: DB.planning_logistics, 
-                planning_lunch: DB.planning_lunch, 
-                planning_admin: DB.planning_admin, 
-                doc_template: DB.doc_template, 
-                updatedAt: new Date().toISOString() 
-            }; 
-            
-            try { 
-                // 1. SALVAMENTO LOCAL (O backup nativo do seu .exe)
-                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && dbFilePath) {
-                    fs.writeFileSync(dbFilePath, JSON.stringify(dataToSave)); 
-                }
-                
-                if (typeof dbPromise !== 'undefined') {
-                    const db = await dbPromise; 
-                    await new Promise((resolve, reject) => { 
-                        const tx = db.transaction(STORE_NAME, 'readwrite'); 
-                        const store = tx.objectStore(STORE_NAME); 
-                        store.put(dataToSave, 'root'); 
-                        tx.oncomplete = resolve; 
-                        tx.onerror = reject; 
-                    });
-                }
-
-                // 2. A MÁGICA: SALVA NA NUVEM (FIREBASE)
-                try {
-                    // Preparamos o pacote blindado para a nuvem
-                    const pacoteNuvem = JSON.parse(JSON.stringify(dataToSave));
-                    await firestore.collection("banco_senac").doc("dados_principais").set(pacoteNuvem);
-                    console.log("☁️ Sucesso! Dados sincronizados na nuvem do Firebase!");
-                } catch (firebaseError) {
-                    console.error("❌ Ocorreu um erro ao tentar salvar na Nuvem. Mas o backup local foi feito.", firebaseError);
-                }
-
-                updateSaveStatus(false); 
-                
-            } catch (error) { 
-                console.error("Erro fatal ao salvar:", error); 
-                alert("ERRO DE GRAVAÇÃO: " + error.message); 
-                updateSaveStatus(false); 
-            } 
-        }
+        async function saveToStorage() { updateSaveStatus(true); const dataToSave = { quali: DB.quali, tec: DB.tec, regioes_map: DB.regioes_map, cc_map: DB.cc_map, finance_logs: DB.finance_logs, custom_passwords: DB.custom_passwords, planning: DB.planning, planning_logistics: DB.planning_logistics, planning_lunch: DB.planning_lunch, planning_admin: DB.planning_admin, doc_template: DB.doc_template, updatedAt: new Date().toISOString() }; try { if (isElectron && fs && dbFilePath) fs.writeFileSync(dbFilePath, JSON.stringify(dataToSave)); const db = await dbPromise; await new Promise((resolve, reject) => { const tx = db.transaction(STORE_NAME, 'readwrite'); store = tx.objectStore(STORE_NAME); store.put(dataToSave, 'root'); tx.oncomplete = resolve; tx.onerror = reject; }); updateSaveStatus(false); } catch (error) { console.error("Erro fatal ao salvar:", error); alert("ERRO DE GRAVAÇÃO: " + error.message); updateSaveStatus(false); } }
         async function loadFromStorage() { try { if (isElectron && fs && dbFilePath && fs.existsSync(dbFilePath)) return JSON.parse(fs.readFileSync(dbFilePath, 'utf8')); const db = await dbPromise; return new Promise((resolve, reject) => { const tx = db.transaction(STORE_NAME, 'readonly'); const req = tx.objectStore(STORE_NAME).get('root'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); } catch (e) { return null; } }
         function updateSaveStatus(isSaving) { const el = document.getElementById('saveStatus'); if (el) { if (isSaving) { el.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> <span>GRAVANDO...</span>`; el.classList.add('text-senac-orange'); } else { el.innerHTML = `<i data-lucide="check-circle" class="w-3 h-3 text-emerald-500"></i> <span>DADOS SEGUROS</span>`; el.classList.remove('text-senac-orange'); setTimeout(() => { el.innerHTML = `<i data-lucide="cloud" class="w-3 h-3"></i> <span>Salvo Automático</span>`; }, 3000); } lucide.createIcons(); } }
         function showToast(msg) { const t = document.getElementById('toast'); if(!t) return; t.innerText = msg; t.classList.add('show'); setTimeout(() => { t.classList.remove('show'); }, 3000); }
@@ -1519,10 +1447,12 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
 
             currentDelay = parseInt(currentDelay) || 0; 
             if(visitsDone >= totalVisitasEsperadas) return { status: 'completed', color: 'blue', label: 'CONCLUÍDO', alert: alertObj, delay: 0 }; 
-            if (isSemAtendimento) return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', alert: alertObj, delay: currentDelay }; 
+            
+            // Se tem 1 ou mais visitas e ainda não concluiu, fica ATIVO
             if(visitsDone >= 1) return { status: 'ativo', color: 'green', label: 'ATIVO', alert: alertObj, delay: currentDelay }; 
             
-            return { status: 'ativo', color: 'green', label: 'AGUARDANDO', alert: alertObj, delay: currentDelay }; 
+            // REGRA NOVA: Se chegou até aqui, é porque tem 0 visitas. Vai direto para SEM ATENDIMENTO.
+            return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', alert: alertObj, delay: currentDelay }; 
         }
 
         function checkGlobalAlerts() {
@@ -1753,24 +1683,84 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             checkGlobalAlerts();
         }
         function changePage(delta) { const totalPages = Math.ceil(STATE.filter.length / STATE.perPage) || 1; let newPage = parseInt(STATE.page) + delta; if(newPage < 1) newPage = 1; if(newPage > totalPages) newPage = totalPages; STATE.page = newPage; document.getElementById('pageInfo').innerText = `Página ${STATE.page} de ${totalPages}`; document.getElementById('btnPrev').disabled = STATE.page <= 1; document.getElementById('btnNext').disabled = STATE.page >= totalPages; renderTable(); const listContainer = document.querySelector('.overflow-x-auto'); if(listContainer) listContainer.scrollTop = 0; }
+// =========================================================================
+        // MOTOR DE PREVISÃO DE VISITAS (CASCATA DE 3 MESES)
+        // =========================================================================
+        window.calcularPrevisaoVisitas = function(item) {
+            // Verifica se é Técnico (6 visitas) ou Qualificação (3 visitas)
+            const isTec = DB.tec && DB.tec.some(t => t.id === item.id);
+            const totalVisitas = isTec ? 6 : 3;
+            const previsoes = [];
+            
+            // Lê a data com segurança para evitar bugs de fuso horário
+            const parseDateSafe = (d) => {
+                if (!d) return null;
+                if (typeof d === 'string' && d.includes('-')) {
+                    const parts = d.split('T')[0].split('-');
+                    return new Date(parts[0], parts[1] - 1, parts[2]);
+                }
+                return new Date(d);
+            };
+
+            // Começa usando a data de início do aluno
+            let dataBase = parseDateSafe(item.ini);
+            
+            for (let i = 0; i < totalVisitas; i++) {
+                if (item.visits && item.visits[i] && item.visits[i].ok && item.visits[i].date) {
+                    // Se a visita já foi feita, pega a data real dela
+                    dataBase = parseDateSafe(item.visits[i].date);
+                    previsoes.push({ status: 'realizada', dataStr: dataBase ? dataBase.toLocaleDateString('pt-BR') : '--/--/----' });
+                } else {
+                    // Se não foi feita, soma 3 meses na data base atual
+                    if (dataBase && !isNaN(dataBase.getTime())) {
+                        let proximaData = new Date(dataBase);
+                        proximaData.setMonth(proximaData.getMonth() + 3);
+                        
+                        previsoes.push({ status: 'pendente', dataStr: proximaData.toLocaleDateString('pt-BR') });
+                        
+                        // A previsão dessa visita vira a data base para calcular a próxima
+                        dataBase = proximaData;
+                    } else {
+                        previsoes.push({ status: 'erro', dataStr: 'S/ Data' });
+                    }
+                }
+            }
+            return previsoes;
+        };
         
         function renderTable() { 
             const tbody = document.getElementById('tableBody'); 
+            if(!tbody) return;
             const start = (STATE.page - 1) * STATE.perPage; 
             const subset = STATE.filter.slice(start, start + STATE.perPage); 
             if(subset.length === 0) { tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Nenhum registo encontrado.</td></tr>`; return; } 
             
-            const fmtD = d => d ? d.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}) : ''; 
             const fmtFull = d => d ? d.toLocaleDateString('pt-BR') : '--'; 
             
             tbody.innerHTML = subset.map(i => { 
-                const s = analyzeStatus(i); 
-                const visitsHtml = i.visits.map((v, idx) => { 
-                    const cls = v.ok ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-200 text-slate-400'; 
-                    const dateText = (v.date) ? fmtD(v.date) : ''; 
-                    const dateDisplay = dateText ? `<div class="text-[9px] font-bold text-slate-600 mt-1 bg-white/80 px-1 rounded shadow-sm border border-slate-100 min-w-[36px] text-center">${dateText}</div>` : '<div class="h-[17px] mt-1"></div>'; 
-                    return `<div class="flex flex-col items-center justify-start w-12"><div class="w-6 h-6 rounded-full ${cls} flex items-center justify-center text-[10px] font-bold" title="${v.date?fmtFull(v.date):'Pendente'}">${idx+1}</div>${dateDisplay}</div>`; 
-                }).join(""); 
+                const s = typeof analyzeStatus === 'function' ? analyzeStatus(i) : { color: 'gray', label: '-', status: 'none' }; 
+                
+                // MÁGICA 1: Chama a calculadora do futuro
+                const previsoes = window.calcularPrevisaoVisitas ? window.calcularPrevisaoVisitas(i) : [];
+                
+                // MÁGICA 2: Desenha as bolinhas usando as previsões
+                let visitsHtml = '';
+                const maxV = STATE.scope === 'tecnico' ? 6 : 3;
+                
+                for(let idx = 0; idx < maxV; idx++) {
+                    const prev = previsoes[idx] || { status: 'pendente', dataStr: '' };
+                    const isRealizada = prev.status === 'realizada';
+                    
+                    const cls = isRealizada ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-200 text-slate-400'; 
+                    const titleText = isRealizada ? `Realizada em: ${prev.dataStr}` : `Previsão: ${prev.dataStr}`;
+                    const dateTextColor = isRealizada ? 'text-emerald-700' : 'text-slate-400';
+                    
+                    // A data formatada bonitinha embaixo da bolinha (pega só DD/MM ou DD/MM/AAAA)
+                    const dataCurta = prev.dataStr ? prev.dataStr.substring(0, 5) : '';
+                    const dateDisplay = dataCurta ? `<div class="text-[9px] font-bold ${dateTextColor} mt-1 bg-white/80 px-1 rounded shadow-sm border border-slate-100 min-w-[36px] text-center">${dataCurta}</div>` : '<div class="h-[17px] mt-1"></div>'; 
+                    
+                    visitsHtml += `<div class="flex flex-col items-center justify-start w-12"><div class="w-6 h-6 rounded-full ${cls} flex items-center justify-center text-[10px] font-bold cursor-help" title="${titleText}">${idx+1}</div>${dateDisplay}</div>`; 
+                }
                 
                 let badgeClass = "bg-slate-100 text-slate-500"; 
                 if(s.color === 'red') badgeClass = "bg-red-50 text-red-600 border border-red-100"; 
@@ -1783,16 +1773,16 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if(s.status === 'desligado') { rowClass = "bg-slate-100 opacity-60 grayscale hover:grayscale-0 hover:opacity-100 transition-all"; } 
                 
                 let mapLinkHtml = ''; 
-                if(i.empresa.link && i.empresa.link.length > 5) { mapLinkHtml = `<a href="${i.empresa.link}" target="_blank" class="flex items-center gap-1 text-[9px] font-bold text-blue-500 hover:underline mt-0.5"><i data-lucide="map-pin" class="w-3 h-3"></i> Abrir Mapa</a>`; } 
+                if(i.empresa && i.empresa.link && i.empresa.link.length > 5) { mapLinkHtml = `<a href="${i.empresa.link}" target="_blank" class="flex items-center gap-1 text-[9px] font-bold text-blue-500 hover:underline mt-0.5"><i data-lucide="map-pin" class="w-3 h-3"></i> Abrir Mapa</a>`; } 
                 
                 let alertBadgeHtml = ''; 
                 if (s.alert && s.alert.isAlert && s.status !== 'desligado' && s.status !== 'completed') { 
                     alertBadgeHtml = `<div class="mt-2"><span class="bg-orange-100 text-orange-700 border border-orange-200 text-[9px] px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 w-max shadow-sm animate-pulse" title="Atenção necessária"><i data-lucide="bell" class="w-3 h-3"></i> ${s.alert.msg}</span></div>`; 
                 } 
                 
-                return `<tr class="${rowClass}" ondblclick="openEditModal('${i.id}')"><td><div class="font-bold text-slate-700">${i.nome}</div><div class="flex flex-wrap items-center gap-1.5 mt-1"><div class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">${i.turma}</div><div class="text-[9px] font-bold text-senac-blue bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1" title="Cidade / Região"><i data-lucide="map-pin" class="w-2.5 h-2.5"></i> ${i.cidade} / ${i.regiao}</div></div>${alertBadgeHtml}</td><td><div class="font-bold text-xs truncate w-48" title="${i.empresa.razao}">${i.empresa.razao}</div><div class="text-[9px] text-slate-400 truncate w-48 mt-0.5">${i.empresa.endereco||''}</div>${mapLinkHtml}</td><td><div class="font-bold text-xs truncate w-40">${i.supervisor.display}</div><div class="text-[9px] text-slate-400 truncate w-32 mt-0.5">${i.supervisor.email||''}</div></td><td class="text-center"><div class="text-[10px] font-bold text-emerald-600">INÍ: ${fmtFull(i.ini)}</div><div class="text-[10px] font-bold text-slate-400">FIM: ${fmtFull(i.fim)}</div></td><td><div class="flex gap-1 justify-center items-start pt-1">${visitsHtml}</div></td><td class="text-center"><div class="flex items-center justify-center gap-2 pt-2"><span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase ${badgeClass}">${s.label}</span><button onclick="openEditModal('${i.id}')" class="p-1.5 text-slate-400 hover:text-senac-blue hover:bg-blue-50 rounded-full"><i data-lucide="pencil" class="w-4 h-4"></i></button></div></td></tr>`; 
+                return `<tr class="${rowClass}" ondblclick="openEditModal('${i.id}')"><td><div class="font-bold text-slate-700">${i.nome}</div><div class="flex flex-wrap items-center gap-1.5 mt-1"><div class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">${i.turma}</div><div class="text-[9px] font-bold text-senac-blue bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1" title="Cidade / Região"><i data-lucide="map-pin" class="w-2.5 h-2.5"></i> ${i.cidade} / ${i.regiao}</div></div>${alertBadgeHtml}</td><td><div class="font-bold text-xs truncate w-48" title="${i.empresa ? i.empresa.razao : ''}">${i.empresa ? i.empresa.razao : ''}</div><div class="text-[9px] text-slate-400 truncate w-48 mt-0.5">${i.empresa ? i.empresa.endereco||'' : ''}</div>${mapLinkHtml}</td><td><div class="font-bold text-xs truncate w-40">${i.supervisor ? i.supervisor.display : ''}</div><div class="text-[9px] text-slate-400 truncate w-32 mt-0.5">${i.supervisor ? i.supervisor.email||'' : ''}</div></td><td class="text-center"><div class="text-[10px] font-bold text-emerald-600">INÍ: ${fmtFull(i.ini)}</div><div class="text-[10px] font-bold text-slate-400">FIM: ${fmtFull(i.fim)}</div></td><td><div class="flex gap-1 justify-center items-start pt-1">${visitsHtml}</div></td><td class="text-center"><div class="flex items-center justify-center gap-2 pt-2"><span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase ${badgeClass}">${s.label}</span><button onclick="openEditModal('${i.id}')" class="p-1.5 text-slate-400 hover:text-senac-blue hover:bg-blue-50 rounded-full"><i data-lucide="pencil" class="w-4 h-4"></i></button></div></td></tr>`; 
             }).join(""); 
-            lucide.createIcons(); 
+            if(typeof lucide !== 'undefined') lucide.createIcons(); 
         }
 
         function renderCharts(legacyValue = 0) { 
