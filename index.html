@@ -116,6 +116,9 @@
 
     <div id="toast">Notificação</div>
 
+    <div id="modalRelatorioMes" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center hidden">
+        </div>
+    
     <!-- TELA DE LOGIN -->
     <div id="loginPage" class="fixed inset-0 flex items-center justify-center bg-slate-100 z-50">
         <div class="glass-panel w-full max-w-md p-8 m-4 shadow-xl relative overflow-hidden">
@@ -133,8 +136,8 @@
             </div>
             <div class="mt-8 pt-4 border-t border-slate-100 grid grid-cols-2 gap-3">
                 <input type="file" id="backupInput" accept=".json" class="hidden" onchange="restoreBackup(this)">
-                <button onclick="document.getElementById('backupInput').click()" class="col-span-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[10px] rounded border border-slate-200 flex items-center justify-center gap-2"><i data-lucide="upload" class="w-3 h-3"></i> Restaurar Manual</button>
-                <button onclick="resetSystem()" class="col-span-1 py-2 text-red-400 hover:text-red-600 hover:bg-red-50 font-bold text-[10px] rounded border border-transparent hover:border-red-100 flex items-center justify-center gap-2"><i data-lucide="trash-2" class="w-3 h-3"></i> Resetar Tudo</button>
+                <button onclick="requestRestore()" class="col-span-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[10px] rounded border border-slate-200 flex items-center justify-center gap-2"><i data-lucide="upload" class="w-3 h-3"></i> Restaurar Manual</button>
+                <button onclick="requestReset()" class="col-span-1 py-2 text-red-400 hover:text-red-600 hover:bg-red-50 font-bold text-[10px] rounded border border-transparent hover:border-red-100 flex items-center justify-center gap-2"><i data-lucide="trash-2" class="w-3 h-3"></i> Resetar Tudo</button>
             </div>
         </div>
     </div>
@@ -394,6 +397,11 @@
             <div id="saveStatus" class="hidden md:flex items-center gap-2 text-[10px] font-bold text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100"><i data-lucide="cloud" class="w-3 h-3"></i> <span>Salvo Automático</span></div>
             <div class="flex items-center gap-3">
                 <div class="text-right hidden md:block mr-2"><p class="text-[10px] text-slate-400 font-bold uppercase" id="roleDisplay">--</p><p class="text-xs font-bold text-senac-blue truncate max-w-[150px]" id="userDisplay">--</p></div>
+                
+                <button onclick="gerarRelatorioVisitasMes()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2 transition-colors" title="Alunos que precisam de visita este mês">
+                    <i data-lucide="calendar-clock" class="w-4 h-4"></i> Relatório Mensal
+                </button>
+
                 <button onclick="downloadBackup()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2" title="Backup"><i data-lucide="hard-drive" class="w-4 h-4"></i> BACKUP</button>
                 <button onclick="buscarEnderecosLote()" class="bg-senac-blue hover:bg-blue-800 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2"><i data-lucide="map-pin" class="w-4 h-4"></i> Buscar Endereços</button>
                 <div class="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 ml-2">
@@ -1061,11 +1069,117 @@
                 } 
             }, 100); 
         }
-        function initLogin() { const sel = document.getElementById('loginRegion'); const list = Object.keys(DB.regioes_map).length > 0 ? Object.keys(DB.regioes_map) : REGIONS_FALLBACK; let html = '<option value="">Gestão Central / Sede</option>'; [...new Set(list)].sort().forEach(r => html += `<option value="${r}">${r}</option>`); sel.innerHTML = html; }
-        function checkLoginType() { const region = document.getElementById('loginRegion').value; const passField = document.getElementById('passField'); if(region === "") { passField.classList.remove('hidden'); } else { passField.classList.add('hidden'); } }
-        function performLogin() { const region = document.getElementById('loginRegion').value; const inputPass = document.getElementById('loginPass').value; if(region === "") { if(inputPass === PASS_ADMIN) startApp('admin', region); else alert("Senha de Administrador incorreta."); return; } startApp('regional', region); }
-        function startApp(type, region) { STATE.userType = type; STATE.userRegion = region; document.getElementById('loginPage').classList.add('hidden'); document.getElementById('appContainer').classList.remove('hidden'); document.getElementById('appContainer').classList.add('flex'); document.getElementById('roleDisplay').innerText = type === 'admin' ? "Administrador" : "Regional"; document.getElementById('userDisplay').innerText = region || "Gestão Geral"; const btnFin = document.getElementById('btnFin'); const filterReg = document.getElementById('filterRegiao'); if(type === 'admin') { btnFin.classList.remove('hidden'); filterReg.disabled = false; } else { btnFin.classList.add('hidden'); setupFilters(); filterReg.value = region; filterReg.disabled = true; handleRegionChange(); } setupFilters(); runFilter(); }
+        function initLogin() { 
+            const sel = document.getElementById('loginRegion'); 
+            let html = '<option value="">👑 Gestão Central / Admin (Requer Senha)</option>'; 
+            html += '<option value="VISITANTE">👁️ Visitante / Coordenação (Apenas Leitura)</option>';
+            sel.innerHTML = html; 
+            checkLoginType();
+        }
+
+        function checkLoginType() { 
+            const val = document.getElementById('loginRegion').value; 
+            const passField = document.getElementById('passField'); 
+            if(val === "") { 
+                passField.classList.remove('hidden'); 
+            } else { 
+                passField.classList.add('hidden'); 
+            } 
+        }
+
+        function performLogin() { 
+            const val = document.getElementById('loginRegion').value; 
+            const inputPass = document.getElementById('loginPass').value; 
+            
+            if(val === "") { 
+                if(inputPass === PASS_ADMIN) startApp('admin', 'Todas'); 
+                else alert("Senha de Administrador incorreta."); 
+            } else if (val === "VISITANTE") {
+                startApp('espectador', 'Todas');
+            }
+        }
+
+        function startApp(type, region) { 
+            STATE.userType = type; 
+            STATE.userRegion = region; 
+            
+            document.getElementById('loginPage').classList.add('hidden'); 
+            document.getElementById('appContainer').classList.remove('hidden'); 
+            document.getElementById('appContainer').classList.add('flex'); 
+            
+            document.getElementById('roleDisplay').innerText = type === 'admin' ? "Administrador" : "Modo Leitura"; 
+            document.getElementById('userDisplay').innerText = type === 'admin' ? "Gestão Geral" : "VISITANTE"; 
+            
+            const btnFin = document.getElementById('btnFin'); 
+            const filterReg = document.getElementById('filterRegiao'); 
+            
+            // Ambos podem usar o filtro de regiões para gerar relatórios
+            filterReg.disabled = false; 
+            
+            if(type === 'admin') { 
+                if(btnFin) btnFin.classList.remove('hidden'); 
+            } else { 
+                if(btnFin) btnFin.classList.add('hidden'); 
+            } 
+
+            // =========================================================================
+            // BLINDAGEM MÁXIMA PARA ESPECTADOR (Desativa edição no Planejamento)
+            // =========================================================================
+            if (type === 'espectador') {
+                let style = document.getElementById('spectatorLocks');
+                if (!style) {
+                    style = document.createElement('style');
+                    style.id = 'spectatorLocks';
+                    style.innerHTML = `
+                        /* Trava campos de digitação na aba Planejamento e Controle */
+                        #viewPlanejamento input, #viewPlanejamento select, #viewPlanejamento textarea,
+                        #viewControleRateio input, #viewControleRateio select {
+                            pointer-events: none !important;
+                            opacity: 0.7 !important;
+                            background-color: #f8fafc !important;
+                        }
+                        
+                        /* Esconde botões que alteram dados (salvar, lixeira, adicionar) */
+                        #viewPlanejamento button, #viewControleRateio button {
+                            display: none !important;
+                        }
+                        
+                        /* Libera os botões inofensivos (Exportar, PDF, Imprimir, Navegação) */
+                        #viewPlanejamento button[onclick*="openHistoryModal"],
+                        #viewPlanejamento button[onclick*="export"],
+                        #viewPlanejamento button[onclick*="print"],
+                        #viewPlanejamento button[onclick*="toggleFullscreenPlan"],
+                        #viewPlanejamento button[onclick*="openEmailModal"],
+                        #viewPlanejamento button[onclick*="sendFullPlanEmail"],
+                        #viewControleRateio button[onclick*="export"] {
+                            display: inline-flex !important;
+                            pointer-events: auto !important;
+                            opacity: 1 !important;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            } else {
+                // Se for Admin, remove a blindagem e destrava tudo
+                const style = document.getElementById('spectatorLocks');
+                if (style) style.remove();
+            }
+            
+            if (typeof setupFilters === 'function') setupFilters(); 
+            if (typeof runFilter === 'function') runFilter(); 
+        }
         function logout() { location.reload(); }
+window.requestRestore = function() {
+            const pass = prompt("⚠️ AÇÃO RESTRITA! Digite a senha de Admin Geral para restaurar o banco de dados:");
+            if(pass === PASS_ADMIN) document.getElementById('backupInput').click();
+            else if (pass !== null) alert("Senha Incorreta! Acesso negado.");
+        };
+
+        window.requestReset = function() {
+            const pass = prompt("🛑 PERIGO: Você está prestes a apagar todo o sistema!\nDigite a senha de Admin Geral para confirmar:");
+            if(pass === PASS_ADMIN) resetSystem();
+            else if (pass !== null) alert("Senha Incorreta! Acesso negado.");
+        };
         function resetSystem() { if(confirm("ATENÇÃO: APAGAR TUDO?")) { if(isElectron && fs && dbFilePath && fs.existsSync(dbFilePath)) { fs.unlinkSync(dbFilePath); } const req = indexedDB.deleteDatabase(DB_NAME); req.onsuccess = () => location.reload(); } }
         
         function switchTab(tab) { 
@@ -1727,8 +1841,396 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             }
             return previsoes;
         };
-        
-        function renderTable() { 
+// =========================================================================
+        // MOTOR DE PREVISÃO DE VISITAS E RELATÓRIO MENSAL
+        // =========================================================================
+        window.calcularPrevisaoVisitas = function(item) {
+            const isTec = DB.tec && DB.tec.some(t => t.id === item.id);
+            const totalVisitas = isTec ? 6 : 3;
+            const previsoes = [];
+            const parseDateSafe = (d) => {
+                if (!d) return null;
+                if (typeof d === 'string' && d.includes('-')) {
+                    const parts = d.split('T')[0].split('-');
+                    return new Date(parts[0], parts[1] - 1, parts[2]);
+                }
+                return new Date(d);
+            };
+            let dataBase = parseDateSafe(item.ini);
+            for (let i = 0; i < totalVisitas; i++) {
+                if (item.visits && item.visits[i] && item.visits[i].ok && item.visits[i].date) {
+                    dataBase = parseDateSafe(item.visits[i].date);
+                    previsoes.push({ status: 'realizada', dataStr: dataBase ? dataBase.toLocaleDateString('pt-BR') : '--/--/----' });
+                } else {
+                    if (dataBase && !isNaN(dataBase.getTime())) {
+                        let proximaData = new Date(dataBase);
+                        proximaData.setMonth(proximaData.getMonth() + 3);
+                        previsoes.push({ status: 'pendente', dataStr: proximaData.toLocaleDateString('pt-BR') });
+                        dataBase = proximaData;
+                    } else {
+                        previsoes.push({ status: 'erro', dataStr: 'S/ Data' });
+                    }
+                }
+            }
+            return previsoes;
+        };
+
+        // =========================================================================
+        // RELATÓRIO MENSAL - DESIGN PREMIUM E EXPORTAÇÕES
+        // =========================================================================
+        window.gerarRelatorioVisitasMes = function() {
+            try {
+                if(typeof STATE === 'undefined' || !STATE.filter || STATE.filter.length === 0) {
+                    alert("Aviso: Selecione uma região com alunos para gerar o relatório.");
+                    return;
+                }
+                
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const currentYear = now.getFullYear();
+                const mesNome = now.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
+                const relatorio = [];
+                
+                STATE.filter.forEach(item => {
+                    // BLOQUEIO: Ignora alunos desligados/encerrados para não sujar o relatório
+                    const s = typeof analyzeStatus === 'function' ? analyzeStatus(item) : { status: 'none' };
+                    if (s.status === 'desligado') return;
+
+                    const vDone = item.visits ? item.visits.filter(v => v.ok).length : 0;
+                    const previsoes = window.calcularPrevisaoVisitas ? window.calcularPrevisaoVisitas(item) : [];
+                    
+                    let fimDate = null;
+                    if (item.fim) {
+                        if (typeof item.fim === 'string' && item.fim.includes('-')) {
+                            const parts = item.fim.split('T')[0].split('-');
+                            fimDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                        } else {
+                            fimDate = new Date(item.fim); 
+                        }
+                    }
+                    
+                    let isUrgenteFimContrato = false;
+                    if (vDone === 0 && fimDate && !isNaN(fimDate.getTime())) {
+                        if ((fimDate.getMonth() === currentMonth && fimDate.getFullYear() === currentYear) || fimDate < now) {
+                            isUrgenteFimContrato = true;
+                        }
+                    }
+
+                    const proximaPendente = previsoes.find(p => p.status === 'pendente');
+                    let statusRelatorio = null;
+                    let dataMostrada = '--/--/----';
+
+                    if (isUrgenteFimContrato) {
+                        statusRelatorio = 'urgente';
+                        dataMostrada = 'Fim do Contrato: ' + (fimDate ? fimDate.toLocaleDateString('pt-BR') : 'N/A');
+                    } else if (proximaPendente && proximaPendente.dataStr && proximaPendente.dataStr !== 'S/ Data') {
+                        const pParts = proximaPendente.dataStr.split('/');
+                        if (pParts.length === 3) {
+                            const m = parseInt(pParts[1]) - 1;
+                            const y = parseInt(pParts[2]);
+                            if (y < currentYear || (y === currentYear && m < currentMonth)) {
+                                statusRelatorio = 'atrasado';
+                                dataMostrada = 'Previsão: ' + proximaPendente.dataStr;
+                            } else if (y === currentYear && m === currentMonth) {
+                                statusRelatorio = 'no_mes';
+                                dataMostrada = 'Previsão: ' + proximaPendente.dataStr;
+                            }
+                        }
+                    }
+
+                    if (statusRelatorio) {
+                        relatorio.push({ item, statusRelatorio, dataMostrada, vDone });
+                    }
+                });
+
+                const peso = { 'urgente': 1, 'atrasado': 2, 'no_mes': 3 };
+                relatorio.sort((a, b) => peso[a.statusRelatorio] - peso[b.statusRelatorio]);
+                window.lastRelatorioData = relatorio;
+
+                let modal = document.getElementById('modalRelatorioMes');
+                if (!modal) {
+                    alert("Erro estrutural: Janela modal não encontrada no HTML.");
+                    return;
+                }
+
+                let html = `
+                    <div class="bg-white rounded-xl shadow-2xl w-11/12 max-w-7xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 m-auto mt-6">
+                        
+                        <div class="bg-[#004587] p-5 text-white flex justify-between items-center shrink-0">
+                            <div>
+                                <h2 class="text-xl font-black flex items-center gap-2"><i data-lucide="calendar-clock" class="w-6 h-6 text-orange-400"></i> RELATÓRIO DE VISITAS - ${mesNome}/${currentYear}</h2>
+                                <p class="text-xs text-blue-100 mt-1">Baseado na aba e região filtradas atualmente</p>
+                            </div>
+                            <button onclick="document.getElementById('modalRelatorioMes').style.display='none'" class="p-2 hover:bg-white/20 rounded-lg transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button>
+                        </div>
+
+                        <div class="bg-white p-4 border-b border-slate-200 flex flex-wrap gap-3 justify-center shrink-0 shadow-sm z-10">
+                            <button onclick="filtrarRelatorioMes('todos')" id="btnFil_todos" class="px-6 py-2 bg-slate-800 text-white text-xs font-bold rounded-full shadow-sm border border-slate-800 transition-colors">Ver Todos</button>
+                            <button onclick="filtrarRelatorioMes('urgente')" id="btnFil_urgente" class="px-6 py-2 bg-white text-slate-600 hover:bg-red-50 text-xs font-bold rounded-full border border-slate-300 transition-colors"><span class="text-red-500 font-black">🔴</span> Urgentes</button>
+                            <button onclick="filtrarRelatorioMes('atrasado')" id="btnFil_atrasado" class="px-6 py-2 bg-white text-slate-600 hover:bg-orange-50 text-xs font-bold rounded-full border border-slate-300 transition-colors"><span class="text-orange-500 font-black">🟠</span> Atrasadas</button>
+                            <button onclick="filtrarRelatorioMes('no_mes')" id="btnFil_no_mes" class="px-6 py-2 bg-white text-slate-600 hover:bg-blue-50 text-xs font-bold rounded-full border border-slate-300 transition-colors"><span class="text-blue-500 font-black">🔵</span> Neste Mês</button>
+                        </div>
+
+                        <div class="p-6 overflow-y-auto bg-slate-100 flex-1">
+                `;
+
+                if (relatorio.length === 0) {
+                    html += `<div class="text-center p-12 text-slate-400 font-bold"><i data-lucide="check-circle-2" class="w-16 h-16 mx-auto text-emerald-400 mb-4"></i> <p class="text-lg">Excelente!</p><p class="text-sm font-medium mt-2">Nenhuma visita pendente, atrasada ou urgente.</p></div>`;
+                } else {
+                    html += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-5" id="relatorioGridCards">`;
+                    relatorio.forEach(r => {
+                        // Cores e Labels adaptadas para o layout limpo
+                        let borderColor = r.statusRelatorio === 'urgente' ? 'border-l-red-500' : r.statusRelatorio === 'atrasado' ? 'border-l-orange-500' : 'border-l-blue-500';
+                        let badgeBg = r.statusRelatorio === 'urgente' ? 'bg-red-500' : r.statusRelatorio === 'atrasado' ? 'bg-orange-500' : 'bg-blue-600';
+                        let badgeLabel = r.statusRelatorio === 'urgente' ? 'URGENTE (FIM CONTRATO)' : r.statusRelatorio === 'atrasado' ? 'VISITA ATRASADA' : 'VISITA NESTE MÊS';
+                        let iconText = r.statusRelatorio === 'urgente' ? 'text-red-600' : r.statusRelatorio === 'atrasado' ? 'text-orange-500' : 'text-blue-600';
+
+                        html += `
+                            <div class="relatorio-card status-${r.statusRelatorio} bg-white rounded-xl shadow-sm border border-slate-200 border-l-[6px] ${borderColor} p-6 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                                
+                                <div class="flex justify-between items-start w-full">
+                                    <div class="flex flex-col items-start gap-2 max-w-[75%]">
+                                        <h3 class="font-bold text-slate-800 text-sm md:text-base leading-tight uppercase">${r.item.nome}</h3>
+                                        <span class="${badgeBg} text-white px-2.5 py-1 rounded text-[10px] font-bold tracking-wide shadow-sm">${badgeLabel}</span>
+                                    </div>
+                                    <div class="flex flex-col items-end shrink-0">
+                                        <span class="text-[9px] font-bold text-slate-400 tracking-wider">VISITAS</span>
+                                        <span class="text-2xl font-black leading-none mt-1 ${r.vDone === 0 ? 'text-red-500' : 'text-emerald-600'}">${r.vDone}</span>
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-col gap-2 text-[11px] md:text-xs text-slate-500 mt-2">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="map-pin" class="w-4 h-4 shrink-0 text-slate-400"></i>
+                                        <span class="truncate">Cidade: <b>${r.item.cidade || 'N/A'}</b></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="building" class="w-4 h-4 shrink-0 text-slate-400"></i>
+                                        <span class="truncate" title="${r.item.empresa ? r.item.empresa.razao : 'N/A'}">${r.item.empresa ? r.item.empresa.razao : 'N/A'}</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="users" class="w-4 h-4 shrink-0 text-slate-400"></i>
+                                        <span class="truncate">${r.item.turma || 'N/A'}</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <i data-lucide="calendar-days" class="w-4 h-4 shrink-0 ${iconText}"></i>
+                                        <span class="font-bold ${iconText}">${r.dataMostrada}</span>
+                                    </div>
+                                </div>
+
+                            </div>
+                        `;
+                    });
+                    html += `</div>`;
+                }
+
+                html += `
+                        </div>
+                        
+                        <div class="bg-white border-t border-slate-200 p-4 flex flex-col md:flex-row justify-between shrink-0 items-center gap-3">
+                            <div class="flex flex-wrap items-center justify-center gap-2">
+                                <span class="text-[11px] text-slate-500 font-bold mr-1">Copiar lista (Texto/Tabela):</span>
+                                <button onclick="copiarRelatorioTexto('urgente')" class="px-3 py-1.5 bg-white text-red-600 hover:bg-red-50 text-[10px] font-bold rounded border border-red-200 transition-colors flex items-center gap-1"><i data-lucide="copy" class="w-3 h-3"></i> Urgentes</button>
+                                <button onclick="copiarRelatorioTexto('atrasado')" class="px-3 py-1.5 bg-white text-orange-600 hover:bg-orange-50 text-[10px] font-bold rounded border border-orange-200 transition-colors flex items-center gap-1"><i data-lucide="copy" class="w-3 h-3"></i> Atrasadas</button>
+                                <button onclick="copiarRelatorioTexto('no_mes')" class="px-3 py-1.5 bg-white text-blue-600 hover:bg-blue-50 text-[10px] font-bold rounded border border-blue-200 transition-colors flex items-center gap-1"><i data-lucide="copy" class="w-3 h-3"></i> Neste Mês</button>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="exportarRelatorioExcel()" class="px-5 py-2.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 shadow flex items-center gap-2"><i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Baixar Excel</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                modal.innerHTML = html;
+                if(typeof lucide !== 'undefined') lucide.createIcons();
+                modal.style.display = 'flex'; 
+
+            } catch (error) {
+                alert("Erro ao tentar gerar o relatório: " + error.message);
+                console.error("Erro no relatorio:", error);
+            }
+        };
+
+        // Função para filtrar os cards visualmente
+        window.filtrarRelatorioMes = function(tipo) {
+            const cards = document.querySelectorAll('.relatorio-card');
+            cards.forEach(c => {
+                if(tipo === 'todos' || c.classList.contains('status-' + tipo)) {
+                    c.style.display = 'flex';
+                } else {
+                    c.style.display = 'none';
+                }
+            });
+
+            const btns = ['todos', 'urgente', 'atrasado', 'no_mes'];
+            btns.forEach(b => {
+                const btnEl = document.getElementById('btnFil_' + b);
+                if(btnEl) {
+                    if(b === tipo) {
+                        btnEl.className = "px-6 py-2 bg-slate-800 text-white text-xs font-bold rounded-full shadow-sm border border-slate-800 transition-colors";
+                    } else {
+                        btnEl.className = "px-6 py-2 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold rounded-full border border-slate-300 transition-colors";
+                    }
+                }
+            });
+        };
+
+        // NOVA: Função de Copiar com Layout de CARDS IDÊNTICO À TELA (Para Teams/Email)
+        window.copiarRelatorioTexto = function(tipo) {
+            if(!window.lastRelatorioData) return;
+            
+            const dados = window.lastRelatorioData.filter(r => r.statusRelatorio === tipo);
+            if(dados.length === 0) {
+                alert("Não há alunos nesta situação para copiar.");
+                return;
+            }
+
+            // Pega o Mês e Ano atual para o título
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const mesNome = now.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
+
+            let title = tipo === 'urgente' ? 'ALUNOS URGENTES (Fim de Contrato)' :
+                        tipo === 'atrasado' ? 'VISITAS ATRASADAS' :
+                        'VISITAS PARA NESTE MÊS';
+            
+            // 1. Monta a versão TEXTO SIMPLES (Para o WhatsApp, que não aceita design)
+            let plainText = `*${title.toUpperCase()}*\n\n`;
+            dados.forEach(r => {
+                let dataLimpa = r.dataMostrada.replace('Fim do Contrato: ', '').replace('Previsão: ', '').replace('Previsão era: ', '');
+                plainText += `Aluno: ${r.item.nome}\n`;
+                plainText += `Cidade: ${r.item.cidade || 'N/A'}\n`;
+                plainText += `Empresa: ${r.item.empresa ? r.item.empresa.razao : 'N/A'}\n`;
+                plainText += `Turma: ${r.item.turma || 'N/A'}  |  Visitas Feitas: ${r.vDone}\n`;
+                plainText += `Data: ${dataLimpa}\n`;
+                plainText += `--------------------------\n`;
+            });
+
+            // 2. Monta a versão HTML RICA IDÊNTICA À TELA (Para Teams, Outlook, E-mail)
+            let htmlText = `
+                <div style="font-family: Arial, sans-serif; max-width: 900px; background-color: #f1f5f9; padding: 20px; border-radius: 8px;">
+                    
+                    <div style="background-color: #004587; color: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px;">
+                        <h2 style="margin: 0; font-size: 18px; text-transform: uppercase;">📅 RELATÓRIO DE VISITAS - ${mesNome}/${currentYear}</h2>
+                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #bae6fd;">Baseado na aba e região filtradas atualmente | <strong style="color: white;">Lista: ${title}</strong></p>
+                    </div>
+                    
+                    <table style="width: 100%; border-collapse: separate; border-spacing: 0 15px;">
+            `;
+
+            // Loop que cria a grade (2 cards por linha)
+            for (let i = 0; i < dados.length; i += 2) {
+                htmlText += `<tr>`;
+
+                const buildCard = (r) => {
+                    let cor = tipo === 'urgente' ? '#ef4444' : tipo === 'atrasado' ? '#f97316' : '#3b82f6';
+                    let badgeLabel = tipo === 'urgente' ? 'URGENTE' : tipo === 'atrasado' ? 'VISITA ATRASADA' : 'VISITA NESTE MÊS';
+                    let dataLimpa = r.dataMostrada.replace('Fim do Contrato: ', '').replace('Previsão: ', '').replace('Previsão era: ', '');
+                    let numColor = r.vDone === 0 ? '#ef4444' : '#10b981';
+                    
+                    return `
+                        <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-left: 6px solid ${cor}; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); height: 100%;">
+                            <table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif;">
+                                <tr>
+                                    <td style="font-weight: bold; font-size: 14px; color: #1e293b; vertical-align: top; text-transform: uppercase; padding-bottom: 8px;">
+                                        ${r.item.nome}
+                                    </td>
+                                    <td style="text-align: right; vertical-align: top; width: 60px;">
+                                        <div style="font-size: 9px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Visitas</div>
+                                        <div style="font-size: 20px; color: ${numColor}; font-weight: 900; line-height: 1;">${r.vDone}</div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-bottom: 12px;">
+                                        <span style="background-color: ${cor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${badgeLabel}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="font-size: 12px; color: #64748b; line-height: 1.6;">
+                                        <div style="margin-bottom: 2px;">📍 Cidade: <strong style="color: #334155;">${r.item.cidade || 'N/A'}</strong></div>
+                                        <div style="margin-bottom: 2px;">🏢 ${r.item.empresa ? r.item.empresa.razao : 'N/A'}</div>
+                                        <div style="margin-bottom: 2px;">👥 ${r.item.turma || 'N/A'}</div>
+                                        <div style="margin-top: 8px; color: ${cor}; font-weight: bold;">📅 ${tipo === 'urgente' ? 'Fim Contrato' : 'Previsão'}: ${dataLimpa}</div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    `;
+                };
+
+                // Lado Esquerdo
+                htmlText += `<td style="width: 50%; vertical-align: top; padding-right: 8px;">${buildCard(dados[i])}</td>`;
+                
+                // Lado Direito (Se existir)
+                if (dados[i + 1]) {
+                    htmlText += `<td style="width: 50%; vertical-align: top; padding-left: 8px;">${buildCard(dados[i + 1])}</td>`;
+                } else {
+                    htmlText += `<td style="width: 50%;"></td>`;
+                }
+
+                htmlText += `</tr>`;
+            }
+
+            htmlText += `</table></div>`;
+
+            // 3. Joga as duas versões na Área de Transferência
+            try {
+                const blobHtml = new Blob([htmlText], { type: 'text/html' });
+                const blobText = new Blob([plainText], { type: 'text/plain' });
+                const clipboardItem = new ClipboardItem({
+                    'text/html': blobHtml,
+                    'text/plain': blobText
+                });
+
+                navigator.clipboard.write([clipboardItem]).then(() => {
+                    alert(`✅ Relatório copiado com sucesso! (${dados.length} alunos)\n\n• Cole no Teams ou E-mail para ver os CARDS exatamente como na tela.\n• Cole no WhatsApp para ver em texto limpo.`);
+                }).catch(err => {
+                    navigator.clipboard.writeText(plainText);
+                    alert("Copiado em formato de texto (Seu navegador não suporta a cópia de design rico).");
+                });
+            } catch (err) {
+                navigator.clipboard.writeText(plainText);
+                alert("Copiado em formato de texto.");
+            }
+        };
+
+        // Função de exportar Excel com Abas
+        window.exportarRelatorioExcel = function() {
+            if(!window.lastRelatorioData || window.lastRelatorioData.length === 0) {
+                alert("Não há dados para exportar."); return;
+            }
+            if(typeof XLSX === 'undefined') {
+                alert("Biblioteca Excel (XLSX) não encontrada."); return;
+            }
+
+            const formatRow = (r) => ({
+                'Nome do Aluno': r.item.nome || '',
+                'Cidade': r.item.cidade || '',
+                'Status': r.statusRelatorio === 'urgente' ? 'URGENTE' : r.statusRelatorio === 'atrasado' ? 'ATRASADO' : 'NESTE MÊS',
+                'Data / Previsão': r.dataMostrada || '',
+                'Visitas Feitas': r.vDone,
+                'Empresa': r.item.empresa ? r.item.empresa.razao : '',
+                'Turma': r.item.turma || '',
+                'Supervisor': r.item.supervisor ? r.item.supervisor.display : ''
+            });
+
+            const dadosUrgentes = window.lastRelatorioData.filter(r => r.statusRelatorio === 'urgente').map(formatRow);
+            const dadosAtrasados = window.lastRelatorioData.filter(r => r.statusRelatorio === 'atrasado').map(formatRow);
+            const dadosMes = window.lastRelatorioData.filter(r => r.statusRelatorio === 'no_mes').map(formatRow);
+            const dadosTodos = window.lastRelatorioData.map(formatRow);
+
+            const wb = XLSX.utils.book_new();
+
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dadosTodos), "Relatório Completo");
+            if(dadosUrgentes.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dadosUrgentes), "Urgentes");
+            if(dadosAtrasados.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dadosAtrasados), "Atrasadas");
+            if(dadosMes.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dadosMes), "Neste Mês");
+
+            const nomeArquivo = `Relatorio_Visitas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
+            XLSX.writeFile(wb, nomeArquivo);
+        };
+
+        function renderTable() {
             const tbody = document.getElementById('tableBody'); 
             if(!tbody) return;
             const start = (STATE.page - 1) * STATE.perPage; 
@@ -1739,11 +2241,8 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             
             tbody.innerHTML = subset.map(i => { 
                 const s = typeof analyzeStatus === 'function' ? analyzeStatus(i) : { color: 'gray', label: '-', status: 'none' }; 
-                
-                // MÁGICA 1: Chama a calculadora do futuro
                 const previsoes = window.calcularPrevisaoVisitas ? window.calcularPrevisaoVisitas(i) : [];
                 
-                // MÁGICA 2: Desenha as bolinhas usando as previsões
                 let visitsHtml = '';
                 const maxV = STATE.scope === 'tecnico' ? 6 : 3;
                 
@@ -1755,7 +2254,6 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                     const titleText = isRealizada ? `Realizada em: ${prev.dataStr}` : `Previsão: ${prev.dataStr}`;
                     const dateTextColor = isRealizada ? 'text-emerald-700' : 'text-slate-400';
                     
-                    // A data formatada bonitinha embaixo da bolinha (pega só DD/MM ou DD/MM/AAAA)
                     const dataCurta = prev.dataStr ? prev.dataStr.substring(0, 5) : '';
                     const dateDisplay = dataCurta ? `<div class="text-[9px] font-bold ${dateTextColor} mt-1 bg-white/80 px-1 rounded shadow-sm border border-slate-100 min-w-[36px] text-center">${dataCurta}</div>` : '<div class="h-[17px] mt-1"></div>'; 
                     
@@ -1779,10 +2277,44 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if (s.alert && s.alert.isAlert && s.status !== 'desligado' && s.status !== 'completed') { 
                     alertBadgeHtml = `<div class="mt-2"><span class="bg-orange-100 text-orange-700 border border-orange-200 text-[9px] px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 w-max shadow-sm animate-pulse" title="Atenção necessária"><i data-lucide="bell" class="w-3 h-3"></i> ${s.alert.msg}</span></div>`; 
                 } 
+
+                // ===== BLOQUEIOS DE ESPECTADOR =====
+                let doubleClickAction = STATE.userType === 'espectador' ? "" : `ondblclick="openEditModal('${i.id}')"`;
+                let btnEditHtml = STATE.userType === 'espectador' 
+                    ? `<span class="text-[9px] text-slate-400 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Leitura</span>` 
+                    : `<button onclick="openEditModal('${i.id}')" class="p-1.5 text-slate-400 hover:text-senac-blue hover:bg-blue-50 rounded-full"><i data-lucide="pencil" class="w-4 h-4"></i></button>`;
                 
-                return `<tr class="${rowClass}" ondblclick="openEditModal('${i.id}')"><td><div class="font-bold text-slate-700">${i.nome}</div><div class="flex flex-wrap items-center gap-1.5 mt-1"><div class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">${i.turma}</div><div class="text-[9px] font-bold text-senac-blue bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1" title="Cidade / Região"><i data-lucide="map-pin" class="w-2.5 h-2.5"></i> ${i.cidade} / ${i.regiao}</div></div>${alertBadgeHtml}</td><td><div class="font-bold text-xs truncate w-48" title="${i.empresa ? i.empresa.razao : ''}">${i.empresa ? i.empresa.razao : ''}</div><div class="text-[9px] text-slate-400 truncate w-48 mt-0.5">${i.empresa ? i.empresa.endereco||'' : ''}</div>${mapLinkHtml}</td><td><div class="font-bold text-xs truncate w-40">${i.supervisor ? i.supervisor.display : ''}</div><div class="text-[9px] text-slate-400 truncate w-32 mt-0.5">${i.supervisor ? i.supervisor.email||'' : ''}</div></td><td class="text-center"><div class="text-[10px] font-bold text-emerald-600">INÍ: ${fmtFull(i.ini)}</div><div class="text-[10px] font-bold text-slate-400">FIM: ${fmtFull(i.fim)}</div></td><td><div class="flex gap-1 justify-center items-start pt-1">${visitsHtml}</div></td><td class="text-center"><div class="flex items-center justify-center gap-2 pt-2"><span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase ${badgeClass}">${s.label}</span><button onclick="openEditModal('${i.id}')" class="p-1.5 text-slate-400 hover:text-senac-blue hover:bg-blue-50 rounded-full"><i data-lucide="pencil" class="w-4 h-4"></i></button></div></td></tr>`; 
+                return `<tr class="${rowClass}" ${doubleClickAction}><td><div class="font-bold text-slate-700">${i.nome}</div><div class="flex flex-wrap items-center gap-1.5 mt-1"><div class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">${i.turma}</div><div class="text-[9px] font-bold text-senac-blue bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1" title="Cidade / Região"><i data-lucide="map-pin" class="w-2.5 h-2.5"></i> ${i.cidade} / ${i.regiao}</div></div>${alertBadgeHtml}</td><td><div class="font-bold text-xs truncate w-48" title="${i.empresa ? i.empresa.razao : ''}">${i.empresa ? i.empresa.razao : ''}</div><div class="text-[9px] text-slate-400 truncate w-48 mt-0.5">${i.empresa ? i.empresa.endereco||'' : ''}</div>${mapLinkHtml}</td><td><div class="font-bold text-xs truncate w-40">${i.supervisor ? i.supervisor.display : ''}</div><div class="text-[9px] text-slate-400 truncate w-32 mt-0.5">${i.supervisor ? i.supervisor.email||'' : ''}</div></td><td class="text-center"><div class="text-[10px] font-bold text-emerald-600">INÍ: ${fmtFull(i.ini)}</div><div class="text-[10px] font-bold text-slate-400">FIM: ${fmtFull(i.fim)}</div></td><td><div class="flex gap-1 justify-center items-start pt-1">${visitsHtml}</div></td><td class="text-center"><div class="flex items-center justify-center gap-2 pt-2"><span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase ${badgeClass}">${s.label}</span>${btnEditHtml}</div></td></tr>`; 
             }).join(""); 
+            
             if(typeof lucide !== 'undefined') lucide.createIcons(); 
+            
+            // Oculta botões administrativos do CABEÇALHO se for espectador
+            const btnAddNovos = document.querySelector('button[onclick="document.getElementById(\'importMergeInput\').click()"]');
+            const btnSubstituir = document.querySelector('button[onclick="confirmReplace()"]');
+            const btnBuscarEnderecos = document.querySelector('button[onclick="buscarEnderecosLote()"]');
+            const btnBackup = document.querySelector('button[onclick="downloadBackup()"]');
+            const btnPlanNovo = document.getElementById('btnOpenNewPlan');
+            const inputImportRoteiro = document.getElementById('importRoteiroFile');
+            const btnLixeiraRoteiro = document.getElementById('btnDeletePlan');
+            
+            if (STATE.userType === 'espectador') {
+                if(btnAddNovos) btnAddNovos.style.display = 'none';
+                if(btnSubstituir) btnSubstituir.style.display = 'none';
+                if(btnBuscarEnderecos) btnBuscarEnderecos.style.display = 'none';
+                if(btnBackup) btnBackup.style.display = 'none';
+                if(btnPlanNovo) btnPlanNovo.style.display = 'none';
+                if(btnLixeiraRoteiro) btnLixeiraRoteiro.style.display = 'none';
+                if(inputImportRoteiro && inputImportRoteiro.nextElementSibling) inputImportRoteiro.nextElementSibling.style.display = 'none';
+            } else {
+                if(btnAddNovos) btnAddNovos.style.display = 'flex';
+                if(btnSubstituir) btnSubstituir.style.display = 'flex';
+                if(btnBuscarEnderecos) btnBuscarEnderecos.style.display = 'flex';
+                if(btnBackup) btnBackup.style.display = 'flex';
+                if(btnPlanNovo) btnPlanNovo.style.display = 'flex';
+                if(btnLixeiraRoteiro) btnLixeiraRoteiro.style.display = 'flex';
+                if(inputImportRoteiro && inputImportRoteiro.nextElementSibling) inputImportRoteiro.nextElementSibling.style.display = 'flex';
+            }
         }
 
         function renderCharts(legacyValue = 0) { 
