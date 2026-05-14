@@ -1495,7 +1495,7 @@ window.requestRestore = function() {
                 const setVal = (elemId, val) => { const el = document.getElementById(elemId); if(el) el.value = val || ''; };
                 const setCheck = (elemId, val) => { const el = document.getElementById(elemId); if(el) el.checked = !!val; };
 
-                setVal('editNome', s.nome); setVal('editCPF', s.cpf); setVal('editTurma', s.turma);
+                setVal('editNome', s.nome); setVal('editCPF', s.cpf || s.CPF || s.Cpf || s['Apr CPF']); setVal('editTurma', s.turma);
                 setVal('editCidade', s.cidade); setVal('editTeoria', s.teoria); setVal('editPratica', s.pratica);
                 setVal('editEmpresa', s.empresa?.razao); setVal('editEndereco', s.empresa?.endereco);
                 setVal('editLink', s.empresa?.link); setVal('editSupervisor', s.supervisor?.display);
