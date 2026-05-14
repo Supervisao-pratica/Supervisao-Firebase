@@ -20,8 +20,10 @@
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
     
     <script>
+        
       // Chaves reais do seu projeto inseridas com sucesso!
       const firebaseConfig = {
         apiKey: "AIzaSyCuI9eAzkgwpUnz_RrLPYhy4A0ysEndSIA",
@@ -847,12 +849,16 @@
             }; 
             
             try { 
-                // 1. SALVA NA NUVEM (Firebase)
+                // 1. SALVA NA NUVEM (Firebase) COM COMPACTAÇÃO "ZIP"
                 if (typeof firebase !== 'undefined') {
                     const firestoreDB = firebase.firestore();
-                    // O Firebase exige dados "limpos", então usamos esse truque rápido para limpar campos inválidos:
                     const cleanData = JSON.parse(JSON.stringify(dataToSave));
-                    await firestoreDB.collection('banco_senac').doc('dados_principais').set(cleanData);
+                    
+                    // MÁGICA: Pega o arquivo gigante e reduz em até 85% do tamanho!
+                    const compressedData = LZString.compressToBase64(JSON.stringify(cleanData));
+                    
+                    // Salva como um único campo chamado 'payload'
+                    await firestoreDB.collection('banco_senac').doc('dados_principais').set({ payload: compressedData });
                 }
 
                 // 2. SALVA LOCALMENTE (Backup de segurança no navegador)
@@ -874,6 +880,45 @@
                 console.error("Erro fatal ao salvar:", error); 
                 alert("ERRO DE GRAVAÇÃO: " + error.message); 
                 updateSaveStatus(false); 
+            } 
+        }
+
+        async function loadFromStorage() { 
+            try { 
+                // 1. TENTA PUXAR DA NUVEM PRIMEIRO (Firebase)
+                if (typeof firebase !== 'undefined') {
+                    const firestoreDB = firebase.firestore();
+                    const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
+                    
+                    if (doc.exists) {
+                        const rawData = doc.data();
+                        console.log("SUCESSO: Dados carregados da NUVEM!");
+                        
+                        // Descompacta se for o formato novo, ou lê normal se for antigo
+                        if (rawData.payload) {
+                            return JSON.parse(LZString.decompressFromBase64(rawData.payload));
+                        } else {
+                            return rawData; 
+                        }
+                    }
+                }
+
+                // 2. SE NÃO TIVER NA NUVEM, PUXA DO LOCAL
+                console.log("Aviso: Puxando dados locais do navegador...");
+                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath && fs.existsSync(dbFilePath)) {
+                    return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
+                }
+                
+                const db = await dbPromise; 
+                return new Promise((resolve, reject) => { 
+                    const tx = db.transaction(STORE_NAME, 'readonly'); 
+                    const req = tx.objectStore(STORE_NAME).get('root'); 
+                    req.onsuccess = () => resolve(req.result); 
+                    req.onerror = () => reject(req.error); 
+                }); 
+            } catch (e) { 
+                console.error("Erro ao carregar:", e);
+                return null; 
             } 
         }
 
