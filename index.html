@@ -22,14 +22,14 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     
     <script>
-      // ⚠️ ATENÇÃO: Substitua os dados abaixo pelas chaves reais do seu Firebase!
+      // Chaves reais do seu projeto inseridas com sucesso!
       const firebaseConfig = {
-        apiKey: "SUA_API_KEY_AQUI",
-        authDomain: "seu-projeto.firebaseapp.com",
-        projectId: "seu-projeto",
-        storageBucket: "seu-projeto.appspot.com",
-        messagingSenderId: "123456789",
-        appId: "1:123456789:web:abcdef123456"
+        apiKey: "AIzaSyCuI9eAzkgwpUnz_RrLPYhy4A0ysEndSIA",
+        authDomain: "senac-roteiros-app.firebaseapp.com",
+        projectId: "senac-roteiros-app",
+        storageBucket: "senac-roteiros-app.firebasestorage.app",
+        messagingSenderId: "461286595194",
+        appId: "1:461286595194:web:fec54f9d02fcb481bdf9c3"
       };
 
       if (!firebase.apps.length) {
@@ -852,7 +852,7 @@
                     const firestoreDB = firebase.firestore();
                     // O Firebase exige dados "limpos", então usamos esse truque rápido para limpar campos inválidos:
                     const cleanData = JSON.parse(JSON.stringify(dataToSave));
-                    await firestoreDB.collection('banco_geral').doc('sistema_visitas').set(cleanData);
+                    await firestoreDB.collection('banco_senac').doc('dados_principais').set(cleanData);
                 }
 
                 // 2. SALVA LOCALMENTE (Backup de segurança no navegador)
@@ -882,7 +882,7 @@
                 // 1. TENTA PUXAR DA NUVEM PRIMEIRO (Firebase)
                 if (typeof firebase !== 'undefined') {
                     const firestoreDB = firebase.firestore();
-                    const doc = await firestoreDB.collection('banco_geral').doc('sistema_visitas').get();
+                    const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
                     if (doc.exists) {
                         console.log("SUCESSO: Dados carregados da NUVEM!");
                         return doc.data(); 
