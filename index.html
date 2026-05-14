@@ -17,6 +17,25 @@
     <script>if (window.tempModule) { module = window.tempModule; window.tempModule = undefined; }</script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <script>
+      // ⚠️ ATENÇÃO: Substitua os dados abaixo pelas chaves reais do seu Firebase!
+      const firebaseConfig = {
+        apiKey: "SUA_API_KEY_AQUI",
+        authDomain: "seu-projeto.firebaseapp.com",
+        projectId: "seu-projeto",
+        storageBucket: "seu-projeto.appspot.com",
+        messagingSenderId: "123456789",
+        appId: "1:123456789:web:abcdef123456"
+      };
+
+      if (!firebase.apps.length) {
+          firebase.initializeApp(firebaseConfig);
+      }
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
@@ -818,8 +837,76 @@
         if (isElectron) { try { fs = window.require('fs'); path = window.require('path'); appDataPath = window.process.env.APPDATA || (window.process.platform == 'darwin' ? window.process.env.HOME + '/Library/Preferences' : window.process.env.HOME + "/.local/share"); appDataPath = path.join(appDataPath, 'SenacBI'); if (!fs.existsSync(appDataPath)) fs.mkdirSync(appDataPath, { recursive: true }); dbFilePath = path.join(appDataPath, 'senac_db.json'); document.title += " (Modo Executável)"; } catch (e) { console.warn("Electron detectado mas falha ao carregar módulos nativos:", e); } }
         const dbPromise = new Promise((resolve, reject) => { const request = indexedDB.open(DB_NAME, 9); request.onupgradeneeded = (event) => { const db = event.target.result; if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME); }; request.onsuccess = (event) => resolve(event.target.result); request.onerror = (event) => reject(event.target.error); });
         
-        async function saveToStorage() { updateSaveStatus(true); const dataToSave = { quali: DB.quali, tec: DB.tec, regioes_map: DB.regioes_map, cc_map: DB.cc_map, finance_logs: DB.finance_logs, custom_passwords: DB.custom_passwords, planning: DB.planning, planning_logistics: DB.planning_logistics, planning_lunch: DB.planning_lunch, planning_admin: DB.planning_admin, doc_template: DB.doc_template, updatedAt: new Date().toISOString() }; try { if (isElectron && fs && dbFilePath) fs.writeFileSync(dbFilePath, JSON.stringify(dataToSave)); const db = await dbPromise; await new Promise((resolve, reject) => { const tx = db.transaction(STORE_NAME, 'readwrite'); store = tx.objectStore(STORE_NAME); store.put(dataToSave, 'root'); tx.oncomplete = resolve; tx.onerror = reject; }); updateSaveStatus(false); } catch (error) { console.error("Erro fatal ao salvar:", error); alert("ERRO DE GRAVAÇÃO: " + error.message); updateSaveStatus(false); } }
-        async function loadFromStorage() { try { if (isElectron && fs && dbFilePath && fs.existsSync(dbFilePath)) return JSON.parse(fs.readFileSync(dbFilePath, 'utf8')); const db = await dbPromise; return new Promise((resolve, reject) => { const tx = db.transaction(STORE_NAME, 'readonly'); const req = tx.objectStore(STORE_NAME).get('root'); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); } catch (e) { return null; } }
+        async function saveToStorage() { 
+            updateSaveStatus(true); 
+            const dataToSave = { 
+                quali: DB.quali, tec: DB.tec, regioes_map: DB.regioes_map, cc_map: DB.cc_map, 
+                finance_logs: DB.finance_logs, custom_passwords: DB.custom_passwords, planning: DB.planning, 
+                planning_logistics: DB.planning_logistics, planning_lunch: DB.planning_lunch, 
+                planning_admin: DB.planning_admin, doc_template: DB.doc_template, updatedAt: new Date().toISOString() 
+            }; 
+            
+            try { 
+                // 1. SALVA NA NUVEM (Firebase)
+                if (typeof firebase !== 'undefined') {
+                    const firestoreDB = firebase.firestore();
+                    // O Firebase exige dados "limpos", então usamos esse truque rápido para limpar campos inválidos:
+                    const cleanData = JSON.parse(JSON.stringify(dataToSave));
+                    await firestoreDB.collection('banco_geral').doc('sistema_visitas').set(cleanData);
+                }
+
+                // 2. SALVA LOCALMENTE (Backup de segurança no navegador)
+                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath) {
+                    fs.writeFileSync(dbFilePath, JSON.stringify(dataToSave));
+                }
+                
+                const db = await dbPromise; 
+                await new Promise((resolve, reject) => { 
+                    const tx = db.transaction(STORE_NAME, 'readwrite'); 
+                    let store = tx.objectStore(STORE_NAME); 
+                    store.put(dataToSave, 'root'); 
+                    tx.oncomplete = resolve; 
+                    tx.onerror = reject; 
+                }); 
+                
+                updateSaveStatus(false); 
+            } catch (error) { 
+                console.error("Erro fatal ao salvar:", error); 
+                alert("ERRO DE GRAVAÇÃO: " + error.message); 
+                updateSaveStatus(false); 
+            } 
+        }
+
+        async function loadFromStorage() { 
+            try { 
+                // 1. TENTA PUXAR DA NUVEM PRIMEIRO (Firebase)
+                if (typeof firebase !== 'undefined') {
+                    const firestoreDB = firebase.firestore();
+                    const doc = await firestoreDB.collection('banco_geral').doc('sistema_visitas').get();
+                    if (doc.exists) {
+                        console.log("SUCESSO: Dados carregados da NUVEM!");
+                        return doc.data(); 
+                    }
+                }
+
+                // 2. SE NÃO TIVER NA NUVEM, PUXA DO LOCAL
+                console.log("Aviso: Puxando dados locais do navegador...");
+                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath && fs.existsSync(dbFilePath)) {
+                    return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
+                }
+                
+                const db = await dbPromise; 
+                return new Promise((resolve, reject) => { 
+                    const tx = db.transaction(STORE_NAME, 'readonly'); 
+                    const req = tx.objectStore(STORE_NAME).get('root'); 
+                    req.onsuccess = () => resolve(req.result); 
+                    req.onerror = () => reject(req.error); 
+                }); 
+            } catch (e) { 
+                console.error("Erro ao carregar:", e);
+                return null; 
+            } 
+        }
         function updateSaveStatus(isSaving) { const el = document.getElementById('saveStatus'); if (el) { if (isSaving) { el.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> <span>GRAVANDO...</span>`; el.classList.add('text-senac-orange'); } else { el.innerHTML = `<i data-lucide="check-circle" class="w-3 h-3 text-emerald-500"></i> <span>DADOS SEGUROS</span>`; el.classList.remove('text-senac-orange'); setTimeout(() => { el.innerHTML = `<i data-lucide="cloud" class="w-3 h-3"></i> <span>Salvo Automático</span>`; }, 3000); } lucide.createIcons(); } }
         function showToast(msg) { const t = document.getElementById('toast'); if(!t) return; t.innerText = msg; t.classList.add('show'); setTimeout(() => { t.classList.remove('show'); }, 3000); }
         document.addEventListener('DOMContentLoaded', async () => { lucide.createIcons(); try { const savedData = await loadFromStorage(); if (savedData) { processDataLoad(savedData); const totalRecords = (DB.quali?.length||0) + (DB.tec?.length||0); document.getElementById('recordCount').innerHTML = `<span class="text-emerald-600 font-bold">Base carregada: ${totalRecords} Alunos</span>`; showToast("Dados recuperados com sucesso!"); } else { document.getElementById('recordCount').innerText = "Nenhum dado salvo encontrado."; } } catch (e) { console.error(e); document.getElementById('recordCount').innerText = "Erro ao ler memória."; } initLogin(); document.getElementById('globalLoader').classList.add('hidden'); });
