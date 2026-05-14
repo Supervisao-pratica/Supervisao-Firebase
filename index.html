@@ -347,7 +347,21 @@
     <!-- MODAL ALUNO -->
     <div id="studentModal" class="hidden modal-overlay z-[70]">
         <div class="glass-panel w-full max-w-3xl p-6 m-4 shadow-2xl overflow-y-auto max-h-[90vh]">
-            <div class="flex justify-between items-center mb-6 border-b pb-4"><h3 class="text-xl font-bold text-senac-blue flex items-center gap-2"><i data-lucide="user-plus" class="w-5 h-5"></i> <span id="modalTitle">Adicionar Aluno</span></h3><button onclick="closeStudentModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-6 h-6"></i></button></div>
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+    <h3 class="text-xl font-bold text-senac-blue flex items-center gap-2">
+        <i data-lucide="user-plus" class="w-5 h-5"></i> <span id="modalTitle">Adicionar Aluno</span>
+    </h3>
+    
+    <div class="flex items-center gap-4">
+        <button type="button" onclick="copiarFichaAluno()" class="px-3 py-1.5 bg-slate-100 text-senac-blue hover:bg-blue-50 rounded border border-slate-200 text-[11px] font-bold flex items-center gap-2 transition-colors">
+            <i data-lucide="copy" class="w-3 h-3"></i> Copiar Ficha
+        </button>
+        
+        <button onclick="closeStudentModal()" class="text-slate-400 hover:text-slate-600">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+    </div>
+</div>
             <form id="studentForm" onsubmit="event.preventDefault(); saveStudentData();">
                 <input type="hidden" id="editStudentId">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1587,6 +1601,60 @@ window.requestRestore = function() {
                 if(typeof showToast === 'function') showToast("Dados salvos!"); 
             } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
         }
+        window.copiarFichaAluno = function() {
+            // Função rápida para pegar o valor do campo
+            const getVal = (id) => {
+                const el = document.getElementById(id);
+                return (el && el.value) ? el.value.trim() : '-';
+            };
+
+            // Pegando os dados com os SEUS IDs exatos!
+            const nome = getVal('editNome');
+            const cpf = getVal('editCPF');
+            const turma = getVal('editTurma');
+            const regiao = getVal('editRegiao');
+            const cidade = getVal('editCidade');
+            const teoria = getVal('editTeoria');
+            const pratica = getVal('editPratica');
+            
+            const empresa = getVal('editEmpresa');
+            const endereco = getVal('editEndereco');
+            const supervisor = getVal('editSupervisor');
+            const telefone = getVal('editTel');
+            const email = getVal('editEmail');
+            const obs = getVal('editObs');
+
+            // Monta o texto formatado para WhatsApp/Teams (com negritos)
+            const texto = `🎓 *FICHA DO ALUNO*
+Nome: ${nome}
+Turma: ${turma} | CPF: ${cpf}
+Localidade: ${cidade} (${regiao})
+
+🕒 *JORNADA*
+Teórica: ${teoria}
+Prática: ${pratica}
+
+🏢 *EMPRESA*
+Razão Social: ${empresa}
+Endereço: ${endereco}
+Supervisor: ${supervisor}
+Contato: ${telefone} | E-mail: ${email}
+
+📝 *OBSERVAÇÕES*
+${obs}`;
+
+            // Copia para o seu computador
+            navigator.clipboard.writeText(texto).then(() => {
+                alert("✅ Ficha copiada com sucesso!\n\nAgora é só abrir o WhatsApp, Teams ou E-mail e colar (Ctrl+V).");
+            }).catch(err => {
+                alert("Erro ao copiar: " + err);
+            });
+        };
+
+        // (A sua função já existente ficará logo aqui abaixo)
+        function exportData() {
+            // ... seu código atual ...
+        }
 
         function exportData() { 
             if(!STATE.filter || STATE.filter.length === 0) return alert("Sem dados."); 
@@ -2506,6 +2574,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if(inputImportRoteiro && inputImportRoteiro.nextElementSibling) inputImportRoteiro.nextElementSibling.style.display = 'flex';
             }
         }
+        
 
         function renderCharts(legacyValue = 0) { 
             const safeLegacy = 0; 
