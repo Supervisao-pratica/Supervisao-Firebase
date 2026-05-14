@@ -841,29 +841,38 @@
         
         async function saveToStorage() { 
             updateSaveStatus(true); 
+            // Usa um carimbo numérico exato para não ter briga de relógio
+            const timestamp = new Date().getTime(); 
             const dataToSave = { 
                 quali: DB.quali, tec: DB.tec, regioes_map: DB.regioes_map, cc_map: DB.cc_map, 
                 finance_logs: DB.finance_logs, custom_passwords: DB.custom_passwords, planning: DB.planning, 
                 planning_logistics: DB.planning_logistics, planning_lunch: DB.planning_lunch, 
-                planning_admin: DB.planning_admin, doc_template: DB.doc_template, updatedAt: new Date().toISOString() 
+                planning_admin: DB.planning_admin, doc_template: DB.doc_template, updatedAt: timestamp 
             }; 
             
             try { 
-                // 1. SENSOR DE INTERNET: Tenta salvar na nuvem SÓ se estiver conectado
+                // 1. Tenta salvar na nuvem
                 if (typeof firebase !== 'undefined' && navigator.onLine) {
                     try {
                         const firestoreDB = firebase.firestore();
                         const cleanData = JSON.parse(JSON.stringify(dataToSave));
+                        
+                        if(typeof LZString === 'undefined') throw new Error("O compactador (LZString) falhou ao carregar.");
+                        
                         const compressedData = LZString.compressToBase64(JSON.stringify(cleanData));
                         
-                        // Usamos um timeout interno para não travar o app se a internet estiver muito lenta
-                        await firestoreDB.collection('banco_senac').doc('dados_principais').set({ payload: compressedData });
+                        await firestoreDB.collection('banco_senac').doc('dados_principais').set({ 
+                            payload: compressedData,
+                            updatedAt: timestamp // Anota a hora exata na nuvem
+                        });
                     } catch(err) {
-                        console.warn("Estava online mas a nuvem falhou, salvando apenas local.", err);
+                        // AGORA ELE AVISA SE A NUVEM FALHAR EM VEZ DE ESCONDER O ERRO
+                        alert("⚠️ AVISO DA NUVEM: Não foi possível enviar os dados (" + err.message + "). O sistema salvou no seu Computador!");
+                        console.warn("Falha ao salvar na Nuvem:", err);
                     }
                 }
 
-                // 2. SALVA LOCALMENTE (Físico no HD para o seu App Desktop e no Navegador)
+                // 2. Salva localmente
                 if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath) {
                     fs.writeFileSync(dbFilePath, JSON.stringify(dataToSave));
                 }
@@ -882,6 +891,57 @@
                 console.error("Erro fatal ao salvar:", error); 
                 alert("ERRO DE GRAVAÇÃO: " + error.message); 
                 updateSaveStatus(false); 
+            } 
+        }
+
+        async function loadFromStorage() { 
+            try { 
+                // PRIMEIRO: Lê o HD do seu computador e vê o "carimbo de tempo"
+                let localData = null;
+                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath && fs.existsSync(dbFilePath)) {
+                    localData = JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
+                } else {
+                    const db = await dbPromise; 
+                    localData = await new Promise((resolve) => { 
+                        const tx = db.transaction(STORE_NAME, 'readonly'); 
+                        const req = tx.objectStore(STORE_NAME).get('root'); 
+                        req.onsuccess = () => resolve(req.result); 
+                        req.onerror = () => resolve(null); 
+                    });
+                }
+                
+                // Converte a hora do computador para comparar
+                const localTime = localData ? new Date(localData.updatedAt || 0).getTime() : 0;
+
+                // SEGUNDO: Vai na Nuvem
+                if (typeof firebase !== 'undefined' && navigator.onLine) {
+                    try {
+                        const firestoreDB = firebase.firestore();
+                        const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
+                        
+                        if (doc.exists) {
+                            const rawData = doc.data();
+                            const cloudTime = new Date(rawData.updatedAt || 0).getTime();
+                            
+                            // VERIFICAÇÃO MÁXIMA: Só baixa da nuvem se a nuvem for MAIS NOVA que o PC!
+                            if (cloudTime >= localTime) {
+                                console.log("Nuvem está atualizada. Baixando...");
+                                if (rawData.payload) return JSON.parse(LZString.decompressFromBase64(rawData.payload));
+                                return rawData; 
+                            } else {
+                                console.log("Seu PC está mais atualizado que a nuvem! Mantendo arquivos locais.");
+                            }
+                        }
+                    } catch(err) {
+                        console.warn("Nuvem indisponível. Usando arquivo do PC.", err);
+                    }
+                }
+
+                // Retorna os dados do seu HD
+                return localData;
+            } catch (e) { 
+                console.error("Erro ao carregar:", e);
+                return null; 
             } 
         }
 
