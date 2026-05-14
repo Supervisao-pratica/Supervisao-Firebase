@@ -866,7 +866,6 @@
                             updatedAt: timestamp // Anota a hora exata na nuvem
                         });
                     } catch(err) {
-                        // AGORA ELE AVISA SE A NUVEM FALHAR EM VEZ DE ESCONDER O ERRO
                         alert("⚠️ AVISO DA NUVEM: Não foi possível enviar os dados (" + err.message + "). O sistema salvou no seu Computador!");
                         console.warn("Falha ao salvar na Nuvem:", err);
                     }
@@ -895,9 +894,12 @@
         }
 
         async function loadFromStorage() { 
+            let localData = null;
+            let cloudData = null;
+            let origin = "NENHUM";
+
             try { 
-                // PRIMEIRO: Lê o HD do seu computador e vê o "carimbo de tempo"
-                let localData = null;
+                // 1. LÊ O COMPUTADOR PRIMEIRO (Local)
                 if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath && fs.existsSync(dbFilePath)) {
                     localData = JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
                 } else {
@@ -909,155 +911,102 @@
                         req.onerror = () => resolve(null); 
                     });
                 }
-                
-                // Converte a hora do computador para comparar
                 const localTime = localData ? new Date(localData.updatedAt || 0).getTime() : 0;
+                const localQtd = localData ? ((localData.quali?.length||0) + (localData.tec?.length||0)) : 0;
 
-                // SEGUNDO: Vai na Nuvem
+                // 2. LÊ A NUVEM (Firebase)
                 if (typeof firebase !== 'undefined' && navigator.onLine) {
                     try {
                         const firestoreDB = firebase.firestore();
                         const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
-                        
                         if (doc.exists) {
                             const rawData = doc.data();
-                            const cloudTime = new Date(rawData.updatedAt || 0).getTime();
-                            
-                            // VERIFICAÇÃO MÁXIMA: Só baixa da nuvem se a nuvem for MAIS NOVA que o PC!
-                            if (cloudTime >= localTime) {
-                                console.log("Nuvem está atualizada. Baixando...");
-                                if (rawData.payload) return JSON.parse(LZString.decompressFromBase64(rawData.payload));
-                                return rawData; 
+                            if (rawData.payload) {
+                                cloudData = JSON.parse(LZString.decompressFromBase64(rawData.payload));
                             } else {
-                                console.log("Seu PC está mais atualizado que a nuvem! Mantendo arquivos locais.");
+                                cloudData = rawData; 
                             }
                         }
-                    } catch(err) {
-                        console.warn("Nuvem indisponível. Usando arquivo do PC.", err);
-                    }
+                    } catch(err) { console.warn("Erro ao ler nuvem:", err); }
                 }
+                const cloudTime = cloudData ? new Date(cloudData.updatedAt || 0).getTime() : 0;
+                const cloudQtd = cloudData ? ((cloudData.quali?.length||0) + (cloudData.tec?.length||0)) : 0;
 
-                // Retorna os dados do seu HD
-                return localData;
-            } catch (e) { 
-                console.error("Erro ao carregar:", e);
-                return null; 
-            } 
-        }
+                // 3. DECISÃO INTELIGENTE (O ÁRBITRO)
+                let finalData = null;
 
-        async function loadFromStorage() { 
-            try { 
-                // 1. SENSOR DE INTERNET: Tenta puxar da nuvem SÓ se tiver conexão
-                if (typeof firebase !== 'undefined' && navigator.onLine) {
-                    try {
-                        const firestoreDB = firebase.firestore();
-                        const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
-                        
-                        if (doc.exists) {
-                            const rawData = doc.data();
-                            console.log("SUCESSO: Dados carregados da NUVEM!");
-                            
-                            if (rawData.payload) return JSON.parse(LZString.decompressFromBase64(rawData.payload));
-                            return rawData; 
-                        }
-                    } catch(err) {
-                        console.warn("Falha ao ler da nuvem, caindo para o backup local.", err);
-                    }
-                }
-
-                // 2. MODO OFFLINE (Puxa direto do HD no seu App Desktop)
-                console.log("Aviso: Modo Offline ou falha na nuvem. Puxando dados locais...");
-                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath && fs.existsSync(dbFilePath)) {
-                    console.log("SUCESSO: Dados carregados do Arquivo Local do Computador!");
-                    return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
-                }
-                
-                // 3. Navegador Local (se não for o App Desktop)
-                const db = await dbPromise; 
-                return new Promise((resolve, reject) => { 
-                    const tx = db.transaction(STORE_NAME, 'readonly'); 
-                    const req = tx.objectStore(STORE_NAME).get('root'); 
-                    req.onsuccess = () => resolve(req.result); 
-                    req.onerror = () => reject(req.error); 
-                }); 
-            } catch (e) { 
-                console.error("Erro ao carregar:", e);
-                return null; 
-            } 
-        }
-
-        async function loadFromStorage() { 
-            try { 
-                // 1. TENTA PUXAR DA NUVEM PRIMEIRO (Firebase)
-                if (typeof firebase !== 'undefined') {
-                    const firestoreDB = firebase.firestore();
-                    const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
+                if (cloudData && cloudQtd > 0 && cloudTime >= localTime) {
+                    finalData = cloudData;
+                    origin = `NUVEM (${cloudQtd} alunos)`;
+                } 
+                else if (localData && localQtd > 0) {
+                    finalData = localData;
+                    origin = `COMPUTADOR (${localQtd} alunos)`;
                     
-                    if (doc.exists) {
-                        const rawData = doc.data();
-                        console.log("SUCESSO: Dados carregados da NUVEM!");
-                        
-                        // Descompacta se for o formato novo, ou lê normal se for antigo
-                        if (rawData.payload) {
-                            return JSON.parse(LZString.decompressFromBase64(rawData.payload));
-                        } else {
-                            return rawData; 
-                        }
+                    if (cloudQtd === 0 || cloudTime < localTime) {
+                        setTimeout(() => saveToStorage(), 3000); 
                     }
-                }
+                } 
+                else if (cloudData) { finalData = cloudData; origin = "NUVEM (Vazia)"; } 
+                else if (localData) { finalData = localData; origin = "COMPUTADOR (Vazio)"; }
 
-                // 2. SE NÃO TIVER NA NUVEM, PUXA DO LOCAL
-                console.log("Aviso: Puxando dados locais do navegador...");
-                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath && fs.existsSync(dbFilePath)) {
-                    return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
-                }
-                
-                const db = await dbPromise; 
-                return new Promise((resolve, reject) => { 
-                    const tx = db.transaction(STORE_NAME, 'readonly'); 
-                    const req = tx.objectStore(STORE_NAME).get('root'); 
-                    req.onsuccess = () => resolve(req.result); 
-                    req.onerror = () => reject(req.error); 
-                }); 
+                if(finalData) finalData._origin = origin; 
+                return finalData;
+
             } catch (e) { 
-                console.error("Erro ao carregar:", e);
+                console.error("ERRO CRÍTICO DE CARREGAMENTO:", e);
                 return null; 
             } 
         }
 
-        async function loadFromStorage() { 
+        function updateSaveStatus(isSaving) { 
+            const el = document.getElementById('saveStatus'); 
+            if (el) { 
+                if (isSaving) { 
+                    el.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> <span>GRAVANDO...</span>`; 
+                    el.classList.add('text-senac-orange'); 
+                } else { 
+                    el.innerHTML = `<i data-lucide="check-circle" class="w-3 h-3 text-emerald-500"></i> <span>DADOS SEGUROS</span>`; 
+                    el.classList.remove('text-senac-orange'); 
+                    setTimeout(() => { 
+                        el.innerHTML = `<i data-lucide="cloud" class="w-3 h-3"></i> <span>Salvo Automático</span>`; 
+                    }, 3000); 
+                } 
+                lucide.createIcons(); 
+            } 
+        }
+
+        function showToast(msg) { 
+            const t = document.getElementById('toast'); 
+            if(!t) return; 
+            t.innerText = msg; 
+            t.classList.add('show'); 
+            setTimeout(() => { t.classList.remove('show'); }, 3000); 
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => { 
+            lucide.createIcons(); 
             try { 
-                // 1. TENTA PUXAR DA NUVEM PRIMEIRO (Firebase)
-                if (typeof firebase !== 'undefined') {
-                    const firestoreDB = firebase.firestore();
-                    const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
-                    if (doc.exists) {
-                        console.log("SUCESSO: Dados carregados da NUVEM!");
-                        return doc.data(); 
-                    }
-                }
-
-                // 2. SE NÃO TIVER NA NUVEM, PUXA DO LOCAL
-                console.log("Aviso: Puxando dados locais do navegador...");
-                if (typeof isElectron !== 'undefined' && isElectron && typeof fs !== 'undefined' && fs && dbFilePath && fs.existsSync(dbFilePath)) {
-                    return JSON.parse(fs.readFileSync(dbFilePath, 'utf8'));
-                }
-                
-                const db = await dbPromise; 
-                return new Promise((resolve, reject) => { 
-                    const tx = db.transaction(STORE_NAME, 'readonly'); 
-                    const req = tx.objectStore(STORE_NAME).get('root'); 
-                    req.onsuccess = () => resolve(req.result); 
-                    req.onerror = () => reject(req.error); 
-                }); 
+                const savedData = await loadFromStorage(); 
+                if (savedData) { 
+                    processDataLoad(savedData); 
+                    const totalRecords = (DB.quali?.length||0) + (DB.tec?.length||0); 
+                    
+                    document.getElementById('recordCount').innerHTML = `
+                        <span class="text-emerald-600 font-bold">Base carregada: ${totalRecords} Alunos</span>
+                        <span class="text-[10px] text-slate-400 block mt-1">Origem dos dados: ${savedData._origin || 'Desconhecida'}</span>
+                    `; 
+                    showToast("Dados recuperados com sucesso!"); 
+                } else { 
+                    document.getElementById('recordCount').innerText = "Nenhum dado salvo encontrado."; 
+                } 
             } catch (e) { 
-                console.error("Erro ao carregar:", e);
-                return null; 
+                console.error(e); 
+                document.getElementById('recordCount').innerText = "Erro ao ler memória."; 
             } 
-        }
-        function updateSaveStatus(isSaving) { const el = document.getElementById('saveStatus'); if (el) { if (isSaving) { el.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i> <span>GRAVANDO...</span>`; el.classList.add('text-senac-orange'); } else { el.innerHTML = `<i data-lucide="check-circle" class="w-3 h-3 text-emerald-500"></i> <span>DADOS SEGUROS</span>`; el.classList.remove('text-senac-orange'); setTimeout(() => { el.innerHTML = `<i data-lucide="cloud" class="w-3 h-3"></i> <span>Salvo Automático</span>`; }, 3000); } lucide.createIcons(); } }
-        function showToast(msg) { const t = document.getElementById('toast'); if(!t) return; t.innerText = msg; t.classList.add('show'); setTimeout(() => { t.classList.remove('show'); }, 3000); }
-        document.addEventListener('DOMContentLoaded', async () => { lucide.createIcons(); try { const savedData = await loadFromStorage(); if (savedData) { processDataLoad(savedData); const totalRecords = (DB.quali?.length||0) + (DB.tec?.length||0); document.getElementById('recordCount').innerHTML = `<span class="text-emerald-600 font-bold">Base carregada: ${totalRecords} Alunos</span>`; showToast("Dados recuperados com sucesso!"); } else { document.getElementById('recordCount').innerText = "Nenhum dado salvo encontrado."; } } catch (e) { console.error(e); document.getElementById('recordCount').innerText = "Erro ao ler memória."; } initLogin(); document.getElementById('globalLoader').classList.add('hidden'); });
+            initLogin(); 
+            document.getElementById('globalLoader').classList.add('hidden'); 
+        });
         
         function processDataLoad(parsed) { const fixDates = (arr) => (arr||[]).map(i => ({ ...i, id: i.id || ("GEN_" + Date.now() + Math.random()), ini: i.ini ? new Date(i.ini) : null, fim: i.fim ? new Date(i.fim) : null, visits: (i.visits || []).map(v => ({ ...v, date: v.date ? new Date(v.date) : null })) })); DB.quali = fixDates(parsed.quali); DB.tec = fixDates(parsed.tec); DB.regioes_map = parsed.regioes_map || {}; DB.cc_map = parsed.cc_map || {}; DB.finance_logs = parsed.finance_logs || []; DB.custom_passwords = parsed.custom_passwords || {}; DB.planning = parsed.planning || {}; if(parsed.planning_logistics && !Array.isArray(Object.values(parsed.planning_logistics)[0])) { DB.planning_logistics = {}; } else { DB.planning_logistics = parsed.planning_logistics || {}; } DB.planning_lunch = parsed.planning_lunch || {}; DB.planning_admin = parsed.planning_admin || {}; DB.doc_template = parsed.doc_template || ""; }
         
