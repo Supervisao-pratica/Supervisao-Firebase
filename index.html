@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Supervisão Senac 2026 (Native v8.8)</title>
     
-    <link rel="manifest" href='data:application/manifest+json,{"name":"Supervisão Senac 2025","short_name":"Supervisão","start_url":".","display":"standalone","background_color":"#f8fafc","theme_color":"#004587","icons":[{"src":"https://upload.wikimedia.org/wikipedia/commons/8/86/Senac_logo.svg","sizes":"192x192","type":"image/svg+xml"}]}'>
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Supervisão Senac 2026","short_name":"Supervisão","start_url":".","display":"standalone","background_color":"#f8fafc","theme_color":"#004587","icons":[{"src":"https://upload.wikimedia.org/wikipedia/commons/8/86/Senac_logo.svg","sizes":"192x192","type":"image/svg+xml"}]}'>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -146,7 +146,7 @@
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-orange-400"></div>
             <div class="text-center mb-6">
                 <img src="https://upload.wikimedia.org/wikipedia/commons/8/86/Senac_logo.svg" alt="Senac" class="h-12 mx-auto mb-3">
-                <h2 class="text-xl font-bold text-senac-blue">Portal Supervisão 2025</h2>
+                <h2 class="text-xl font-bold text-senac-blue">Portal Supervisão 2026</h2>
                 <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">System v8.8</p>
                 <div id="dbStatus" class="mt-4"><span id="recordCount" class="text-[9px] text-slate-400">Iniciando sistema...</span></div>
             </div>
@@ -5827,6 +5827,116 @@ window.importTurmasLote = function() {
             sel.value = ""; // Reseta a caixinha
             if(typeof showToast === 'function') showToast(`Status alterado para "${novoStatus}"!`);
         };
+
+        // =========================================================
+        // ☁️ MOTOR DE SINCRONIZAÇÃO EM TEMPO REAL E BACKUP
+        // =========================================================
+        
+        // 1. Função que envia os dados para a Nuvem Firebase
+        window.sincronizarComNuvem = function() {
+            const db = firebase.firestore();
+            const dadosParaSalvar = JSON.stringify(window.DB);
+            
+            // Salva na nuvem na coleção "sistema", documento "banco_principal"
+            db.collection('sistema').doc('banco_principal').set({
+                banco: dadosParaSalvar,
+                ultima_atualizacao: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                fazerBackupDeSegundaFeira(dadosParaSalvar); // Verifica o dia do backup
+            }).catch(err => console.error("Erro ao salvar na nuvem:", err));
+        };
+
+        // 2. Modificamos o seu "Salvar" antigo para agora avisar a Nuvem também
+        const saveToStorageOriginal = window.saveToStorage || function() {
+            localStorage.setItem('senac_db', JSON.stringify(window.DB));
+        };
+        
+        window.saveToStorage = function() {
+            saveToStorageOriginal(); // Salva no computador localmente
+            sincronizarComNuvem();   // Dispara imediatamente para a internet
+        };
+
+        // 3. O "Radar" que fica esperando mudanças do outro lado
+        window.iniciarEscutaDaNuvem = function() {
+            const db = firebase.firestore();
+            
+            // Fica olhando para a nuvem 24h por dia
+            db.collection('sistema').doc('banco_principal').onSnapshot((doc) => {
+                if (doc.exists) {
+                    const dadosNuvem = doc.data().banco;
+                    const dadosAtuais = JSON.stringify(window.DB);
+                    
+                    // Se a nuvem tiver algo diferente do que está na tela (ex: alguém salvou no Site)
+                    if (dadosNuvem && dadosNuvem !== dadosAtuais) {
+                        console.log("Atualização detectada! Sincronizando tela...");
+                        
+                        window.DB = JSON.parse(dadosNuvem); // Atualiza a memória
+                        localStorage.setItem('senac_db', dadosNuvem); // Salva no HD
+                        
+                        // Atualiza as tabelas para você ver a novidade aparecer sozinha!
+                        if(typeof runFilter === 'function') runFilter();
+                        if(typeof renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) renderPlanningTable();
+                        
+                        if(typeof showToast === 'function') showToast("Dados atualizados remotamente!");
+                    }
+                }
+            });
+        };
+
+        // 4. Robô de Backup Automático Seguro (Toda Segunda-feira)
+        window.fazerBackupDeSegundaFeira = function(dadosString) {
+            const hoje = new Date();
+            
+            // No JavaScript, getDay() retorna 1 para Segunda-feira
+            if (hoje.getDay() === 1) {
+                const dataFormatada = hoje.toISOString().split('T')[0]; // Ex: 2026-05-18
+                const db = firebase.firestore();
+                
+                const backupRef = db.collection('backups_semanais').doc(dataFormatada);
+                
+                // Ele verifica se já fez o backup hoje. Se não fez, ele cria!
+                backupRef.get().then(doc => {
+                    if (!doc.exists) { 
+                        backupRef.set({
+                            banco: dadosString,
+                            data_criacao: firebase.firestore.FieldValue.serverTimestamp()
+                        }).then(() => console.log("✅ Backup de Segurança arquivado na nuvem!"));
+                    }
+                });
+            }
+        };
+
+        // =========================================================
+        // 🏁 O "MOTOR DE ARRANQUE" ATUALIZADO (SEMPRE A ÚLTIMA COISA)
+        // =========================================================
+        window.addEventListener('load', function() {
+            const forcarEntrada = () => {
+                const loader = document.getElementById('globalLoader');
+                const login = document.getElementById('loginPage');
+                if(loader) loader.classList.add('hidden');
+                if(login) login.classList.remove('hidden');
+                console.log("Sistema Senac 2026 pronto.");
+            };
+
+            try {
+                if (typeof window.DB !== 'undefined') {
+                    if(typeof loadFromStorage === 'function') loadFromStorage();
+                    if(typeof window.atualizarAutocompleteGlobal === 'function') window.atualizarAutocompleteGlobal();
+                }
+
+                // LIGA O RADAR DA NUVEM (Sincronização em tempo real ativada)
+                if(typeof window.iniciarEscutaDaNuvem === 'function') window.iniciarEscutaDaNuvem();
+
+                setTimeout(() => {
+                    forcarEntrada();
+                    if(typeof switchTab === 'function') switchTab('qualificacao');
+                    if(typeof lucide !== 'undefined') lucide.createIcons();
+                }, 600);
+            } catch (err) {
+                console.error("Erro no arranque:", err);
+                forcarEntrada();
+            }
+        });
 
     </script>
 
