@@ -750,40 +750,36 @@
                         </div> 
 
     <script>
-        // 1. LISTA DE REGIÕES (Apenas uma vez)
-        const REGIONS_FALLBACK = ["APUCARANA", "CAMPO MOURÃO", "CASCAVEL", "CASTRO", "CORNÉLIO PROCÓPIO", "CURITIBA", "FOZ DO IGUAÇU", "FRANCISCO BELTRÃO", "GUARAPUAVA", "IRATI", "IVAIPORÃ", "JACAREZINHO", "LONDRINA", "MARINGÁ", "MATINHOS", "MEDIANEIRA", "PARANAGUÁ", "PARANAVAÍ", "PATO BRANCO", "PONTA GROSSA", "PRUDENTÓPOLIS", "RIO NEGRO", "SANTO ANTÔNIO DA PLATINA", "TOLEDO", "UMUARAMA", "UNIÃO DA VITÓRIA"];
+    // 1. LISTA DE REGIÕES (Apenas uma vez!)
+    const REGIONS_FALLBACK = ["APUCARANA", "CAMPO MOURÃO", "CASCAVEL", "CASTRO", "CORNÉLIO PROCÓPIO", "CURITIBA", "FOZ DO IGUAÇU", "FRANCISCO BELTRÃO", "GUARAPUAVA", "IRATI", "IVAIPORÃ", "JACAREZINHO", "LONDRINA", "MARINGÁ", "MATINHOS", "MEDIANEIRA", "PARANAGUÁ", "PARANAVAÍ", "PATO BRANCO", "PONTA GROSSA", "PRUDENTÓPOLIS", "RIO NEGRO", "SANTO ANTÔNIO DA PLATINA", "TOLEDO", "UMUARAMA", "UNIÃO DA VITÓRIA"];
 
-        // 2. FUNDAÇÃO DO BANCO DE DADOS (Verifica se já existe para não apagar seus dados)
-        if (!window.DB) {
-            window.DB = JSON.parse(localStorage.getItem('senac_db')) || { 
-                quali: [], tec: [], regioes_map: {}, cc_map: {}, 
-                finance_logs: [], custom_passwords: {}, planning: {}, 
-                planning_logistics: {}, planning_lunch: {}, 
-                planning_admin: {}, doc_template: "", controle_turmas: [], controle_logs: [] 
-            };
-        }
-        var DB = window.DB; 
+    // 2. FUNDAÇÃO DO BANCO DE DADOS (Protege contra resets acidentais)
+    if (!window.DB) {
+        window.DB = JSON.parse(localStorage.getItem('senac_db')) || { 
+            quali: [], tec: [], regioes_map: {}, cc_map: {}, 
+            finance_logs: [], custom_passwords: {}, planning: {}, 
+            planning_logistics: {}, planning_lunch: {}, 
+            planning_admin: {}, doc_template: "", controle_turmas: [], controle_logs: [] 
+        };
+    }
+    var DB = window.DB; 
 
-        // 3. ESTADO DO SISTEMA
-        if (!window.STATE) {
-            window.STATE = { 
-                scope: 'qualificacao', filter: [], page: 1, perPage: 30, 
-                kpi: 'all', userRegion: null, userType: 'guest', 
-                editingId: null, planContext: null, emailMode: 'agendamento' 
-            };
-        }
-        var STATE = window.STATE;
+    // 3. ESTADO DO SISTEMA
+    if (!window.STATE) {
+        window.STATE = { 
+            scope: 'qualificacao', filter: [], page: 1, perPage: 30, 
+            kpi: 'all', userRegion: null, userType: 'guest', 
+            editingId: null, planContext: null, emailMode: 'agendamento' 
+        };
+    }
+    var STATE = window.STATE;
 
-        // 4. CONFIGURAÇÕES E VARIÁVEIS GLOBAIS
-        const PASS_ADMIN = "supervisao2026"; 
-        const LEGACY_VALUE = 122; 
-        let TIMEOUT_DEBOUNCE = null; 
-        let CHART_INSTANCES = { status: null, visitas: null, regioes: null };
-        const DB_NAME = 'SenacBI_Ultimate_DB';
-        const STORE_NAME = 'app_state_v6';
-        
-        // 5. FUNÇÕES UTILITÁRIAS
-        const safeStr = (s) => String(s || "").toLowerCase().trim();
+    // 4. CONFIGURAÇÕES GLOBAIS
+    const PASS_ADMIN = "supervisao2026"; 
+    const LEGACY_VALUE = 122; 
+    let TIMEOUT_DEBOUNCE = null; 
+    let CHART_INSTANCES = { status: null, visitas: null, regioes: null };
+</script>
 
        // ========================================================= // <--- COLE AQUI
         // 1. MOTOR DE BUSCA INTELIGENTE (Ignora acentos)
