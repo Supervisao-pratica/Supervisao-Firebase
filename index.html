@@ -3486,10 +3486,10 @@ window.updateVisitCC = function(idx, val) {
             } 
         }
         
-        function exportPlan() { 
+       function exportPlan() { 
             if(!STATE.planContext || !DB.planning[STATE.planContext].length) return alert("Roteiro vazio ou inexistente."); 
             
-            // --- INSERIMOS A COLUNA 'CÓDIGO' AQUI NO MEIO ---
+            // --- INSERIMOS A COLUNA 'CÓDIGO' E A 'OBSERVAÇÃO' AQUI NO MEIO ---
             const data = DB.planning[STATE.planContext].map(p => ({ 
                 "Data": p.date, 
                 "Hora": p.hrAtend, 
@@ -3500,7 +3500,8 @@ window.updateVisitCC = function(idx, val) {
                 "Empresa": p.student.empresa.razao, 
                 "Supervisor": p.student.supervisor.display, 
                 "Tipo Visita": p.visitaTipo, 
-                "Status": p.status 
+                "Status": p.status, // <--- CUIDADO: Colocamos uma vírgula aqui no final!
+                "Observação": p.obs // <--- NOVA COLUNA ADICIONADA AQUI!
             })); 
             // ------------------------------------------------
             
