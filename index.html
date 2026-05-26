@@ -5430,7 +5430,7 @@ window.importTurmasLote = function() {
                         
                         if (rows.length < 2) return alert("Planilha vazia.");
 
-                        // 🌟 RADAR DE CABEÇALHO AJUSTADO PARA: Apr. Nome, Razao Social, CNPJ
+                        // 🌟 RADAR DE CABEÇALHO AJUSTADO PARA: Apr. Nome, Razao Social, CNPJ, Apr. Cod
                         let headerIdx = -1;
                         let headers = [];
                         for (let i = 0; i < Math.min(10, rows.length); i++) {
@@ -5452,7 +5452,7 @@ window.importTurmasLote = function() {
                         const idxNome = findCol(['apr. nome', 'nome aluno', 'aprendiz']);
                         const idxRazao = findCol(['razao social', 'empresa', 'razão social']);
                         const idxCNPJ = findCol(['cnpj', 'c.n.p.j']);
-                        const idxCod = findCol(['código', 'codigo', 'matrícula']);
+                        const idxCod = findCol(['apr. cod', 'apr cod', 'código', 'codigo', 'matrícula']); // CRÍTICO: Incluímos o 'apr. cod'
                         const idxEnd = findCol(['endereço', 'endereco', 'logradouro']);
                         const idxCidade = findCol(['município', 'municipio', 'cidade']);
 
@@ -5461,6 +5461,7 @@ window.importTurmasLote = function() {
                         
                         let alunosAtualizados = 0;
                         let enderecosInjetados = 0;
+                        let codigosInjetados = 0; // Novo contador para sabermos quantos códigos entraram
                         let dicEmpresas = {};
 
                         // 1. Processamento da Planilha
@@ -5473,12 +5474,20 @@ window.importTurmasLote = function() {
                             let razaoPlanilha = idxRazao > -1 ? String(row[idxRazao] || "").trim() : "";
                             let enderecoPlanilha = idxEnd > -1 ? String(row[idxEnd] || "").trim() : "";
                             let cidadePlanilha = idxCidade > -1 ? String(row[idxCidade] || "").trim() : "";
+                            let codigoPlanilha = idxCod > -1 ? String(row[idxCod] || "").trim() : ""; // Captura o Código!
 
                             // Tenta encontrar o aluno correspondente no sistema
                             if (nomePlanilha) {
                                 const aluno = todosAlunos.find(a => limparTotal(a.nome) === nomePlanilha);
                                 if (aluno) {
                                     let mudou = false;
+                                    
+                                    // 🚀 NOVA AÇÃO: Sincroniza o Código do Aluno
+                                    if (codigoPlanilha && aluno.codigo_aluno !== codigoPlanilha) {
+                                        aluno.codigo_aluno = codigoPlanilha;
+                                        codigosInjetados++;
+                                        mudou = true;
+                                    }
                                     
                                     // Sincroniza CNPJ
                                     if (cnpjPlanilha && cnpjPlanilha.length >= 11) {
@@ -5536,9 +5545,9 @@ window.importTurmasLote = function() {
                         });
 
                         // 3. Finalização
-                        if (alunosAtualizados > 0 || enderecosInjetados > 0) {
+                        if (alunosAtualizados > 0 || enderecosInjetados > 0 || codigosInjetados > 0) {
                             if (typeof saveToStorage === 'function') saveToStorage();
-                            alert(`✅ SINCRONIZAÇÃO COMPLETA!\n\n- ${alunosAtualizados} alunos tiveram dados de empresa vinculados.\n- ${enderecosInjetados} endereços foram preenchidos automaticamente.\n\nSeus roteiros e visitas originais foram mantidos intactos!`);
+                            alert(`✅ SINCRONIZAÇÃO COMPLETA!\n\n- 🔑 ${codigosInjetados} códigos de alunos vinculados.\n- 🏢 ${alunosAtualizados} alunos tiveram dados de empresa vinculados.\n- 📍 ${enderecosInjetados} endereços foram preenchidos automaticamente.\n\nSeus roteiros e visitas originais foram mantidos intactos!`);
                             if (typeof runFilter === 'function') runFilter();
                             
                             // Se faltar algum endereço, a busca automática via internet rodará em seguida
