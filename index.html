@@ -606,7 +606,7 @@
                 </thead>
                         <tbody id="controleTurmasBody" class="divide-y divide-slate-100 bg-white">
                             </tbody>
-                    </table>
+                    </table> 
                 </div>
             </div>
         </div>
@@ -3158,41 +3158,58 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             selectAll.checked = (checkboxes.length > 0 && checkboxes.length === checkedBoxes.length);
         }
 
-        function addToPlan() { 
+       function addToPlan() { 
             if (!STATE.planContext) return alert("Crie ou selecione um Roteiro no topo da tela antes de adicionar alunos."); 
             
             const checkboxes = document.querySelectorAll('.candidate-check:checked'); 
             if(checkboxes.length === 0) return alert("Selecione pelo menos um aluno na lista."); 
             
-            const selectedIds = Array.from(checkboxes).map(cb => cb.value); 
-            const allStudents = [...DB.quali, ...DB.tec]; 
+            const selectedIds = Array.from(checkboxes).map(cb => String(cb.value).trim()); 
+            const allStudents = [...(DB.quali || []), ...(DB.tec || [])]; 
             
             if (!DB.planning[STATE.planContext]) DB.planning[STATE.planContext] = []; 
             let addedCount = 0; 
             
             selectedIds.forEach(id => { 
-                if(DB.planning[STATE.planContext].find(p => p.student.id == id)) return; 
+                // Evita colocar o mesmo aluno duas vezes
+                if(DB.planning[STATE.planContext].find(p => String(p.student.id).trim() === id)) return; 
                 
-                const student = allStudents.find(s => s.id == id); 
+                const student = allStudents.find(s => String(s.id).trim() === id); 
                 if(student) { 
+                    // 🔥 A BLINDAGEM CONTRA O ERRO: Só verifica se a visita está ok se ela de fato existir!
                     let nextVisit = '1ª Visita'; 
-                    if (student.visits[0].ok) nextVisit = '2ª Visita'; 
-                    if (student.visits[1].ok) nextVisit = '3ª Visita'; 
+                    if (student.visits && student.visits[0] && student.visits[0].ok) nextVisit = '2ª Visita'; 
+                    if (student.visits && student.visits[1] && student.visits[1].ok) nextVisit = '3ª Visita'; 
                     
                     const nextOrder = DB.planning[STATE.planContext].length + 1;
 
                     DB.planning[STATE.planContext].push({ 
-                        ordem: nextOrder, student: student, date: '', hrAtend: '', hrFim: '', hrTeoria: student.teoria || '', hrPratica: student.pratica || '', visitaTipo: nextVisit, status: 'Realizar', obs: student.obs_origem || '' 
+                        ordem: nextOrder, 
+                        student: student, 
+                        date: '', 
+                        hrAtend: '', 
+                        hrFim: '', 
+                        hrTeoria: student.teoria || '', 
+                        hrPratica: student.pratica || '', 
+                        visitaTipo: nextVisit, 
+                        status: 'Realizar', 
+                        obs: student.obs_origem || '' 
                     }); 
                     addedCount++; 
                 } 
             }); 
             
-            saveToStorage(); 
-            renderPlanningTable(); 
-            renderPlanningCandidates(); 
-            renderAdminTable(); 
-            showToast(`${addedCount} alunos adicionados ao roteiro ${STATE.planContext}.`); 
+            // Salva e atualiza as telas
+            if (typeof saveToStorage === 'function') saveToStorage(); 
+            if (typeof renderPlanningTable === 'function') renderPlanningTable(); 
+            if (typeof renderPlanningCandidates === 'function') renderPlanningCandidates(); 
+            if (typeof renderAdminTable === 'function') renderAdminTable(); 
+            
+            if (typeof showToast === 'function') {
+                showToast(`${addedCount} alunos adicionados ao roteiro.`); 
+            } else {
+                alert(`${addedCount} alunos adicionados ao roteiro.`);
+            }
         }
 
         // --- ALGORITMO INTELIGENTE DE ROTEIRIZAÇÃO ---
