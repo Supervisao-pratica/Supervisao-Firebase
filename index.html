@@ -5230,7 +5230,7 @@ window.importTurmasLote = function() {
         window.buscarEnderecoInterno = async function(btnElement) {
             const razaoRaw = document.getElementById('editEmpresa')?.value || "";
             const cidadeRaw = document.getElementById('editCidade')?.value || "";
-            const cnpjRaw = document.getElementById('editCNPJ')?.value || ""; // CRÍTICO: Agora ele puxa o CNPJ da tela!
+            const cnpjRaw = document.getElementById('editCNPJ')?.value || ""; 
 
             if (!razaoRaw.trim()) {
                 return alert("Por favor, preencha a 'Razão Social' para buscar a empresa.");
@@ -5238,7 +5238,7 @@ window.importTurmasLote = function() {
 
             const razaoTela = window.limparTextoBusca(razaoRaw);
             const cidadeTela = window.limparTextoBusca(cidadeRaw);
-            let cnpjLimpo = cnpjRaw.replace(/\D/g, ''); // Resolve o bug do botão girar infinitamente!
+            let cnpjLimpo = cnpjRaw.replace(/\D/g, ''); 
 
             let btn = btnElement || (window.event ? window.event.currentTarget : null);
             let textoOriginal = "";
@@ -5252,10 +5252,11 @@ window.importTurmasLote = function() {
                 let endEncontrado = "";
                 let linkEncontrado = "";
                 let achouEmpresaSemEndereco = false;
+                let erroAPI = ""; // 🎯 NOVO: Vai armazenar o motivo exato de qualquer falha
 
                 const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
 
-                // 1. Busca Interna Super Flexível
+                // 1. Busca Interna (Memória do Sistema)
                 for (let a of todosAlunos) {
                     if (window.STATE && a.id === window.STATE.editingId) continue; 
 
@@ -5265,9 +5266,7 @@ window.importTurmasLote = function() {
                     const linkColega = String((a.empresa && a.empresa.link) || a.link || a.link_mapa || "").trim();
 
                     if (razaoTela.length > 3 && (razaoColega === razaoTela || razaoColega.includes(razaoTela) || razaoTela.includes(razaoColega))) {
-                        
                         if (enderecoColega.length > 5 && !enderecoColega.toLowerCase().includes('informado')) {
-                            // Tolerância de cidade: Só barra se forem cidades CLARAMENTE diferentes
                             if (cidadeTela && cidadeColega && cidadeColega !== cidadeTela && !cidadeColega.includes(cidadeTela) && !cidadeTela.includes(cidadeColega)) {
                                 continue; 
                             }
@@ -5280,9 +5279,8 @@ window.importTurmasLote = function() {
                     }
                 }
 
-                // 2. Se não achou endereço interno, tenta a Receita Federal via CNPJ
+                // 2. Tenta a Receita Federal via CNPJ (MOTOR DUPLO)
                 if (!endEncontrado) {
-                    // Puxa o CNPJ do aluno caso não tenha sido digitado no input
                     if (!cnpjLimpo && window.STATE && window.STATE.editingId) {
                         const alunoAtual = todosAlunos.find(x => x.id === window.STATE.editingId);
                         if (alunoAtual) cnpjLimpo = String(alunoAtual.cnpj_empresa || (alunoAtual.empresa && alunoAtual.empresa.cnpj) || alunoAtual.cnpj || "").replace(/\D/g, '');
@@ -5292,44 +5290,79 @@ window.importTurmasLote = function() {
                     
                     if (cnpjLimpo.length === 14) {
                         try {
-                            const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
-                            if (res.ok) {
-                                const json = await res.json();
+                            let logradouro, numero, complemento, bairro, municipio, uf;
+                            let successAPI = false;
+
+                            // Tentativa 1: BrasilAPI
+                            const res1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+                            if (res1.ok) {
+                                const json1 = await res1.json();
+                                logradouro = json1.logradouro;
+                                numero = json1.numero;
+                                complemento = json1.complemento;
+                                bairro = json1.bairro;
+                                municipio = json1.municipio;
+                                uf = json1.uf;
+                                successAPI = true;
+                            } else {
+                                // Tentativa 2: API Reserva (CNPJ.ws)
+                                const res2 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjLimpo}`);
+                                if (res2.ok) {
+                                    const json2 = await res2.json();
+                                    logradouro = json2.estabelecimento.tipo_logradouro + " " + json2.estabelecimento.logradouro;
+                                    numero = json2.estabelecimento.numero;
+                                    complemento = json2.estabelecimento.complemento;
+                                    bairro = json2.estabelecimento.bairro;
+                                    municipio = json2.estabelecimento.cidade.nome;
+                                    uf = json2.estabelecimento.estado.sigla;
+                                    successAPI = true;
+                                }
+                            }
+
+                            if (successAPI) {
+                                const cidadeReceita = window.limparTextoBusca(municipio || "");
                                 
-                                // --- NOVA TRAVA DE SEGURANÇA GEOGRÁFICA ---
-                                const cidadeReceita = window.limparTextoBusca(json.municipio || "");
-                                
-                                // Se o sistema já tem uma cidade, comparamos. Se a da Receita for diferente, avisamos!
                                 if (cidadeTela && cidadeReceita && !cidadeReceita.includes(cidadeTela) && !cidadeTela.includes(cidadeReceita)) {
-                                    console.warn("Atenção: Endereço da Receita é da Matriz (Outra cidade).");
-                                    alert(`⚠️ AVISO:\n\nO endereço encontrado no CNPJ (${json.municipio}) parece ser da Sede (Matriz) e não bate com a cidade do aluno (${cidadeRaw}).\n\nPor segurança, não preenchemos automaticamente.`);
+                                    erroAPI = `MATRIZ DETECTADA:\nO CNPJ retornou o endereço de ${municipio}, mas o aluno atua em ${cidadeRaw}. Ignoramos por segurança!`;
                                 } else {
-                                    // Se as cidades batem, aí sim preenchemos!
-                                    endEncontrado = `${json.logradouro}, ${json.numero}${json.complemento ? ' - ' + json.complemento : ''} - ${json.bairro}, ${json.municipio} - ${json.uf}`;
+                                    endEncontrado = `${logradouro}, ${numero}${complemento ? ' - ' + complemento : ''} - ${bairro}, ${municipio} - ${uf}`;
                                     linkEncontrado = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endEncontrado)}`;
                                 }
-                                // -------------------------------------------
+                            } else {
+                                erroAPI = `A Receita Federal não encontrou o CNPJ ${cnpjLimpo} ou o serviço está instável.`;
                             }
-                        } catch (e) { console.log("Erro API:", e); }
+                        } catch (e) { 
+                            erroAPI = "Erro de conexão ao tentar buscar o CNPJ na internet.";
+                        }
+                    } else if (cnpjLimpo.length > 0) {
+                        erroAPI = `O CNPJ está incompleto (${cnpjLimpo}). É obrigatório ter 14 dígitos.`;
+                    } else {
+                        erroAPI = "O aluno não possui CNPJ salvo. Sem o CNPJ, é impossível fazer a busca na Receita Federal.";
                     }
                 }
 
-                // 3. Aplica os resultados
+                // 3. Aplica os resultados na tela ou exibe o Relatório de Falhas
                 if (endEncontrado) {
                     if (document.getElementById('editEndereco')) document.getElementById('editEndereco').value = endEncontrado;
                     if (document.getElementById('editLink')) document.getElementById('editLink').value = linkEncontrado;
                     if(typeof showToast === 'function') showToast("Endereço puxado com sucesso!");
-                } else if (achouEmpresaSemEndereco) {
-                    alert("Achamos outros alunos dessa empresa no sistema, mas o endereço deles também está em branco! Preencha manualmente para o sistema aprender.");
                 } else {
-                    alert("Nenhum endereço encontrado para esta empresa (nem no sistema, nem via CNPJ).");
+                    let msgFinal = "";
+                    if (erroAPI) msgFinal += `❌ ${erroAPI}\n\n`;
+                    
+                    if (achouEmpresaSemEndereco) {
+                        msgFinal += "⚠️ Achamos colegas dessa empresa no sistema, mas os endereços deles também estão em branco!";
+                    } else {
+                        msgFinal += "⚠️ Não achamos o endereço da empresa na memória do sistema.";
+                    }
+                    
+                    alert(msgFinal);
                 }
 
             } catch(erroGeral) {
-                console.error("Erro inesperado na busca:", erroGeral);
-                alert("Ocorreu um problema ao buscar o endereço.");
+                console.error("Falha geral:", erroGeral);
+                alert("Ocorreu um erro inesperado ao tentar buscar o endereço.");
             } finally {
-                // 4. GARANTIA ABSOLUTA: Restaura o botão Haja o que houver
                 if (btn && textoOriginal) {
                     btn.innerHTML = textoOriginal;
                     if(window.lucide) window.lucide.createIcons();
@@ -5407,7 +5440,7 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // 🚀 MOTOR DE SINCRONIZAÇÃO UNIVERSAL (VERSÃO SENAC - COLUNAS EXATAS)
+        // 🚀 MOTOR DE SINCRONIZAÇÃO UNIVERSAL (VERSÃO DEFINITIVA COM LEITOR DE CSV)
         // =========================================================
         window.importarCodigosAlunos = function() {
             const input = document.createElement('input');
@@ -5424,18 +5457,31 @@ window.importTurmasLote = function() {
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, {type: 'array'});
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: ""});
-                        
-                        if (rows.length < 2) return alert("Planilha vazia.");
+                        let rows = [];
 
-                        // 🌟 RADAR DE CABEÇALHO AJUSTADO PARA: Apr. Nome, Razao Social, CNPJ, Apr. Cod
+                        // 🚀 SISTEMA INTELIGENTE PARA LER CSV CORRETAMENTE (VÍRGULA OU PONTO-E-VÍRGULA)
+                        if (file.name.toLowerCase().endsWith('.csv')) {
+                            const decoder = new TextDecoder('iso-8859-1'); // Padrão Excel BR
+                            const csvText = decoder.decode(data);
+                            rows = csvText.split('\n').map(row => row.split(','));
+                            // Se a linha não fatiou direito com vírgula, tenta com ponto e vírgula
+                            if (rows.length > 0 && rows[0].length <= 1) {
+                                rows = csvText.split('\n').map(row => row.split(';'));
+                            }
+                        } else {
+                            const workbook = XLSX.read(data, {type: 'array'});
+                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                            rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: ""});
+                        }
+                        
+                        if (rows.length < 2) return alert("Planilha vazia ou formato ilegível.");
+
+                        // 🌟 RADAR DE CABEÇALHO AJUSTADO
                         let headerIdx = -1;
                         let headers = [];
                         for (let i = 0; i < Math.min(10, rows.length); i++) {
                             const linha = rows[i].map(h => String(h || "").toLowerCase().trim());
-                            if (linha.some(h => h.includes('apr. nome') || h.includes('razao social') || h.includes('cnpj'))) {
+                            if (linha.some(h => h.includes('apr. nome') || h.includes('razao social') || h.includes('cnpj') || h.includes('nome'))) {
                                 headerIdx = i;
                                 headers = linha;
                                 break;
@@ -5443,48 +5489,52 @@ window.importTurmasLote = function() {
                         }
 
                         if (headerIdx === -1) {
-                            return alert("Não encontrei as colunas 'Apr. Nome' ou 'Razao Social'. Verifique se a planilha está correta.");
+                            return alert("Não encontrei a coluna 'Apr. Nome' na planilha.");
                         }
 
-                        // Mapeamento dinâmico baseado nos termos que você passou
                         const findCol = (terms) => headers.findIndex(h => terms.some(t => h.includes(t)));
                         
-                        const idxNome = findCol(['apr. nome', 'nome aluno', 'aprendiz']);
+                        const idxNome = findCol(['apr. nome', 'nome aluno', 'aprendiz', 'nome']);
                         const idxRazao = findCol(['razao social', 'empresa', 'razão social']);
                         const idxCNPJ = findCol(['cnpj', 'c.n.p.j']);
-                        const idxCod = findCol(['apr. cod', 'apr cod', 'código', 'codigo', 'matrícula']); // CRÍTICO: Incluímos o 'apr. cod'
+                        const idxCod = findCol(['apr. cod', 'apr cod', 'código', 'codigo', 'matrícula']);
                         const idxEnd = findCol(['endereço', 'endereco', 'logradouro']);
                         const idxCidade = findCol(['município', 'municipio', 'cidade']);
 
+                        const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
                         const limparTotal = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().trim();
+                        
                         const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
                         
                         let alunosAtualizados = 0;
                         let enderecosInjetados = 0;
-                        let codigosInjetados = 0; // Novo contador para sabermos quantos códigos entraram
+                        let codigosInjetados = 0; 
                         let dicEmpresas = {};
+                        let alunosBuscados = [];
 
                         // 1. Processamento da Planilha
                         for (let i = headerIdx + 1; i < rows.length; i++) {
                             const row = rows[i];
                             if (!row || row.length === 0) continue;
 
-                            let nomePlanilha = idxNome > -1 ? limparTotal(row[idxNome]) : "";
+                            let nomePlanilha = idxNome > -1 ? normalizar(row[idxNome]) : "";
+                            let codigoPlanilha = idxCod > -1 ? String(row[idxCod] || "").trim() : "";
                             let cnpjPlanilha = idxCNPJ > -1 ? String(row[idxCNPJ] || "").replace(/\D/g, '') : "";
                             let razaoPlanilha = idxRazao > -1 ? String(row[idxRazao] || "").trim() : "";
                             let enderecoPlanilha = idxEnd > -1 ? String(row[idxEnd] || "").trim() : "";
                             let cidadePlanilha = idxCidade > -1 ? String(row[idxCidade] || "").trim() : "";
-                            let codigoPlanilha = idxCod > -1 ? String(row[idxCod] || "").trim() : ""; // Captura o Código!
 
-                            // Tenta encontrar o aluno correspondente no sistema
                             if (nomePlanilha) {
-                                const aluno = todosAlunos.find(a => limparTotal(a.nome) === nomePlanilha);
+                                alunosBuscados.push(nomePlanilha);
+                                const aluno = todosAlunos.find(a => normalizar(a.nome) === nomePlanilha);
+                                
                                 if (aluno) {
                                     let mudou = false;
                                     
-                                    // 🚀 NOVA AÇÃO: Sincroniza o Código do Aluno
+                                    // Sincroniza o Código
                                     if (codigoPlanilha && aluno.codigo_aluno !== codigoPlanilha) {
                                         aluno.codigo_aluno = codigoPlanilha;
+                                        aluno.codigo = codigoPlanilha; // Salva nos dois formatos por garantia
                                         codigosInjetados++;
                                         mudou = true;
                                     }
@@ -5506,7 +5556,7 @@ window.importTurmasLote = function() {
                                         mudou = true;
                                     }
 
-                                    // Se a planilha tiver o endereço, já injeta direto
+                                    // Sincroniza Endereço
                                     if (enderecoPlanilha && (!aluno.empresa || !aluno.empresa.endereco || aluno.empresa.endereco.toLowerCase().includes('informado'))) {
                                         if (!aluno.empresa) aluno.empresa = {};
                                         aluno.empresa.endereco = enderecoPlanilha + (cidadePlanilha ? " - " + cidadePlanilha : "");
@@ -5519,7 +5569,7 @@ window.importTurmasLote = function() {
                                 }
                             }
 
-                            // Guarda na memória para espalhar para outros alunos da mesma empresa
+                            // Guarda na memória para o Efeito Cascata
                             if ((cnpjPlanilha || razaoPlanilha) && enderecoPlanilha) {
                                 let endFormatado = enderecoPlanilha + (cidadePlanilha ? " - " + cidadePlanilha : "");
                                 if (cnpjPlanilha) dicEmpresas[cnpjPlanilha] = endFormatado;
@@ -5549,11 +5599,16 @@ window.importTurmasLote = function() {
                             if (typeof saveToStorage === 'function') saveToStorage();
                             alert(`✅ SINCRONIZAÇÃO COMPLETA!\n\n- 🔑 ${codigosInjetados} códigos de alunos vinculados.\n- 🏢 ${alunosAtualizados} alunos tiveram dados de empresa vinculados.\n- 📍 ${enderecosInjetados} endereços foram preenchidos automaticamente.\n\nSeus roteiros e visitas originais foram mantidos intactos!`);
                             if (typeof runFilter === 'function') runFilter();
+                            if (typeof renderPlanningTable === 'function') renderPlanningTable();
                             
                             // Se faltar algum endereço, a busca automática via internet rodará em seguida
                             if(typeof window.sincronizarEnderecosEmpresas === 'function') setTimeout(() => window.sincronizarEnderecosEmpresas(true), 1000);
                         } else {
-                            alert("Planilha processada, mas não encontramos novos dados para atualizar (os alunos já podem estar com esses dados salvos).");
+                            let relatorio = `Nenhum dado novo sincronizado.\n\n`;
+                            if(alunosBuscados.length > 0) {
+                                relatorio += `Lemos na planilha nomes como:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas os dados deles já estavam iguais no sistema ou os nomes não existem no banco.`;
+                            }
+                            alert(relatorio);
                         }
 
                     } catch (err) {
