@@ -5440,7 +5440,7 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // 🔑 SINCRONIZADOR DE CÓDIGOS (RÁPIDO E FOCADO)
+        // 🔑 SINCRONIZADOR DE CÓDIGOS DE ALUNOS (FOCADO E BLINDADO)
         // =========================================================
         window.importarCodigosAlunos = function() {
             const input = document.createElement('input');
@@ -5451,31 +5451,21 @@ window.importTurmasLote = function() {
                 const file = e.target.files[0];
                 if (!file) return;
                 
-                if(typeof showToast === 'function') showToast("Sincronizando apenas códigos...");
+                if(typeof showToast === 'function') showToast("Sincronizando apenas os códigos...");
                 
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
-                        let rows = [];
-
-                        // Sistema Inteligente para ler CSV (Vírgula ou Ponto-e-Vírgula)
-                        if (file.name.toLowerCase().endsWith('.csv')) {
-                            const decoder = new TextDecoder('iso-8859-1'); 
-                            const csvText = decoder.decode(data);
-                            rows = csvText.split('\n').map(row => row.split(','));
-                            if (rows.length > 0 && rows[0].length <= 1) {
-                                rows = csvText.split('\n').map(row => row.split(';'));
-                            }
-                        } else {
-                            const workbook = XLSX.read(data, {type: 'array'});
-                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                            rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: ""});
-                        }
+                        
+                        // Deixa a biblioteca XLSX fazer a leitura pesada (resolve o bug das vírgulas escorregadias)
+                        const workbook = XLSX.read(data, {type: 'array'});
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: ""});
                         
                         if (rows.length < 2) return alert("Planilha vazia ou formato ilegível.");
 
-                        // 🌟 RADAR DE CABEÇALHO FOCADO APENAS NO NOME
+                        // 🌟 ENCONTRA A LINHA DE CABEÇALHO
                         let headerIdx = -1;
                         let headers = [];
                         for (let i = 0; i < Math.min(10, rows.length); i++) {
@@ -5490,14 +5480,18 @@ window.importTurmasLote = function() {
                         if (headerIdx === -1) return alert("Não encontrei a coluna 'Apr. Nome' na planilha.");
 
                         const findCol = (terms) => headers.findIndex(h => terms.some(t => h.includes(t)));
+                        
                         const idxNome = findCol(['apr. nome', 'nome aluno', 'aprendiz', 'nome']);
                         const idxCod = findCol(['apr. cod', 'apr cod', 'código', 'codigo', 'matrícula']);
                         
                         if (idxNome === -1 || idxCod === -1) {
-                            return alert(`Colunas faltantes na planilha!\nPreciso de uma coluna para o Nome e outra para o Código.`);
+                            return alert(`Atenção: A planilha precisa ter uma coluna para o Nome (Apr. Nome) e uma para o Código (Apr. Cod).`);
                         }
 
-                        const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+                        // 🔍 SUPER LUPA: Tira acentos, tira espaços duplos e deixa tudo maiúsculo
+                        const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').toUpperCase().trim();
+                        
+                        // Puxa todos os alunos (Qualificação + Técnica)
                         const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
                         
                         let codigosInjetados = 0;
@@ -5514,29 +5508,29 @@ window.importTurmasLote = function() {
                             if (nomePlanilha && codigoPlanilha) {
                                 alunosBuscados.push(nomePlanilha);
                                 
-                                // Busca o aluno pelo nome
+                                // O "Match": Compara o nome da planilha com o nome do aluno no sistema
                                 const aluno = todosAlunos.find(a => normalizar(a.nome) === nomePlanilha);
                                 
-                                // Se achou o aluno e o código dele está vazio ou diferente, atualiza!
-                                if (aluno && aluno.codigo_aluno !== codigoPlanilha) {
+                                // Se encontrou o aluno, vincula o código nele!
+                                if (aluno) {
                                     aluno.codigo_aluno = codigoPlanilha;
-                                    aluno.codigo = codigoPlanilha; // Salva nas duas chaves por garantia do sistema
+                                    aluno.codigo = codigoPlanilha; // Salva nas duas chaves por segurança para o relatório
                                     codigosInjetados++;
                                 }
                             }
                         }
 
-                        // 2. Finalização Direta
+                        // 2. Finalização e Relatório
                         if (codigosInjetados > 0) {
                             if (typeof saveToStorage === 'function') saveToStorage();
-                            alert(`✅ SUCESSO!\n\n🔑 ${codigosInjetados} alunos receberam seus códigos!`);
+                            alert(`✅ SUCESSO!\n\n🔑 ${codigosInjetados} alunos acabaram de receber seus códigos e eles já sairão nos relatórios!`);
                             
                             if (typeof renderPlanningTable === 'function') renderPlanningTable();
                             if (typeof runFilter === 'function') runFilter();
                         } else {
-                            let relatorio = `Nenhum código novo foi sincronizado.\n\n`;
+                            let relatorio = `Nenhum código foi sincronizado.\n\n`;
                             if(alunosBuscados.length > 0) {
-                                relatorio += `Nós lemos a planilha e procuramos por:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas os códigos deles já estavam salvos no sistema, ou esses nomes não estão cadastrados na aba Qualificação/Técnica.`;
+                                relatorio += `Procuramos na sua base por nomes como:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas eles não foram encontrados na aba Qualificação e nem na Técnica.`;
                             }
                             alert(relatorio);
                         }
