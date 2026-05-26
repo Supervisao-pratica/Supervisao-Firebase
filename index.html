@@ -5440,7 +5440,7 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // 🔑 SINCRONIZADOR DE CÓDIGOS DE ALUNOS (FOCADO E BLINDADO)
+        // 🔑 SINCRONIZADOR DE CÓDIGOS DE ALUNOS (ALVO CORRIGIDO)
         // =========================================================
         window.importarCodigosAlunos = function() {
             const input = document.createElement('input');
@@ -5458,7 +5458,7 @@ window.importTurmasLote = function() {
                     try {
                         const data = new Uint8Array(e.target.result);
                         
-                        // Deixa a biblioteca XLSX fazer a leitura pesada (resolve o bug das vírgulas escorregadias)
+                        // Deixa a biblioteca XLSX fazer a leitura pesada
                         const workbook = XLSX.read(data, {type: 'array'});
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: ""});
@@ -5470,7 +5470,8 @@ window.importTurmasLote = function() {
                         let headers = [];
                         for (let i = 0; i < Math.min(10, rows.length); i++) {
                             const linha = rows[i].map(h => String(h || "").toLowerCase().trim());
-                            if (linha.some(h => h.includes('apr. nome') || h.includes('nome'))) {
+                            // Agora ele ignora Sup. Nome e procura estritamente por Apr. Nome
+                            if (linha.some(h => h.includes('apr. nome') || h.includes('apr nome'))) {
                                 headerIdx = i;
                                 headers = linha;
                                 break;
@@ -5479,10 +5480,9 @@ window.importTurmasLote = function() {
 
                         if (headerIdx === -1) return alert("Não encontrei a coluna 'Apr. Nome' na planilha.");
 
-                        const findCol = (terms) => headers.findIndex(h => terms.some(t => h.includes(t)));
-                        
-                        const idxNome = findCol(['apr. nome', 'nome aluno', 'aprendiz', 'nome']);
-                        const idxCod = findCol(['apr. cod', 'apr cod', 'código', 'codigo', 'matrícula']);
+                        // 🎯 CORREÇÃO CIRÚRGICA: Busca exata para ignorar o "Sup. Nome"
+                        const idxNome = headers.findIndex(h => h.includes('apr. nome') || h.includes('apr nome'));
+                        const idxCod = headers.findIndex(h => h.includes('apr. cod') || h.includes('apr cod'));
                         
                         if (idxNome === -1 || idxCod === -1) {
                             return alert(`Atenção: A planilha precisa ter uma coluna para o Nome (Apr. Nome) e uma para o Código (Apr. Cod).`);
@@ -5514,7 +5514,7 @@ window.importTurmasLote = function() {
                                 // Se encontrou o aluno, vincula o código nele!
                                 if (aluno) {
                                     aluno.codigo_aluno = codigoPlanilha;
-                                    aluno.codigo = codigoPlanilha; // Salva nas duas chaves por segurança para o relatório
+                                    aluno.codigo = codigoPlanilha; // Salva nas duas chaves por segurança
                                     codigosInjetados++;
                                 }
                             }
@@ -5530,7 +5530,7 @@ window.importTurmasLote = function() {
                         } else {
                             let relatorio = `Nenhum código foi sincronizado.\n\n`;
                             if(alunosBuscados.length > 0) {
-                                relatorio += `Procuramos na sua base por nomes como:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas eles não foram encontrados na aba Qualificação e nem na Técnica.`;
+                                relatorio += `Lemos a coluna "Apr. Nome" (Coluna V) e achamos:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas eles não foram encontrados na sua base de alunos, ou os nomes estão escritos de forma muito diferente.`;
                             }
                             alert(relatorio);
                         }
