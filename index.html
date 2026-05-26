@@ -5230,6 +5230,7 @@ window.importTurmasLote = function() {
         window.buscarEnderecoInterno = async function(btnElement) {
             const razaoRaw = document.getElementById('editEmpresa')?.value || "";
             const cidadeRaw = document.getElementById('editCidade')?.value || "";
+            const cnpjRaw = document.getElementById('editCNPJ')?.value || ""; // CRÍTICO: Agora ele puxa o CNPJ da tela!
 
             if (!razaoRaw.trim()) {
                 return alert("Por favor, preencha a 'Razão Social' para buscar a empresa.");
@@ -5237,6 +5238,7 @@ window.importTurmasLote = function() {
 
             const razaoTela = window.limparTextoBusca(razaoRaw);
             const cidadeTela = window.limparTextoBusca(cidadeRaw);
+            let cnpjLimpo = cnpjRaw.replace(/\D/g, ''); // Resolve o bug do botão girar infinitamente!
 
             let btn = btnElement || (window.event ? window.event.currentTarget : null);
             let textoOriginal = "";
@@ -5246,76 +5248,92 @@ window.importTurmasLote = function() {
                 if(window.lucide) window.lucide.createIcons();
             }
 
-            let endEncontrado = "";
-            let linkEncontrado = "";
-            let achouEmpresaSemEndereco = false;
+            try {
+                let endEncontrado = "";
+                let linkEncontrado = "";
+                let achouEmpresaSemEndereco = false;
 
-            const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
+                const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
 
-            // 1. Busca Interna Super Flexível
-            for (let a of todosAlunos) {
-                if (window.STATE && a.id === window.STATE.editingId) continue; 
+                // 1. Busca Interna Super Flexível
+                for (let a of todosAlunos) {
+                    if (window.STATE && a.id === window.STATE.editingId) continue; 
 
-                const razaoColega = window.limparTextoBusca((a.empresa && a.empresa.razao) || (typeof a.empresa === 'string' ? a.empresa : (a.razao_social || "")));
-                const cidadeColega = window.limparTextoBusca(a.cidade || (a.empresa && a.empresa.cidade) || a.municipio || "");
-                const enderecoColega = String((a.empresa && a.empresa.endereco) || a.endereco || a.endereco_empresa || "").trim();
-                const linkColega = String((a.empresa && a.empresa.link) || a.link || a.link_mapa || "").trim();
+                    const razaoColega = window.limparTextoBusca((a.empresa && a.empresa.razao) || (typeof a.empresa === 'string' ? a.empresa : (a.razao_social || "")));
+                    const cidadeColega = window.limparTextoBusca(a.cidade || (a.empresa && a.empresa.cidade) || a.municipio || "");
+                    const enderecoColega = String((a.empresa && a.empresa.endereco) || a.endereco || a.endereco_empresa || "").trim();
+                    const linkColega = String((a.empresa && a.empresa.link) || a.link || a.link_mapa || "").trim();
 
-                if (razaoTela.length > 3 && (razaoColega === razaoTela || razaoColega.includes(razaoTela) || razaoTela.includes(razaoColega))) {
-                    
-                    if (enderecoColega.length > 5 && !enderecoColega.toLowerCase().includes('informado')) {
-                        // Tolerância de cidade: Só barra se forem cidades CLARAMENTE diferentes
-                        if (cidadeTela && cidadeColega && cidadeColega !== cidadeTela && !cidadeColega.includes(cidadeTela) && !cidadeTela.includes(cidadeColega)) {
-                            continue; 
+                    if (razaoTela.length > 3 && (razaoColega === razaoTela || razaoColega.includes(razaoTela) || razaoTela.includes(razaoColega))) {
+                        
+                        if (enderecoColega.length > 5 && !enderecoColega.toLowerCase().includes('informado')) {
+                            // Tolerância de cidade: Só barra se forem cidades CLARAMENTE diferentes
+                            if (cidadeTela && cidadeColega && cidadeColega !== cidadeTela && !cidadeColega.includes(cidadeTela) && !cidadeTela.includes(cidadeColega)) {
+                                continue; 
+                            }
+                            endEncontrado = enderecoColega;
+                            linkEncontrado = linkColega;
+                            break; 
+                        } else {
+                            achouEmpresaSemEndereco = true;
                         }
-                        endEncontrado = enderecoColega;
-                        linkEncontrado = linkColega;
-                        break; 
-                    } else {
-                        achouEmpresaSemEndereco = true;
                     }
                 }
-            }
 
-            // 2. Se não achou endereço interno, tenta a Receita Federal via CNPJ
-                if (cnpjLimpo.length === 14) {
-                    try {
-                        const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
-                        if (res.ok) {
-                            const json = await res.json();
-                            
-                            // --- NOVA TRAVA DE SEGURANÇA GEOGRÁFICA ---
-                            const cidadeReceita = window.limparTextoBusca(json.municipio || "");
-                            const cidadeAluno = window.limparTextoBusca(document.getElementById('editCidade') ? document.getElementById('editCidade').value : "");
-                            
-                            // Se o sistema já tem uma cidade, comparamos. Se a da Receita for diferente, avisamos!
-                            if (cidadeAluno && cidadeReceita && !cidadeReceita.includes(cidadeAluno) && !cidadeAluno.includes(cidadeReceita)) {
-                                console.warn("Atenção: Endereço da Receita é da Matriz (Outra cidade).");
-                                alert(`⚠️ AVISO:\n\nO endereço encontrado no CNPJ (${json.municipio}) parece ser da Sede (Matriz) e não bate com a cidade do aluno (${cidadeAluno}).\n\nPor segurança, não preenchemos automaticamente.`);
-                            } else {
-                                // Se as cidades batem, aí sim preenchemos!
-                                endEncontrado = `${json.logradouro}, ${json.numero}${json.complemento ? ' - ' + json.complemento : ''} - ${json.bairro}, ${json.municipio} - ${json.uf}`;
-                                linkEncontrado = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endEncontrado)}`;
+                // 2. Se não achou endereço interno, tenta a Receita Federal via CNPJ
+                if (!endEncontrado) {
+                    // Puxa o CNPJ do aluno caso não tenha sido digitado no input
+                    if (!cnpjLimpo && window.STATE && window.STATE.editingId) {
+                        const alunoAtual = todosAlunos.find(x => x.id === window.STATE.editingId);
+                        if (alunoAtual) cnpjLimpo = String(alunoAtual.cnpj_empresa || (alunoAtual.empresa && alunoAtual.empresa.cnpj) || alunoAtual.cnpj || "").replace(/\D/g, '');
+                    }
+                    
+                    if (cnpjLimpo.length > 0 && cnpjLimpo.length < 14) cnpjLimpo = cnpjLimpo.padStart(14, '0');
+                    
+                    if (cnpjLimpo.length === 14) {
+                        try {
+                            const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+                            if (res.ok) {
+                                const json = await res.json();
+                                
+                                // --- NOVA TRAVA DE SEGURANÇA GEOGRÁFICA ---
+                                const cidadeReceita = window.limparTextoBusca(json.municipio || "");
+                                
+                                // Se o sistema já tem uma cidade, comparamos. Se a da Receita for diferente, avisamos!
+                                if (cidadeTela && cidadeReceita && !cidadeReceita.includes(cidadeTela) && !cidadeTela.includes(cidadeReceita)) {
+                                    console.warn("Atenção: Endereço da Receita é da Matriz (Outra cidade).");
+                                    alert(`⚠️ AVISO:\n\nO endereço encontrado no CNPJ (${json.municipio}) parece ser da Sede (Matriz) e não bate com a cidade do aluno (${cidadeRaw}).\n\nPor segurança, não preenchemos automaticamente.`);
+                                } else {
+                                    // Se as cidades batem, aí sim preenchemos!
+                                    endEncontrado = `${json.logradouro}, ${json.numero}${json.complemento ? ' - ' + json.complemento : ''} - ${json.bairro}, ${json.municipio} - ${json.uf}`;
+                                    linkEncontrado = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endEncontrado)}`;
+                                }
+                                // -------------------------------------------
                             }
-                            // -------------------------------------------
-                        }
-                    } catch (e) { console.log("Erro API:", e); }
+                        } catch (e) { console.log("Erro API:", e); }
+                    }
                 }
 
-            // 3. Restaura o botão e aplica resultados
-            if (btn && textoOriginal) {
-                btn.innerHTML = textoOriginal;
-                if(window.lucide) window.lucide.createIcons();
-            }
+                // 3. Aplica os resultados
+                if (endEncontrado) {
+                    if (document.getElementById('editEndereco')) document.getElementById('editEndereco').value = endEncontrado;
+                    if (document.getElementById('editLink')) document.getElementById('editLink').value = linkEncontrado;
+                    if(typeof showToast === 'function') showToast("Endereço puxado com sucesso!");
+                } else if (achouEmpresaSemEndereco) {
+                    alert("Achamos outros alunos dessa empresa no sistema, mas o endereço deles também está em branco! Preencha manualmente para o sistema aprender.");
+                } else {
+                    alert("Nenhum endereço encontrado para esta empresa (nem no sistema, nem via CNPJ).");
+                }
 
-            if (endEncontrado) {
-                if (document.getElementById('editEndereco')) document.getElementById('editEndereco').value = endEncontrado;
-                if (document.getElementById('editLink')) document.getElementById('editLink').value = linkEncontrado;
-                if(typeof showToast === 'function') showToast("Endereço puxado com sucesso!");
-            } else if (achouEmpresaSemEndereco) {
-                alert("Achamos outros alunos dessa empresa no sistema, mas o endereço deles também está em branco! Preencha manualmente para o sistema aprender.");
-            } else {
-                alert("Nenhum endereço encontrado para esta empresa (nem no sistema, nem via CNPJ).");
+            } catch(erroGeral) {
+                console.error("Erro inesperado na busca:", erroGeral);
+                alert("Ocorreu um problema ao buscar o endereço.");
+            } finally {
+                // 4. GARANTIA ABSOLUTA: Restaura o botão Haja o que houver
+                if (btn && textoOriginal) {
+                    btn.innerHTML = textoOriginal;
+                    if(window.lucide) window.lucide.createIcons();
+                }
             }
         };
 
