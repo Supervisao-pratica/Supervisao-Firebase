@@ -5440,7 +5440,7 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // 🚀 MOTOR DE SINCRONIZAÇÃO UNIVERSAL (VERSÃO DEFINITIVA COM LEITOR DE CSV)
+        // 🔑 SINCRONIZADOR DE CÓDIGOS (RÁPIDO E FOCADO)
         // =========================================================
         window.importarCodigosAlunos = function() {
             const input = document.createElement('input');
@@ -5451,7 +5451,7 @@ window.importTurmasLote = function() {
                 const file = e.target.files[0];
                 if (!file) return;
                 
-                if(typeof showToast === 'function') showToast("Sincronizando dados...");
+                if(typeof showToast === 'function') showToast("Sincronizando apenas códigos...");
                 
                 const reader = new FileReader();
                 reader.onload = function(e) {
@@ -5459,12 +5459,11 @@ window.importTurmasLote = function() {
                         const data = new Uint8Array(e.target.result);
                         let rows = [];
 
-                        // 🚀 SISTEMA INTELIGENTE PARA LER CSV CORRETAMENTE (VÍRGULA OU PONTO-E-VÍRGULA)
+                        // Sistema Inteligente para ler CSV (Vírgula ou Ponto-e-Vírgula)
                         if (file.name.toLowerCase().endsWith('.csv')) {
-                            const decoder = new TextDecoder('iso-8859-1'); // Padrão Excel BR
+                            const decoder = new TextDecoder('iso-8859-1'); 
                             const csvText = decoder.decode(data);
                             rows = csvText.split('\n').map(row => row.split(','));
-                            // Se a linha não fatiou direito com vírgula, tenta com ponto e vírgula
                             if (rows.length > 0 && rows[0].length <= 1) {
                                 rows = csvText.split('\n').map(row => row.split(';'));
                             }
@@ -5476,137 +5475,68 @@ window.importTurmasLote = function() {
                         
                         if (rows.length < 2) return alert("Planilha vazia ou formato ilegível.");
 
-                        // 🌟 RADAR DE CABEÇALHO AJUSTADO
+                        // 🌟 RADAR DE CABEÇALHO FOCADO APENAS NO NOME
                         let headerIdx = -1;
                         let headers = [];
                         for (let i = 0; i < Math.min(10, rows.length); i++) {
                             const linha = rows[i].map(h => String(h || "").toLowerCase().trim());
-                            if (linha.some(h => h.includes('apr. nome') || h.includes('razao social') || h.includes('cnpj') || h.includes('nome'))) {
+                            if (linha.some(h => h.includes('apr. nome') || h.includes('nome'))) {
                                 headerIdx = i;
                                 headers = linha;
                                 break;
                             }
                         }
 
-                        if (headerIdx === -1) {
-                            return alert("Não encontrei a coluna 'Apr. Nome' na planilha.");
-                        }
+                        if (headerIdx === -1) return alert("Não encontrei a coluna 'Apr. Nome' na planilha.");
 
                         const findCol = (terms) => headers.findIndex(h => terms.some(t => h.includes(t)));
-                        
                         const idxNome = findCol(['apr. nome', 'nome aluno', 'aprendiz', 'nome']);
-                        const idxRazao = findCol(['razao social', 'empresa', 'razão social']);
-                        const idxCNPJ = findCol(['cnpj', 'c.n.p.j']);
                         const idxCod = findCol(['apr. cod', 'apr cod', 'código', 'codigo', 'matrícula']);
-                        const idxEnd = findCol(['endereço', 'endereco', 'logradouro']);
-                        const idxCidade = findCol(['município', 'municipio', 'cidade']);
+                        
+                        if (idxNome === -1 || idxCod === -1) {
+                            return alert(`Colunas faltantes na planilha!\nPreciso de uma coluna para o Nome e outra para o Código.`);
+                        }
 
                         const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-                        const limparTotal = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase().trim();
-                        
                         const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
                         
-                        let alunosAtualizados = 0;
-                        let enderecosInjetados = 0;
-                        let codigosInjetados = 0; 
-                        let dicEmpresas = {};
+                        let codigosInjetados = 0;
                         let alunosBuscados = [];
 
-                        // 1. Processamento da Planilha
+                        // 1. Processamento Rápido da Planilha
                         for (let i = headerIdx + 1; i < rows.length; i++) {
                             const row = rows[i];
                             if (!row || row.length === 0) continue;
 
                             let nomePlanilha = idxNome > -1 ? normalizar(row[idxNome]) : "";
                             let codigoPlanilha = idxCod > -1 ? String(row[idxCod] || "").trim() : "";
-                            let cnpjPlanilha = idxCNPJ > -1 ? String(row[idxCNPJ] || "").replace(/\D/g, '') : "";
-                            let razaoPlanilha = idxRazao > -1 ? String(row[idxRazao] || "").trim() : "";
-                            let enderecoPlanilha = idxEnd > -1 ? String(row[idxEnd] || "").trim() : "";
-                            let cidadePlanilha = idxCidade > -1 ? String(row[idxCidade] || "").trim() : "";
 
-                            if (nomePlanilha) {
+                            if (nomePlanilha && codigoPlanilha) {
                                 alunosBuscados.push(nomePlanilha);
+                                
+                                // Busca o aluno pelo nome
                                 const aluno = todosAlunos.find(a => normalizar(a.nome) === nomePlanilha);
                                 
-                                if (aluno) {
-                                    let mudou = false;
-                                    
-                                    // Sincroniza o Código
-                                    if (codigoPlanilha && aluno.codigo_aluno !== codigoPlanilha) {
-                                        aluno.codigo_aluno = codigoPlanilha;
-                                        aluno.codigo = codigoPlanilha; // Salva nos dois formatos por garantia
-                                        codigosInjetados++;
-                                        mudou = true;
-                                    }
-                                    
-                                    // Sincroniza CNPJ
-                                    if (cnpjPlanilha && cnpjPlanilha.length >= 11) {
-                                        if (!aluno.empresa) aluno.empresa = {};
-                                        if (aluno.cnpj_empresa !== cnpjPlanilha) {
-                                            aluno.cnpj_empresa = cnpjPlanilha;
-                                            aluno.empresa.cnpj = cnpjPlanilha;
-                                            mudou = true;
-                                        }
-                                    }
-
-                                    // Sincroniza Razão Social
-                                    if (razaoPlanilha && (!aluno.empresa || !aluno.empresa.razao || aluno.empresa.razao === "Não Inf.")) {
-                                        if (!aluno.empresa) aluno.empresa = {};
-                                        aluno.empresa.razao = razaoPlanilha;
-                                        mudou = true;
-                                    }
-
-                                    // Sincroniza Endereço
-                                    if (enderecoPlanilha && (!aluno.empresa || !aluno.empresa.endereco || aluno.empresa.endereco.toLowerCase().includes('informado'))) {
-                                        if (!aluno.empresa) aluno.empresa = {};
-                                        aluno.empresa.endereco = enderecoPlanilha + (cidadePlanilha ? " - " + cidadePlanilha : "");
-                                        aluno.empresa.link = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(aluno.empresa.endereco)}`;
-                                        enderecosInjetados++;
-                                        mudou = true;
-                                    }
-
-                                    if (mudou) alunosAtualizados++;
+                                // Se achou o aluno e o código dele está vazio ou diferente, atualiza!
+                                if (aluno && aluno.codigo_aluno !== codigoPlanilha) {
+                                    aluno.codigo_aluno = codigoPlanilha;
+                                    aluno.codigo = codigoPlanilha; // Salva nas duas chaves por garantia do sistema
+                                    codigosInjetados++;
                                 }
-                            }
-
-                            // Guarda na memória para o Efeito Cascata
-                            if ((cnpjPlanilha || razaoPlanilha) && enderecoPlanilha) {
-                                let endFormatado = enderecoPlanilha + (cidadePlanilha ? " - " + cidadePlanilha : "");
-                                if (cnpjPlanilha) dicEmpresas[cnpjPlanilha] = endFormatado;
-                                if (razaoPlanilha) dicEmpresas[limparTotal(razaoPlanilha)] = endFormatado;
                             }
                         }
 
-                        // 2. Efeito Cascata: Espalha endereços para quem tem o mesmo CNPJ/Razão
-                        todosAlunos.forEach(a => {
-                            const cnpjA = String(a.cnpj_empresa || (a.empresa && a.empresa.cnpj) || "").replace(/\D/g, '');
-                            const razaoA = limparTotal((a.empresa && a.empresa.razao) || "");
-                            const endAtual = String((a.empresa && a.empresa.endereco) || "").trim();
-
-                            if (endAtual.length < 5 || endAtual.toLowerCase().includes('informado')) {
-                                let endNovo = dicEmpresas[cnpjA] || dicEmpresas[razaoA];
-                                if (endNovo) {
-                                    if (!a.empresa) a.empresa = {};
-                                    a.empresa.endereco = endNovo;
-                                    a.empresa.link = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endNovo)}`;
-                                    enderecosInjetados++;
-                                }
-                            }
-                        });
-
-                        // 3. Finalização
-                        if (alunosAtualizados > 0 || enderecosInjetados > 0 || codigosInjetados > 0) {
+                        // 2. Finalização Direta
+                        if (codigosInjetados > 0) {
                             if (typeof saveToStorage === 'function') saveToStorage();
-                            alert(`✅ SINCRONIZAÇÃO COMPLETA!\n\n- 🔑 ${codigosInjetados} códigos de alunos vinculados.\n- 🏢 ${alunosAtualizados} alunos tiveram dados de empresa vinculados.\n- 📍 ${enderecosInjetados} endereços foram preenchidos automaticamente.\n\nSeus roteiros e visitas originais foram mantidos intactos!`);
-                            if (typeof runFilter === 'function') runFilter();
-                            if (typeof renderPlanningTable === 'function') renderPlanningTable();
+                            alert(`✅ SUCESSO!\n\n🔑 ${codigosInjetados} alunos receberam seus códigos!`);
                             
-                            // Se faltar algum endereço, a busca automática via internet rodará em seguida
-                            if(typeof window.sincronizarEnderecosEmpresas === 'function') setTimeout(() => window.sincronizarEnderecosEmpresas(true), 1000);
+                            if (typeof renderPlanningTable === 'function') renderPlanningTable();
+                            if (typeof runFilter === 'function') runFilter();
                         } else {
-                            let relatorio = `Nenhum dado novo sincronizado.\n\n`;
+                            let relatorio = `Nenhum código novo foi sincronizado.\n\n`;
                             if(alunosBuscados.length > 0) {
-                                relatorio += `Lemos na planilha nomes como:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas os dados deles já estavam iguais no sistema ou os nomes não existem no banco.`;
+                                relatorio += `Nós lemos a planilha e procuramos por:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas os códigos deles já estavam salvos no sistema, ou esses nomes não estão cadastrados na aba Qualificação/Técnica.`;
                             }
                             alert(relatorio);
                         }
