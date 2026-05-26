@@ -5451,93 +5451,55 @@ window.importTurmasLote = function() {
                 const file = e.target.files[0];
                 if (!file) return;
                 
-                if(typeof showToast === 'function') showToast("Sincronizando apenas os códigos...");
-                
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
-                        
-                        // Deixa a biblioteca XLSX fazer a leitura pesada
                         const workbook = XLSX.read(data, {type: 'array'});
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: ""});
                         
-                        if (rows.length < 2) return alert("Planilha vazia ou formato ilegível.");
+                        let headerIdx = rows.findIndex(r => r.some(c => String(c).includes('Apr. Nome')));
+                        if (headerIdx === -1) return alert("Coluna 'Apr. Nome' não encontrada.");
 
-                        // 🌟 ENCONTRA A LINHA DE CABEÇALHO
-                        let headerIdx = -1;
-                        let headers = [];
-                        for (let i = 0; i < Math.min(10, rows.length); i++) {
-                            const linha = rows[i].map(h => String(h || "").toLowerCase().trim());
-                            // Agora ele ignora Sup. Nome e procura estritamente por Apr. Nome
-                            if (linha.some(h => h.includes('apr. nome') || h.includes('apr nome'))) {
-                                headerIdx = i;
-                                headers = linha;
-                                break;
-                            }
-                        }
+                        const idxNome = rows[headerIdx].findIndex(c => String(c).includes('Apr. Nome'));
+                        const idxCod = rows[headerIdx].findIndex(c => String(c).includes('Apr. Cod'));
 
-                        if (headerIdx === -1) return alert("Não encontrei a coluna 'Apr. Nome' na planilha.");
-
-                        // 🎯 CORREÇÃO CIRÚRGICA: Busca exata para ignorar o "Sup. Nome"
-                        const idxNome = headers.findIndex(h => h.includes('apr. nome') || h.includes('apr nome'));
-                        const idxCod = headers.findIndex(h => h.includes('apr. cod') || h.includes('apr cod'));
-                        
-                        if (idxNome === -1 || idxCod === -1) {
-                            return alert(`Atenção: A planilha precisa ter uma coluna para o Nome (Apr. Nome) e uma para o Código (Apr. Cod).`);
-                        }
-
-                        // 🔍 SUPER LUPA: Tira acentos, tira espaços duplos e deixa tudo maiúsculo
                         const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').toUpperCase().trim();
-                        
-                        // Puxa todos os alunos (Qualificação + Técnica)
                         const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
                         
                         let codigosInjetados = 0;
-                        let alunosBuscados = [];
+                        let erros = [];
 
-                        // 1. Processamento Rápido da Planilha
                         for (let i = headerIdx + 1; i < rows.length; i++) {
-                            const row = rows[i];
-                            if (!row || row.length === 0) continue;
+                            const nomePlan = normalizar(rows[i][idxNome]);
+                            const codPlan = String(rows[i][idxCod] || "").trim();
 
-                            let nomePlanilha = idxNome > -1 ? normalizar(row[idxNome]) : "";
-                            let codigoPlanilha = idxCod > -1 ? String(row[idxCod] || "").trim() : "";
+                            if (!nomePlan || !codPlan) continue;
 
-                            if (nomePlanilha && codigoPlanilha) {
-                                alunosBuscados.push(nomePlanilha);
-                                
-                                // O "Match": Compara o nome da planilha com o nome do aluno no sistema
-                                const aluno = todosAlunos.find(a => normalizar(a.nome) === nomePlanilha);
-                                
-                                // Se encontrou o aluno, vincula o código nele!
-                                if (aluno) {
-                                    aluno.codigo_aluno = codigoPlanilha;
-                                    aluno.codigo = codigoPlanilha; // Salva nas duas chaves por segurança
-                                    codigosInjetados++;
-                                }
-                            }
-                        }
-
-                        // 2. Finalização e Relatório
-                        if (codigosInjetados > 0) {
-                            if (typeof saveToStorage === 'function') saveToStorage();
-                            alert(`✅ SUCESSO!\n\n🔑 ${codigosInjetados} alunos acabaram de receber seus códigos e eles já sairão nos relatórios!`);
+                            // Busca com tolerância a erro de digitação
+                            const aluno = todosAlunos.find(a => {
+                                const nomeSistema = normalizar(a.nome);
+                                return nomeSistema === nomePlan || nomeSistema.includes(nomePlan) || nomePlan.includes(nomeSistema);
+                            });
                             
-                            if (typeof renderPlanningTable === 'function') renderPlanningTable();
-                            if (typeof runFilter === 'function') runFilter();
-                        } else {
-                            let relatorio = `Nenhum código foi sincronizado.\n\n`;
-                            if(alunosBuscados.length > 0) {
-                                relatorio += `Lemos a coluna "Apr. Nome" (Coluna V) e achamos:\n- ${alunosBuscados.slice(0,3).join("\n- ")}\n\nMas eles não foram encontrados na sua base de alunos, ou os nomes estão escritos de forma muito diferente.`;
+                            if (aluno) {
+                                aluno.codigo_aluno = codPlan;
+                                aluno.codigo = codPlan;
+                                codigosInjetados++;
+                            } else {
+                                erros.push(`Planilha: "${nomePlan}" (Não achado no sistema)`);
                             }
-                            alert(relatorio);
                         }
 
-                    } catch (err) {
-                        alert("Erro ao ler a planilha: " + err.message);
-                    }
+                        if (codigosInjetados > 0) {
+                            saveToStorage();
+                            alert(`✅ SUCESSO!\n\n🔑 ${codigosInjetados} alunos vinculados.`);
+                            renderPlanningTable();
+                        } else {
+                            alert(`❌ Nenhum aluno vinculado.\n\nExemplo do que li na planilha:\n${erros.slice(0, 5).join('\n')}\n\nVerifique se esses nomes existem na aba "Qualificação" ou "Técnica".`);
+                        }
+                    } catch (err) { alert("Erro: " + err.message); }
                 };
                 reader.readAsArrayBuffer(file);
             };
