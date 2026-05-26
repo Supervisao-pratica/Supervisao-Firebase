@@ -3259,49 +3259,56 @@ window.updateVisitCC = function(idx, val) {
     }
 };
         function renderPlanningTable() { 
-    if(typeof window.sincronizarCofreTurmas === 'function') window.sincronizarCofreTurmas(); 
-    const tbody = document.getElementById('planTableBody'); 
-    
-    // Atualizar contador de alunos detalhado
-    const countEl = document.getElementById('planTotalStudents');
-    const currentItems = STATE.planContext ? (DB.planning[STATE.planContext] || []) : [];
-    
-    let contTec = 0;
-    let contQuali = 0;
-    
-    currentItems.forEach(item => {
-        if(item && item.student) {
-            const isTec = (DB.tec || []).some(t => t.id === item.student.id);
-            if(isTec) contTec++; else contQuali++;
-        }
-    });
+            if(typeof window.sincronizarCofreTurmas === 'function') window.sincronizarCofreTurmas(); 
+            const tbody = document.getElementById('planTableBody'); 
+            
+            // Atualizar contador de alunos detalhado
+            const countEl = document.getElementById('planTotalStudents');
+            const currentItems = STATE.planContext ? (DB.planning[STATE.planContext] || []) : [];
+            
+            let contTec = 0;
+            let contQuali = 0;
+            let contRealizadas = 0; // 🎯 NOVO: Placar de Atendimentos
+            
+            currentItems.forEach(item => {
+                if(item && item.student) {
+                    const isTec = (DB.tec || []).some(t => t.id === item.student.id);
+                    if(isTec) contTec++; else contQuali++;
+                }
+                
+                // Verifica o status para o placar
+                if(item && item.status === "Realizada") {
+                    contRealizadas++;
+                }
+            });
 
-    if(countEl) {
-        if(currentItems.length > 0) {
-            countEl.innerHTML = `
-                <span class="font-black text-senac-blue">${currentItems.length} jovem(ns)</span>
-                <span class="text-[10px] ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-200 font-bold">Técnica: ${contTec}</span>
-                <span class="text-[10px] ml-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-200 font-bold">Qualif: ${contQuali}</span>
-            `;
-        } else {
-            countEl.innerHTML = "0 jovem(ns)";
-        }
-    }
+            if(countEl) {
+                if(currentItems.length > 0) {
+                    countEl.innerHTML = `
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-black text-senac-blue">${currentItems.length} jovem(ns)</span>
+                            <span class="text-[10px] ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded border border-purple-200 font-bold">Técnica: ${contTec}</span>
+                            <span class="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded border border-blue-200 font-bold">Qualif: ${contQuali}</span>
+                            <span class="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded border border-emerald-200 font-black shadow-sm ml-2 flex items-center gap-1"><i data-lucide="check-circle-2" class="w-3 h-3"></i> ATENDIDOS: ${contRealizadas}</span>
+                        </div>
+                    `;
+                } else {
+                    countEl.innerHTML = "0 jovem(ns)";
+                }
+            }
 
-    if (!STATE.planContext) { 
-        tbody.innerHTML = '<tr><td colspan="15" class="p-8 text-center text-slate-400 font-bold bg-slate-50"><i data-lucide="file-plus" class="w-8 h-8 mx-auto mb-2 opacity-50"></i> SELECIONE OU CRIE UM NOVO ROTEIRO NO TOPO DA TELA.</td></tr>'; 
-        lucide.createIcons();
-        return; 
-    } 
-    
-    // ... o resto da função continua igualzinho daqui para baixo 
+            if (!STATE.planContext) { 
+                tbody.innerHTML = '<tr><td colspan="15" class="p-8 text-center text-slate-400 font-bold bg-slate-50"><i data-lucide="file-plus" class="w-8 h-8 mx-auto mb-2 opacity-50"></i> SELECIONE OU CRIE UM NOVO ROTEIRO NO TOPO DA TELA.</td></tr>'; 
+                if(window.lucide) window.lucide.createIcons();
+                return; 
+            } 
             
             if(currentItems.length === 0) { 
                 tbody.innerHTML = '<tr><td colspan="15" class="p-8 text-center text-slate-400">Nenhum aluno neste planejamento. Adicione alunos pela barra lateral.</td></tr>'; 
                 return; 
             } 
             
-            // Ordenação Dinâmica sempre que a tabela for desenhada
+            // Ordenação Dinâmica
             DB.planning[STATE.planContext].sort((a, b) => {
                 const ordA = parseInt(a.ordem) || 999;
                 const ordB = parseInt(b.ordem) || 999;
@@ -3311,16 +3318,13 @@ window.updateVisitCC = function(idx, val) {
             tbody.innerHTML = DB.planning[STATE.planContext].map((item, idx) => { 
                 const s = item.student; 
                 
-                // MÁGICA DA BUSCA 2.0: Ignora a "foto antiga" e pega o dado ao vivo!
                 const alunoAoVivo = [...(DB.quali || []), ...(DB.tec || [])].find(a => a && s && a.id === s.id) || s;
                 const turmaReal = alunoAoVivo.turma || s.turma || '';
                 
-                // Atualiza a foto velha para garantir que o input na tela mostre a turma certa
                 if (s) s.turma = turmaReal; 
 
                 let cc = '-';
                 if (turmaReal) { 
-                    // Busca direto no DB original do seu sistema
                     const turmaEncontrada = (DB.controle_turmas || []).find(t => 
                         t && t.nome && String(t.nome).toUpperCase().trim() === String(turmaReal).toUpperCase().trim()
                     );
@@ -3332,36 +3336,34 @@ window.updateVisitCC = function(idx, val) {
                     }
                 }
 
-                // === INÍCIO DA MUDANÇA (BLINDADO CONTRA NÚMEROS PUROS) ===
                 const overrideStr = item.cc_override ? String(item.cc_override).trim() : '';
                 const temOverride = overrideStr !== '' && overrideStr !== '-';
                 const ccDefinitivo = temOverride ? overrideStr : cc;
                 
                 cc = `<input type="text" value="${ccDefinitivo}" onchange="updateVisitCC(${idx}, this.value)" class="w-16 p-1 text-[10px] text-center border border-slate-300 rounded focus:border-senac-blue focus:ring-1 outline-none font-bold text-slate-700 bg-white shadow-inner" title="Você pode editar este CC!">`;
-                // === FIM DA MUDANÇA ===
                 
                 const link = s.empresa.link ? `<a href="${s.empresa.link}" target="_blank" class="text-blue-500"><i data-lucide="map-pin" class="w-3 h-3"></i></a>` : ''; 
                 
-                const isTec = DB.tec.some(t => t.id === s.id);
+                const isTec = (DB.tec || []).some(t => t.id === s.id);
                 const cursoLabel = isTec ? 'Técnica' : 'Qualificação';
                 const currentObs = s.obs_origem || item.obs || '';
 
                 let statusClass = "text-slate-600"; 
-                if(item.status === "Realizar") statusClass = "status-realizar"; 
-                if(item.status === "Realizada") statusClass = "status-realizada"; 
-                if(item.status === "Não realizada") statusClass = "status-nao"; 
+                if(item.status === "Realizar") statusClass = "text-amber-500 font-bold bg-amber-50"; 
+                if(item.status === "Realizada") statusClass = "text-emerald-600 font-bold bg-emerald-50"; 
+                if(item.status === "Não realizada") statusClass = "text-red-500 font-bold bg-red-50"; 
                 
                 return `
                 <tr class="border-b border-slate-200 hover:bg-slate-50 transition-all"
-                    ondragstart="handleDragStart(event, ${idx})"
-                    ondragover="handleDragOver(event)"
-                    ondragenter="handleDragEnter(event)"
-                    ondragleave="handleDragLeave(event)"
-                    ondrop="handleDrop(event, ${idx})"
-                    ondragend="handleDragEnd(event)">
+                    ondragstart="if(typeof handleDragStart === 'function') handleDragStart(event, ${idx})"
+                    ondragover="if(typeof handleDragOver === 'function') handleDragOver(event)"
+                    ondragenter="if(typeof handleDragEnter === 'function') handleDragEnter(event)"
+                    ondragleave="if(typeof handleDragLeave === 'function') handleDragLeave(event)"
+                    ondrop="if(typeof handleDrop === 'function') handleDrop(event, ${idx})"
+                    ondragend="if(typeof handleDragEnd === 'function') handleDragEnd(event)">
                     <td class="p-1">
                         <div class="flex items-center gap-1">
-                            <div class="cursor-grab hover:text-senac-blue text-slate-300 p-1 rounded transition-colors" onmousedown="makeRowDraggable(event)" onmouseup="makeRowUndraggable(event)" onmouseleave="makeRowUndraggable(event)" title="Arraste para reordenar a linha">
+                            <div class="cursor-grab hover:text-senac-blue text-slate-300 p-1 rounded transition-colors" onmousedown="if(typeof makeRowDraggable==='function') makeRowDraggable(event)" onmouseup="if(typeof makeRowUndraggable==='function') makeRowUndraggable(event)" onmouseleave="if(typeof makeRowUndraggable==='function') makeRowUndraggable(event)" title="Arraste para reordenar a linha">
                                 <i data-lucide="grip-vertical" class="w-4 h-4"></i>
                             </div>
                             <input type="number" class="plan-input hide-arrows bg-yellow-50 text-yellow-900 border w-full text-center font-black" style="font-size: 15px; padding-top: 6px; padding-bottom: 6px;" value="${item.ordem || (idx + 1)}" onchange="updatePlanOrderManual(${idx}, this.value)">
@@ -3372,19 +3374,20 @@ window.updateVisitCC = function(idx, val) {
                         <input type="time" class="plan-input bg-slate-50 border w-full text-center font-bold text-slate-400" value="${item.hrAtend}" onchange="updatePlanItem(${idx}, 'hrAtend', this.value)" title="Apenas para e-mail/lembrete (não entra no rateio automático)">
                     </td>
                     <td class="p-1"><div class="flex items-center gap-1"><input type="text" class="w-14 text-center plan-input bg-slate-50 border text-[10px]" placeholder="Teoria" value="${item.hrTeoria}" onchange="updatePlanItem(${idx}, 'hrTeoria', this.value)"><span class="text-slate-400">/</span><input type="text" class="w-14 text-center plan-input bg-slate-50 border text-[10px]" placeholder="Prática" value="${item.hrPratica || ''}" onchange="updatePlanItem(${idx}, 'hrPratica', this.value)"></div></td>
-                    <td class="p-2"><input class="plan-input font-bold w-full" value="${s.turma}" onchange="updatePlanStudent(${idx}, 'turma', this.value)"><div class="text-[9px] text-slate-400">CC: ${cc}</div></td>
-                    <td class="p-2"><input class="plan-input font-bold text-xs leading-tight w-full" value="${s.nome}" onchange="updatePlanStudent(${idx}, 'nome', this.value)"><div class="text-[9px] text-slate-400">${cursoLabel}</div></td>
+                    <td class="p-2"><input class="plan-input font-bold w-full" value="${s.turma}" onchange="updatePlanStudent(${idx}, 'turma', this.value)"><div class="text-[9px] text-slate-400 mt-1">CC: ${cc}</div></td>
+                    <td class="p-2"><input class="plan-input font-bold text-xs leading-tight w-full" value="${s.nome}" onchange="updatePlanStudent(${idx}, 'nome', this.value)"><div class="text-[9px] text-slate-400 mt-1">${cursoLabel}</div></td>
                     <td class="p-2"><textarea class="plan-input text-[10px] font-bold leading-tight w-full resize-none" rows="2" onchange="updatePlanCompany(${idx}, 'razao', this.value)">${s.empresa.razao}</textarea></td>
-                    <td class="p-2"><textarea class="plan-input text-[9px] w-full resize-none" rows="2" onchange="updatePlanCompany(${idx}, 'endereco', this.value)">${s.empresa.endereco || ''}</textarea>${link}</td>
+                    <td class="p-2"><textarea class="plan-input text-[9px] w-full resize-none" rows="2" onchange="updatePlanCompany(${idx}, 'endereco', this.value)">${s.empresa.endereco || ''}</textarea><div class="mt-1">${link}</div></td>
                     <td class="p-2"><input class="plan-input font-bold w-full" value="${s.cidade}" onchange="updatePlanStudent(${idx}, 'cidade', this.value)"></td>
-                    <td class="p-2"><input class="plan-input w-full font-bold" value="${s.supervisor.display}" onchange="updatePlanSupervisor(${idx}, 'display', this.value)"><input class="plan-input w-full text-[9px] text-slate-500" value="${s.supervisor.tel || ''}" placeholder="Tel" onchange="updatePlanSupervisor(${idx}, 'tel', this.value)"><input class="plan-input w-full text-[9px] text-blue-500" value="${s.supervisor.email || ''}" placeholder="Email" onchange="updatePlanSupervisor(${idx}, 'email', this.value)"></td>
+                    <td class="p-2"><input class="plan-input w-full font-bold" value="${s.supervisor.display}" onchange="updatePlanSupervisor(${idx}, 'display', this.value)"><input class="plan-input w-full text-[9px] text-slate-500 mt-1" value="${s.supervisor.tel || ''}" placeholder="Tel" onchange="updatePlanSupervisor(${idx}, 'tel', this.value)"><input class="plan-input w-full text-[9px] text-blue-500 mt-1" value="${s.supervisor.email || ''}" placeholder="Email" onchange="updatePlanSupervisor(${idx}, 'email', this.value)"></td>
                     <td class="p-1"><select class="plan-input" onchange="validateVisitSelection(${idx}, this)"><option ${item.visitaTipo === '1ª Visita' ? 'selected' : ''}>1ª Visita</option><option ${item.visitaTipo === '2ª Visita' ? 'selected' : ''}>2ª Visita</option><option ${item.visitaTipo === '3ª Visita' ? 'selected' : ''}>3ª Visita</option></select></td>
-                    <td class="p-1"><select class="plan-input ${statusClass}" onchange="updatePlanItem(${idx}, 'status', this.value)"><option class="text-slate-600" value="Realizar" ${item.status === 'Realizar' ? 'selected' : ''}>Realizar</option><option class="text-emerald-600 font-bold" value="Realizada" ${item.status === 'Realizada' ? 'selected' : ''}>Realizada</option><option class="text-red-500 font-bold" value="Não realizada" ${item.status === 'Não realizada' ? 'selected' : ''}>Não realizada</option></select></td>
+                    <td class="p-1"><select class="plan-input border ${statusClass}" onchange="updatePlanItem(${idx}, 'status', this.value); renderPlanningTable();"><option class="text-slate-600 bg-white" value="Realizar" ${item.status === 'Realizar' ? 'selected' : ''}>Realizar</option><option class="text-emerald-600 font-bold bg-white" value="Realizada" ${item.status === 'Realizada' ? 'selected' : ''}>Realizada</option><option class="text-red-500 font-bold bg-white" value="Não realizada" ${item.status === 'Não realizada' ? 'selected' : ''}>Não realizada</option></select></td>
                     <td class="p-1"><input type="text" class="plan-input" value="${currentObs}" placeholder="..." onchange="updatePlanItem(${idx}, 'obs', this.value)"></td>
                     <td class="p-1 text-center no-print"><button onclick="removeFromPlan(${idx})" class="text-red-400 hover:text-red-600"><i data-lucide="x" class="w-3 h-3"></i></button></td>
                 </tr>`; 
             }).join(""); 
-            lucide.createIcons(); 
+            
+            if(window.lucide) window.lucide.createIcons(); 
         }
 
         // --- SISTEMA DE DRAG & DROP E ORDENAÇÃO MANUAL ---
@@ -3449,13 +3452,14 @@ window.updateVisitCC = function(idx, val) {
         
         function updatePlanItem(idx, field, val) { 
             if(STATE.planContext && DB.planning[STATE.planContext][idx]) { 
-                const item = DB.planning[STATE.planContext][idx]; 
+                const plan = DB.planning[STATE.planContext];
+                const item = plan[idx]; 
                 
-                // --- NOVA TRAVA DE SEGURANÇA: CONTRATURNO ---
+                // --- NOVA TRAVA DE SEGURANÇA: CONTRATURNO (MANTIDA INTACTA) ---
                 if (field === 'date' && val) {
                     const parts = val.split('-');
                     const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-                    const dayOfWeek = dateObj.getDay(); // 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
+                    const dayOfWeek = dateObj.getDay(); 
                     const ct = item.student.contraTurno || {};
 
                     const dayMap = { 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex' };
@@ -3463,19 +3467,89 @@ window.updateVisitCC = function(idx, val) {
 
                     if (dayMap[dayOfWeek] && ct[dayMap[dayOfWeek]]) {
                         alert(`❌ BLOQUEIO DE AGENDAMENTO:\n\nO(a) aprendiz ${item.student.nome} possui contra-turno na prática toda ${dayNames[dayOfWeek]}.\n\nA visita não pode ser agendada para esta data. Por favor, escolha outro dia.`);
-                        renderPlanningTable(); // Desfaz a digitação na tela voltando para a data anterior ou em branco
-                        return; // Interrompe a função para não salvar
+                        if(typeof renderPlanningTable === 'function') renderPlanningTable(); 
+                        return; 
                     }
                 }
                 // ---------------------------------------------
 
+                // 1. Atualiza a linha que você acabou de digitar
                 item[field] = val; 
                 
+                // =========================================================
+                // 🤖 ASSISTENTE INTELIGENTE: FUNCIONA EM QUALQUER LINHA!
+                // =========================================================
+                // A regra agora é: O campo é data? Tem linhas ABAIXO dessa? A data não tá vazia?
+                if (field === 'date' && idx < plan.length - 1 && val !== '') {
+                    setTimeout(() => {
+                        const dataFormatada = val.split('-').reverse().join('/'); 
+                        const linhaAtual = idx + 1; // Transforma o índice do sistema (0) em linha visual (1)
+                        
+                        // Pergunta 1: Quer copiar para todos abaixo?
+                        const querTodos = confirm(`Você preencheu a data na linha ${linhaAtual}.\n\nDeseja copiar esta data (${dataFormatada}) para TODOS os alunos ABAIXO desta linha?`);
+                        
+                        let limite = -1;
+
+                        if (querTodos) {
+                            limite = plan.length;
+                        } else {
+                            // Pergunta 2: Se não for todos, até qual linha?
+                            const resp = prompt(`Ok! Até qual linha você deseja preencher?\n\n(O roteiro possui ${plan.length} alunos)\n\nDigite um número maior que ${linhaAtual} (ou clique em Cancelar para manter apenas neste aluno):`);
+                            
+                            if (resp !== null && resp.trim() !== '') {
+                                const num = parseInt(resp);
+                                if (!isNaN(num) && num > linhaAtual) {
+                                    limite = Math.min(num, plan.length);
+                                } else {
+                                    alert("Número inválido. A data foi mantida apenas nesta linha.");
+                                }
+                            }
+                        }
+
+                        // O Motor: Começa a copiar da próxima linha (idx + 1) até o limite escolhido
+                        if (limite > linhaAtual) {
+                            let copiados = 0;
+                            let bloqueados = 0;
+                            
+                            const parts = val.split('-');
+                            const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+                            const dayOfWeek = dateObj.getDay();
+                            const dayMap = { 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex' };
+
+                            for (let i = idx + 1; i < limite; i++) {
+                                const checkItem = plan[i];
+                                const ct = checkItem.student.contraTurno || {};
+                                
+                                // Proteção contra-turno no lote
+                                if (dayMap[dayOfWeek] && ct[dayMap[dayOfWeek]]) {
+                                    bloqueados++;
+                                    continue; 
+                                }
+                                
+                                checkItem.date = val;
+                                copiados++;
+                            }
+                            
+                            if(typeof window.saveToStorage === 'function') window.saveToStorage();
+                            if(typeof window.renderPlanningTable === 'function') window.renderPlanningTable();
+                            
+                            let msgFinal = `${copiados} linhas ABAIXO foram preenchidas automaticamente!`;
+                            if (bloqueados > 0) {
+                                msgFinal += `\n\n🛡️ PROTEÇÃO ATIVA: ${bloqueados} aluno(s) foram ignorados na cópia porque possuem contra-turno neste dia da semana!`;
+                                alert(msgFinal); 
+                            } else {
+                                if (typeof showToast === 'function') showToast(msgFinal);
+                                else alert(msgFinal);
+                            }
+                        }
+                    }, 150);
+                }
+                // =========================================================
+                
                 if(field === 'status' && val === 'Realizada') { 
-                    syncVisitStatus(item); 
+                    if(typeof syncVisitStatus === 'function') syncVisitStatus(item); 
                 } 
                 
-                // Sincroniza a observação do roteiro de volta para a base original do aluno
                 if (field === 'obs') {
                     const studentId = item.student.id;
                     const sQuali = DB.quali.find(s => s.id === studentId);
@@ -3485,8 +3559,10 @@ window.updateVisitCC = function(idx, val) {
                     item.student.obs_origem = val;
                 }
                 
-                saveToStorage(); 
-                if(field === 'status' || field === 'ordem') renderPlanningTable(); 
+                if(typeof window.saveToStorage === 'function') window.saveToStorage(); 
+                if(field === 'status' || field === 'ordem') {
+                    if(typeof window.renderPlanningTable === 'function') window.renderPlanningTable(); 
+                }
             } 
         }
         
