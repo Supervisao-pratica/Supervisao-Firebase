@@ -5278,26 +5278,29 @@ window.importTurmasLote = function() {
             }
 
             // 2. Se não achou endereço interno, tenta a Receita Federal via CNPJ
-            if (!endEncontrado) {
-                let cnpjLimpo = document.getElementById('editCNPJ') ? document.getElementById('editCNPJ').value.replace(/\D/g, '') : "";
-                if (!cnpjLimpo && window.STATE && window.STATE.editingId) {
-                    const alunoAtual = todosAlunos.find(x => x.id === window.STATE.editingId);
-                    if (alunoAtual) cnpjLimpo = String(alunoAtual.cnpj_empresa || (alunoAtual.empresa && alunoAtual.empresa.cnpj) || alunoAtual.cnpj || "").replace(/\D/g, '');
-                }
-                
-                if (cnpjLimpo.length > 0 && cnpjLimpo.length < 14) cnpjLimpo = cnpjLimpo.padStart(14, '0');
-                
                 if (cnpjLimpo.length === 14) {
                     try {
                         const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
                         if (res.ok) {
                             const json = await res.json();
-                            endEncontrado = `${json.logradouro}, ${json.numero}${json.complemento ? ' - ' + json.complemento : ''} - ${json.bairro}, ${json.municipio} - ${json.uf}`;
-                            linkEncontrado = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endEncontrado)}`;
+                            
+                            // --- NOVA TRAVA DE SEGURANÇA GEOGRÁFICA ---
+                            const cidadeReceita = window.limparTextoBusca(json.municipio || "");
+                            const cidadeAluno = window.limparTextoBusca(document.getElementById('editCidade') ? document.getElementById('editCidade').value : "");
+                            
+                            // Se o sistema já tem uma cidade, comparamos. Se a da Receita for diferente, avisamos!
+                            if (cidadeAluno && cidadeReceita && !cidadeReceita.includes(cidadeAluno) && !cidadeAluno.includes(cidadeReceita)) {
+                                console.warn("Atenção: Endereço da Receita é da Matriz (Outra cidade).");
+                                alert(`⚠️ AVISO:\n\nO endereço encontrado no CNPJ (${json.municipio}) parece ser da Sede (Matriz) e não bate com a cidade do aluno (${cidadeAluno}).\n\nPor segurança, não preenchemos automaticamente.`);
+                            } else {
+                                // Se as cidades batem, aí sim preenchemos!
+                                endEncontrado = `${json.logradouro}, ${json.numero}${json.complemento ? ' - ' + json.complemento : ''} - ${json.bairro}, ${json.municipio} - ${json.uf}`;
+                                linkEncontrado = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endEncontrado)}`;
+                            }
+                            // -------------------------------------------
                         }
                     } catch (e) { console.log("Erro API:", e); }
                 }
-            }
 
             // 3. Restaura o botão e aplica resultados
             if (btn && textoOriginal) {
