@@ -662,11 +662,16 @@
                             
                             <!-- Botão Lixeira com Segurança Inline -->
                             <button id="btnDeletePlan" onclick="triggerDeletePlan()" class="px-3 py-1.5 bg-red-50 border border-red-200 text-red-500 hover:bg-red-100 hover:text-red-700 rounded text-xs font-bold transition-colors" title="Limpar Planejamento"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+                            
                             <div id="confirmDeletePlan" class="hidden items-center gap-1 bg-red-50 border border-red-200 p-1 rounded-lg shadow-sm">
                                 <span class="text-[10px] font-bold text-red-600 ml-1">Limpar Tudo?</span>
                                 <button onclick="executeDeletePlan()" class="px-2 py-1 bg-red-500 text-white hover:bg-red-600 rounded text-[10px] font-bold shadow-sm">Sim</button>
                                 <button onclick="cancelDeletePlan()" class="px-2 py-1 bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 rounded text-[10px] font-bold shadow-sm">Não</button>
                             </div>
+
+                            <button onclick="window.renomearPlanejamentoAtual()" class="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 hover:text-amber-700 rounded text-xs font-bold transition-colors flex items-center gap-1" title="Renomear Roteiro">
+                                <i data-lucide="edit" class="w-3 h-3"></i> Renomear
+                            </button>
                         </div>
                     </div>
                     
@@ -5779,7 +5784,6 @@ window.importTurmasLote = function() {
                 let fantasmas = [];
                 let inconformidades = [];
 
-                // Variável global apenas para a Data
                 let globalDataVisita = "";
 
                 const todosAlunos = [...DB.quali, ...DB.tec];
@@ -5818,7 +5822,6 @@ window.importTurmasLote = function() {
                     return "";
                 };
 
-                // 1ª VARREDURA: Encontrar apenas a Data Oficial
                 workbook.SheetNames.forEach(sheetName => {
                     const nomeAba = norm(sheetName);
                     if(nomeAba.includes("RESUMO") || nomeAba.includes("GRAFICO") || nomeAba.includes("PLANILHA1")) return; 
@@ -5828,8 +5831,6 @@ window.importTurmasLote = function() {
                     
                     rows.forEach((row, i) => {
                         const valA = String(row["A"] || "").toUpperCase().trim();
-                        
-                        // 1. DATA DA VISITA
                         if(valA.includes("DATA DA VISITA") || valA === "DATA") {
                             let nextRow = rows[i+1] || {};
                             let dataAchada = parseDate(nextRow["A"]) || parseDate(row["B"]) || parseDate(row["C"]);
@@ -5838,7 +5839,6 @@ window.importTurmasLote = function() {
                     });
                 });
 
-                // 2ª VARREDURA: Alunos e Auditoria (Blindada!)
                 workbook.SheetNames.forEach(sheetName => {
                     const nomeAba = norm(sheetName);
                     if(nomeAba.includes("RESUMO") || nomeAba.includes("GRAFICO") || nomeAba.includes("PLANILHA1")) return; 
@@ -5886,7 +5886,7 @@ window.importTurmasLote = function() {
                         roteiroItens.push({ 
                             ordem: roteiroItens.length + 1, 
                             student: alunoSistema, 
-                            date: globalDataVisita,  // A data continua sendo preenchida automaticamente!
+                            date: globalDataVisita, 
                             hrAtend: parseTime(row["A"]), 
                             hrFim: '', 
                             hrTeoria: alunoSistema.teoria || '', 
@@ -5956,72 +5956,128 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
+        // ✏️ FUNÇÃO PARA RENOMEAR O PLANEJAMENTO ATUAL (PASSO 1 AQUI!)
+        // =========================================================
+        window.renomearPlanejamentoAtual = function() {
+            const nomeAntigo = window.STATE ? window.STATE.planContext : null;
+            
+            if (!nomeAntigo || !window.DB.planning || !window.DB.planning[nomeAntigo]) {
+                return alert("Por favor, selecione um roteiro na lista primeiro para poder renomeá-lo.");
+            }
+
+            let novoNome = prompt(`Renomear o roteiro:\n"${nomeAntigo}"\n\nDigite o novo nome abaixo:`, nomeAntigo);
+            
+            if (!novoNome) return; 
+            novoNome = novoNome.trim().toUpperCase(); 
+            if (novoNome === nomeAntigo.toUpperCase()) return; 
+            
+            if (window.DB.planning[novoNome]) {
+                return alert("❌ Já existe um roteiro com este nome! Escolha outro.");
+            }
+
+            // Faz a troca no banco
+            window.DB.planning[novoNome] = window.DB.planning[nomeAntigo];
+            delete window.DB.planning[nomeAntigo];
+
+            window.STATE.planContext = novoNome;
+            
+            if (typeof saveToStorage === 'function') saveToStorage();
+            if (typeof initPlanSelector === 'function') initPlanSelector(); 
+            
+            const selectEl = document.getElementById('planSelector');
+            if(selectEl) selectEl.value = novoNome;
+
+            if (typeof renderPlanningTable === 'function') renderPlanningTable();
+            alert(`✅ Sucesso! O roteiro foi renomeado para:\n${novoNome}`);
+        };
+
+        // =========================================================
+        // CONTROLES DO MODAL DE NOVA TURMA (Segurança)
+        // =========================================================
+        window.fecharModalNovaTurma = function() {
+            const modal = document.getElementById('modalAddTurmaSeguro');
+            if(modal) modal.classList.add('hidden');
+        };
+
+        window.salvarTurmaSegura = function() {
+            const nomeInput = document.getElementById('inputNovaTurmaSegura');
+            const ccInput = document.getElementById('inputCCSeguro');
+            
+            const nome = nomeInput ? nomeInput.value.trim().toUpperCase() : "";
+            const cc = ccInput ? ccInput.value.trim() : "";
+
+            if (!nome) return alert("Digite o nome da turma!");
+
+            window.DB.controle_turmas = window.DB.controle_turmas || [];
+            if (window.DB.controle_turmas.find(t => t.nome === nome)) return alert("Essa turma já existe no Cofre!");
+
+            window.DB.controle_turmas.push({ nome: nome, cc: cc, manualVisitor: "" });
+            localStorage.setItem('senac_cofre_cc', JSON.stringify(window.DB.controle_turmas));
+            
+            if (typeof saveToStorage === 'function') saveToStorage();
+            if (typeof window.renderControleRateio === 'function') window.renderControleRateio();
+            
+            alert(`Turma ${nome} adicionada com sucesso!`);
+            nomeInput.value = ""; ccInput.value = "";
+            window.fecharModalNovaTurma();
+        };
+
+        // =========================================================
         // ☁️ MOTOR DE SINCRONIZAÇÃO EM TEMPO REAL E BACKUP
         // =========================================================
-        
-        // 1. Função que envia os dados para a Nuvem Firebase
         window.sincronizarComNuvem = function() {
+            if(typeof firebase === 'undefined' || !firebase.firestore) return;
             const db = firebase.firestore();
             const dadosParaSalvar = JSON.stringify(window.DB);
             
-            // Salva na nuvem na coleção "sistema", documento "banco_principal"
             db.collection('sistema').doc('banco_principal').set({
                 banco: dadosParaSalvar,
                 ultima_atualizacao: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
-                fazerBackupDeSegundaFeira(dadosParaSalvar); // Verifica o dia do backup
+                fazerBackupDeSegundaFeira(dadosParaSalvar); 
             }).catch(err => console.error("Erro ao salvar na nuvem:", err));
         };
 
-        // 2. Modificamos o seu "Salvar" antigo para agora avisar a Nuvem também
         const saveToStorageOriginal = window.saveToStorage || function() {
             localStorage.setItem('senac_db', JSON.stringify(window.DB));
         };
         
         window.saveToStorage = function() {
-            saveToStorageOriginal(); // Salva no computador localmente
-            sincronizarComNuvem();   // Dispara imediatamente para a internet
+            saveToStorageOriginal(); 
+            sincronizarComNuvem();  
         };
 
-        // 3. O "Radar" que fica esperando mudanças do outro lado
         window.iniciarEscutaDaNuvem = function() {
+            if(typeof firebase === 'undefined' || !firebase.firestore) return;
             const db = firebase.firestore();
             
-            // Fica olhando para a nuvem 24h por dia
             db.collection('sistema').doc('banco_principal').onSnapshot((doc) => {
                 if (doc.exists) {
                     const dadosNuvem = doc.data().banco;
                     const dadosAtuais = JSON.stringify(window.DB);
                     
-                    // Se a nuvem tiver algo diferente do que está na tela (ex: alguém salvou no Site)
                     if (dadosNuvem && dadosNuvem !== dadosAtuais) {
                         console.log("Atualização detectada! Sincronizando tela...");
+                        window.DB = JSON.parse(dadosNuvem); 
+                        localStorage.setItem('senac_db', dadosNuvem); 
                         
-                        window.DB = JSON.parse(dadosNuvem); // Atualiza a memória
-                        localStorage.setItem('senac_db', dadosNuvem); // Salva no HD
-                        
-                        // Atualiza as tabelas para você ver a novidade aparecer sozinha!
                         if(typeof runFilter === 'function') runFilter();
                         if(typeof renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) renderPlanningTable();
-                        
                         if(typeof showToast === 'function') showToast("Dados atualizados remotamente!");
                     }
                 }
             });
         };
 
-        // 4. Robô de Backup Automático Seguro (Toda Segunda-feira)
         window.fazerBackupDeSegundaFeira = function(dadosString) {
+            if(typeof firebase === 'undefined' || !firebase.firestore) return;
             const hoje = new Date();
             
-            // No JavaScript, getDay() retorna 1 para Segunda-feira
             if (hoje.getDay() === 1) {
-                const dataFormatada = hoje.toISOString().split('T')[0]; // Ex: 2026-05-18
+                const dataFormatada = hoje.toISOString().split('T')[0]; 
                 const db = firebase.firestore();
-                
                 const backupRef = db.collection('backups_semanais').doc(dataFormatada);
                 
-                // Ele verifica se já fez o backup hoje. Se não fez, ele cria!
                 backupRef.get().then(doc => {
                     if (!doc.exists) { 
                         backupRef.set({
@@ -6051,7 +6107,6 @@ window.importTurmasLote = function() {
                     if(typeof window.atualizarAutocompleteGlobal === 'function') window.atualizarAutocompleteGlobal();
                 }
 
-                // LIGA O RADAR DA NUVEM (Sincronização em tempo real ativada)
                 if(typeof window.iniciarEscutaDaNuvem === 'function') window.iniciarEscutaDaNuvem();
 
                 setTimeout(() => {
