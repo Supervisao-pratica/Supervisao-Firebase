@@ -5956,12 +5956,14 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // ✏️ FUNÇÃO PARA RENOMEAR O PLANEJAMENTO ATUAL (PASSO 1 AQUI!)
+        // ✏️ FUNÇÃO PARA RENOMEAR O PLANEJAMENTO ATUAL (CORRIGIDA)
         // =========================================================
         window.renomearPlanejamentoAtual = function() {
-            const nomeAntigo = window.STATE ? window.STATE.planContext : null;
+            // Lê o estado diretamente sem o 'window.' para reconhecer o roteiro aberto
+            const nomeAntigo = typeof STATE !== 'undefined' ? STATE.planContext : null;
+            const bd = typeof DB !== 'undefined' ? DB : null;
             
-            if (!nomeAntigo || !window.DB.planning || !window.DB.planning[nomeAntigo]) {
+            if (!nomeAntigo || !bd || !bd.planning || !bd.planning[nomeAntigo]) {
                 return alert("Por favor, selecione um roteiro na lista primeiro para poder renomeá-lo.");
             }
 
@@ -5971,16 +5973,32 @@ window.importTurmasLote = function() {
             novoNome = novoNome.trim().toUpperCase(); 
             if (novoNome === nomeAntigo.toUpperCase()) return; 
             
-            if (window.DB.planning[novoNome]) {
+            if (bd.planning[novoNome]) {
                 return alert("❌ Já existe um roteiro com este nome! Escolha outro.");
             }
 
-            // Faz a troca no banco
-            window.DB.planning[novoNome] = window.DB.planning[nomeAntigo];
-            delete window.DB.planning[nomeAntigo];
+            // 1. Renomeia os alunos
+            bd.planning[novoNome] = bd.planning[nomeAntigo];
+            delete bd.planning[nomeAntigo];
 
-            window.STATE.planContext = novoNome;
+            // 2. 🛡️ BLINDAGEM: Renomeia também a Logística, Almoço e Admin (Para não apagar os dados!)
+            if (bd.planning_logistics && bd.planning_logistics[nomeAntigo]) {
+                bd.planning_logistics[novoNome] = bd.planning_logistics[nomeAntigo];
+                delete bd.planning_logistics[nomeAntigo];
+            }
+            if (bd.planning_lunch && bd.planning_lunch[nomeAntigo]) {
+                bd.planning_lunch[novoNome] = bd.planning_lunch[nomeAntigo];
+                delete bd.planning_lunch[nomeAntigo];
+            }
+            if (bd.planning_admin && bd.planning_admin[nomeAntigo]) {
+                bd.planning_admin[novoNome] = bd.planning_admin[nomeAntigo];
+                delete bd.planning_admin[nomeAntigo];
+            }
+
+            // Avisa o sistema que o nome mudou
+            STATE.planContext = novoNome;
             
+            // Salva e atualiza tudo
             if (typeof saveToStorage === 'function') saveToStorage();
             if (typeof initPlanSelector === 'function') initPlanSelector(); 
             
