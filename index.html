@@ -5592,38 +5592,49 @@ window.importTurmasLote = function() {
             if (totalHoras <= 0) return alert("Por favor, informe a quantidade de horas gastas (maior que zero)!");
 
             // 3. Agrupa os alunos por Turma e resgata o CC
-            let turmasMap = {};
-            
-            roteiro.forEach(item => {
-                const aluno = item.student;
-                if (!aluno) return;
-
-                const turmaNome = aluno.turma ? String(aluno.turma).trim().toUpperCase() : "SEM TURMA";
+                let turmasMap = {};
                 
-                // Inteligência em 3 níveis para achar o CC da turma
-                let ccTurma = aluno.cc || "";
-                if (!ccTurma && window.DB.cc_map) ccTurma = window.DB.cc_map[turmaNome] || "";
-                if (!ccTurma && window.DB.controle_turmas) {
-                    const tCofre = window.DB.controle_turmas.find(t => String(t.nome).toUpperCase() === turmaNome);
-                    if (tCofre) ccTurma = tCofre.cc;
+                roteiro.forEach(item => {
+                    const aluno = item.student;
+                    if (!aluno) return;
+
+                    // 🔥 A TRAVA DE SEGURANÇA:
+                    // Só entra no rateio se o status for exatamente "Realizada"
+                    if (item.status !== "Realizada") return;
+
+                    const turmaNome = aluno.turma ? String(aluno.turma).trim().toUpperCase() : "SEM TURMA";
+                    
+                    // Inteligência em 3 níveis para achar o CC da turma
+                    let ccTurma = aluno.cc || "";
+                    if (!ccTurma && window.DB.cc_map) ccTurma = window.DB.cc_map[turmaNome] || "";
+                    if (!ccTurma && window.DB.controle_turmas) {
+                        const tCofre = window.DB.controle_turmas.find(t => String(t.nome).toUpperCase() === turmaNome);
+                        if (tCofre) ccTurma = tCofre.cc;
+                    }
+
+                    if (!turmasMap[turmaNome]) {
+                        turmasMap[turmaNome] = { cc: ccTurma || "CC Pendente", qtdAlunos: 0 };
+                    }
+                    turmasMap[turmaNome].qtdAlunos++;
+                });
+
+                const turmasUnicas = Object.keys(turmasMap);
+                const qtdTurmas = turmasUnicas.length;
+
+                const tbody = document.getElementById('rateioTabelaBody');
+                if (!tbody) return console.error("Tabela de rateio não encontrada!");
+
+                // 🛡️ AVISO CASO NINGUÉM TENHA SIDO REALIZADO
+                if (qtdTurmas === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="text-center p-4 text-slate-500 font-bold italic">⚠️ Nenhum aluno com status "Realizada" encontrado.<br>Nenhum débito foi feito.</td></tr>`;
+                    
+                    // Zera os totais na tela para evitar confusão
+                    const labelCusto = document.getElementById('rateioLabelCusto');
+                    const labelHoras = document.getElementById('rateioLabelHoras');
+                    if (labelCusto) labelCusto.innerText = "R$ 0,00";
+                    if (labelHoras) labelHoras.innerText = "0,00";
+                    return;
                 }
-
-                if (!turmasMap[turmaNome]) {
-                    turmasMap[turmaNome] = { cc: ccTurma || "CC Pendente", qtdAlunos: 0 };
-                }
-                turmasMap[turmaNome].qtdAlunos++;
-            });
-
-            const turmasUnicas = Object.keys(turmasMap);
-            const qtdTurmas = turmasUnicas.length;
-
-            const tbody = document.getElementById('rateioTabelaBody');
-            if (!tbody) return console.error("Tabela de rateio não encontrada!");
-
-            if (qtdTurmas === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center p-4 text-slate-500 font-bold">Nenhum aluno neste roteiro.</td></tr>`;
-                return;
-            }
 
             // 4. A MÁGICA: Fragmenta as horas pelo número de turmas atendidas no dia
             const horasPorTurma = totalHoras / qtdTurmas;
