@@ -5956,16 +5956,15 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // ✏️ FUNÇÃO PARA RENOMEAR O PLANEJAMENTO ATUAL (CORRIGIDA)
+        // ✏️ FUNÇÃO PARA RENOMEAR O PLANEJAMENTO ATUAL (100% NATIVA)
         // =========================================================
-        window.renomearPlanejamentoAtual = function() {
-            // Lê o estado diretamente sem o 'window.' para reconhecer o roteiro aberto
-            const nomeAntigo = typeof STATE !== 'undefined' ? STATE.planContext : null;
-            const bd = typeof DB !== 'undefined' ? DB : null;
-            
-            if (!nomeAntigo || !bd || !bd.planning || !bd.planning[nomeAntigo]) {
+        function renomearPlanejamentoAtual() {
+            // Agora ele lê os dados exatamente como as suas outras funções fazem
+            if (!STATE || !STATE.planContext || !DB || !DB.planning || !DB.planning[STATE.planContext]) {
                 return alert("Por favor, selecione um roteiro na lista primeiro para poder renomeá-lo.");
             }
+
+            const nomeAntigo = STATE.planContext;
 
             let novoNome = prompt(`Renomear o roteiro:\n"${nomeAntigo}"\n\nDigite o novo nome abaixo:`, nomeAntigo);
             
@@ -5973,33 +5972,33 @@ window.importTurmasLote = function() {
             novoNome = novoNome.trim().toUpperCase(); 
             if (novoNome === nomeAntigo.toUpperCase()) return; 
             
-            if (bd.planning[novoNome]) {
+            if (DB.planning[novoNome]) {
                 return alert("❌ Já existe um roteiro com este nome! Escolha outro.");
             }
 
-            // 1. Renomeia os alunos
-            bd.planning[novoNome] = bd.planning[nomeAntigo];
-            delete bd.planning[nomeAntigo];
+            // 1. Transfere os alunos
+            DB.planning[novoNome] = DB.planning[nomeAntigo];
+            delete DB.planning[nomeAntigo];
 
-            // 2. 🛡️ BLINDAGEM: Renomeia também a Logística, Almoço e Admin (Para não apagar os dados!)
-            if (bd.planning_logistics && bd.planning_logistics[nomeAntigo]) {
-                bd.planning_logistics[novoNome] = bd.planning_logistics[nomeAntigo];
-                delete bd.planning_logistics[nomeAntigo];
+            // 2. Transfere as outras abas para não perder os dados!
+            if (DB.planning_logistics && DB.planning_logistics[nomeAntigo]) {
+                DB.planning_logistics[novoNome] = DB.planning_logistics[nomeAntigo];
+                delete DB.planning_logistics[nomeAntigo];
             }
-            if (bd.planning_lunch && bd.planning_lunch[nomeAntigo]) {
-                bd.planning_lunch[novoNome] = bd.planning_lunch[nomeAntigo];
-                delete bd.planning_lunch[nomeAntigo];
+            if (DB.planning_lunch && DB.planning_lunch[nomeAntigo]) {
+                DB.planning_lunch[novoNome] = DB.planning_lunch[nomeAntigo];
+                delete DB.planning_lunch[nomeAntigo];
             }
-            if (bd.planning_admin && bd.planning_admin[nomeAntigo]) {
-                bd.planning_admin[novoNome] = bd.planning_admin[nomeAntigo];
-                delete bd.planning_admin[nomeAntigo];
+            if (DB.planning_admin && DB.planning_admin[nomeAntigo]) {
+                DB.planning_admin[novoNome] = DB.planning_admin[nomeAntigo];
+                delete DB.planning_admin[nomeAntigo];
             }
 
             // Avisa o sistema que o nome mudou
             STATE.planContext = novoNome;
             
             // Salva e atualiza tudo
-            if (typeof saveToStorage === 'function') saveToStorage();
+            saveToStorage();
             if (typeof initPlanSelector === 'function') initPlanSelector(); 
             
             const selectEl = document.getElementById('planSelector');
@@ -6007,7 +6006,7 @@ window.importTurmasLote = function() {
 
             if (typeof renderPlanningTable === 'function') renderPlanningTable();
             alert(`✅ Sucesso! O roteiro foi renomeado para:\n${novoNome}`);
-        };
+        }
 
         // =========================================================
         // CONTROLES DO MODAL DE NOVA TURMA (Segurança)
