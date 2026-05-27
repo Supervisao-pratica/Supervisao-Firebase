@@ -5440,7 +5440,7 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // 🔑 SINCRONIZADOR DE CÓDIGOS DE ALUNOS (ALVO CORRIGIDO)
+        // 🔑 SINCRONIZADOR DE CÓDIGOS (LEITURA BLINDADA E FILTRO EXTREMO)
         // =========================================================
         window.importarCodigosAlunos = function() {
             const input = document.createElement('input');
@@ -5451,55 +5451,91 @@ window.importTurmasLote = function() {
                 const file = e.target.files[0];
                 if (!file) return;
                 
+                if(typeof showToast === 'function') showToast("Lendo a planilha e buscando nomes...");
+                
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     try {
                         const data = new Uint8Array(e.target.result);
+                        
+                        // 🚀 A MÁGICA: A biblioteca XLSX entende as quebras de linha DENTRO das células do seu CSV!
                         const workbook = XLSX.read(data, {type: 'array'});
                         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
                         const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1, defval: ""});
                         
-                        let headerIdx = rows.findIndex(r => r.some(c => String(c).includes('Apr. Nome')));
-                        if (headerIdx === -1) return alert("Coluna 'Apr. Nome' não encontrada.");
+                        if (rows.length < 2) return alert("Planilha vazia ou formato ilegível.");
 
-                        const idxNome = rows[headerIdx].findIndex(c => String(c).includes('Apr. Nome'));
-                        const idxCod = rows[headerIdx].findIndex(c => String(c).includes('Apr. Cod'));
+                        // Procura a linha de cabeçalho
+                        let headerIdx = -1;
+                        let idxCod = -1;
+                        let idxNome = -1;
 
-                        const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').toUpperCase().trim();
+                        for (let i = 0; i < Math.min(10, rows.length); i++) {
+                            const linha = rows[i].map(h => String(h || "").toLowerCase().trim());
+                            
+                            const findCod = linha.findIndex(h => h === 'apr. cod' || h === 'apr cod');
+                            const findNome = linha.findIndex(h => h === 'apr. nome' || h === 'apr nome');
+
+                            if (findCod !== -1 && findNome !== -1) {
+                                headerIdx = i;
+                                idxCod = findCod;
+                                idxNome = findNome;
+                                break;
+                            }
+                        }
+
+                        // 🔥 PLANO B (A GARANTIA): Se não achar pelo cabeçalho, vai direto nas colunas U e V!
+                        if (headerIdx === -1 || idxCod === -1 || idxNome === -1) {
+                            console.log("Cabeçalho confuso. Forçando a leitura nas colunas U(20) e V(21).");
+                            headerIdx = 0; // Pula a linha de títulos
+                            idxCod = 20;   // Coluna U (Apr. Cod)
+                            idxNome = 21;  // Coluna V (Apr. Nome)
+                        }
+
+                        // 🔍 FILTRO EXTREMO: Remove acentos, símbolos e TODOS OS ESPAÇOS para casar perfeitamente
+                        const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9]/gi, "").toUpperCase().trim();
+                        
                         const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
                         
                         let codigosInjetados = 0;
-                        let erros = [];
+                        let relatorioErros = [];
 
                         for (let i = headerIdx + 1; i < rows.length; i++) {
-                            const nomePlan = normalizar(rows[i][idxNome]);
-                            const codPlan = String(rows[i][idxCod] || "").trim();
+                            const row = rows[i];
+                            if (!row || row.length === 0) continue;
 
-                            if (!nomePlan || !codPlan) continue;
+                            let codigoPlanilha = String(row[idxCod] || "").trim();
+                            let nomePlanilha = String(row[idxNome] || "");
 
-                            // Busca com tolerância a erro de digitação
-                            const aluno = todosAlunos.find(a => {
-                                const nomeSistema = normalizar(a.nome);
-                                return nomeSistema === nomePlan || nomeSistema.includes(nomePlan) || nomePlan.includes(nomeSistema);
-                            });
-                            
-                            if (aluno) {
-                                aluno.codigo_aluno = codPlan;
-                                aluno.codigo = codPlan;
-                                codigosInjetados++;
-                            } else {
-                                erros.push(`Planilha: "${nomePlan}" (Não achado no sistema)`);
+                            // Só processa se tiver um código de números válido e um nome escrito
+                            if (codigoPlanilha.match(/\d+/) && nomePlanilha.trim()) {
+                                
+                                const nomeLimpoPlanilha = normalizar(nomePlanilha);
+                                
+                                // O "Match": Compara o nome espremido (ex: GABRIELAXAVIERDOSSANTOS) com o banco
+                                const aluno = todosAlunos.find(a => normalizar(a.nome) === nomeLimpoPlanilha);
+                                
+                                if (aluno) {
+                                    aluno.codigo_aluno = codigoPlanilha;
+                                    aluno.codigo = codigoPlanilha; // Salva nas duas variáveis por segurança para relatórios
+                                    codigosInjetados++;
+                                } else {
+                                    relatorioErros.push(`- Lemos: "${nomePlanilha.trim()}" (Cod: ${codigoPlanilha})`);
+                                }
                             }
                         }
 
                         if (codigosInjetados > 0) {
-                            saveToStorage();
-                            alert(`✅ SUCESSO!\n\n🔑 ${codigosInjetados} alunos vinculados.`);
-                            renderPlanningTable();
+                            if (typeof saveToStorage === 'function') saveToStorage();
+                            alert(`✅ SUCESSO TOTAL!\n\n🔑 ${codigosInjetados} alunos acabaram de receber seus códigos e eles sairão nos relatórios!`);
+                            if (typeof renderPlanningTable === 'function') renderPlanningTable();
                         } else {
-                            alert(`❌ Nenhum aluno vinculado.\n\nExemplo do que li na planilha:\n${erros.slice(0, 5).join('\n')}\n\nVerifique se esses nomes existem na aba "Qualificação" ou "Técnica".`);
+                            alert(`❌ NENHUM ALUNO ENCONTRADO NO SISTEMA.\n\nA planilha foi lida nas colunas corretas (U e V), mas os nomes não batem com o banco de dados.\n\nExemplo do que o arquivo trouxe:\n${relatorioErros.slice(0, 5).join('\n')}`);
                         }
-                    } catch (err) { alert("Erro: " + err.message); }
+
+                    } catch (err) {
+                        alert("Erro ao ler a planilha: " + err.message);
+                    }
                 };
                 reader.readAsArrayBuffer(file);
             };
