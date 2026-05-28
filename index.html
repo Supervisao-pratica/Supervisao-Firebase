@@ -658,7 +658,12 @@
                             <button id="btnToggleFullscreen" onclick="toggleFullscreenPlan()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-bold flex items-center gap-1 shadow-md transition-colors" title="Expandir/Reduzir Tela"><i data-lucide="maximize" class="w-3 h-3"></i> <span class="hidden md:inline">Expandir</span></button>
 
                             <button onclick="window.print()" class="px-3 py-1.5 bg-white border hover:bg-slate-50 text-slate-600 rounded text-xs font-bold flex items-center gap-1"><i data-lucide="printer" class="w-3 h-3"></i> Imprimir</button>
-                            <button onclick="exportPlan()" class="px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 rounded text-xs font-bold flex items-center gap-1"><i data-lucide="file-spreadsheet" class="w-3 h-3"></i> Excel</button>
+
+<button onclick="exportPlan()" class="px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 rounded text-xs font-bold flex items-center gap-1"><i data-lucide="file-spreadsheet" class="w-3 h-3"></i> Excel</button>
+
+<button onclick="window.exportarMalaDireta()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Baixa a planilha pronta para a Mala Direta do Word">
+    <i data-lucide="file-text" class="w-3 h-3"></i> Gerar Mala Direta
+</button>
                             
                             <!-- Botão Lixeira com Segurança Inline -->
                             <button id="btnDeletePlan" onclick="triggerDeletePlan()" class="px-3 py-1.5 bg-red-50 border border-red-200 text-red-500 hover:bg-red-100 hover:text-red-700 rounded text-xs font-bold transition-colors" title="Limpar Planejamento"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
@@ -6115,6 +6120,74 @@ window.importTurmasLote = function() {
                     }
                 });
             }
+        };
+        // =========================================================================
+        // 🖨️ EXPORTADOR PARA MALA DIRETA WORD (PADRÃO SENAC RIGOROSO)
+        // =========================================================================
+        window.exportarMalaDireta = function() {
+            const ctx = typeof STATE !== 'undefined' ? STATE.planContext : null;
+            const bd = typeof DB !== 'undefined' ? DB : null;
+
+            if (!ctx || !bd || !bd.planning || !bd.planning[ctx] || bd.planning[ctx].length === 0) {
+                return alert("❌ O roteiro está vazio ou nenhum roteiro foi selecionado.");
+            }
+
+            const roteiro = bd.planning[ctx];
+
+            // Cabeçalho do CSV (Separado por ponto e vírgula para o Word Brasileiro reconhecer automático)
+            let csv = "\uFEFFAprendiz;Curso;Turma;Empresa;Cidade;Supervisor_Empresa;Contato_Empresa;Mes_Avaliacao;Ciclo_Visita;Data_Visita;Horario_Visita\n";
+
+            roteiro.forEach(item => {
+                const s = item.student;
+                if (!s) return;
+
+                // Função de segurança para limpar vírgulas e aspas que quebram o CSV
+                const limpa = (texto) => String(texto || '').replace(/;/g, ',').replace(/\n/g, ' ').trim();
+
+                const aprendiz = limpa(s.nome);
+                
+                // Descobre se é Qualificação ou Técnica
+                const isTec = (bd.tec || []).some(t => t.id === s.id);
+                const curso = isTec ? "Técnica" : "Qualificação";
+                
+                const turma = limpa(s.turma);
+                const empresa = limpa(s.empresa ? s.empresa.razao : '');
+                const cidade = limpa(s.cidade);
+                
+                const supervisorEmpresa = limpa(s.supervisor ? s.supervisor.display : '');
+                const contatoEmpresa = limpa(s.supervisor ? (s.supervisor.tel || s.supervisor.email) : '');
+                
+                // Formata a data (DD/MM/YYYY) e descobre o Mês por extenso para o Word
+                let mesAvaliacao = "";
+                let dataFormatada = "";
+                if (item.date) {
+                    const partes = item.date.split('-');
+                    if (partes.length === 3) {
+                        dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`;
+                        const meses = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+                        mesAvaliacao = meses[parseInt(partes[1], 10)] + " / " + partes[0];
+                    }
+                }
+
+                const ciclo = limpa(item.visitaTipo);
+                const horario = limpa(item.hrAtend);
+
+                // Monta a linha daquele aluno
+                csv += `${aprendiz};${curso};${turma};${empresa};${cidade};${supervisorEmpresa};${contatoEmpresa};${mesAvaliacao};${ciclo};${dataFormatada};${horario}\n`;
+            });
+
+            // Faz o download mágico do arquivo
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Mala_Direta_${ctx.replace(/\s+/g, '_')}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            alert(`✅ Arquivo de Mala Direta gerado com sucesso!\nAbra seu arquivo Word do Senac e vincule esta lista.`);
         };
 
         // =========================================================
