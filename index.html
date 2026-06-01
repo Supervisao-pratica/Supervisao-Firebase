@@ -6164,6 +6164,143 @@ window.importTurmasLote = function() {
             }
         };
 
+        // =========================================================================
+        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO DE FREQUÊNCIA (SENAC)
+        // =========================================================================
+        window.processarFrequenciaPedagogica = async function(event) {
+            try {
+                const file = event.target.files[0];
+                if(!file) return;
+
+                const loader = document.getElementById('globalLoader');
+                const loadMsg = document.getElementById('loadingMsg');
+                if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
+                if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO PEDAGÓGICO...";
+
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                const norm = str => (str || "").toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+                
+                let nomeAbaCorreta = null;
+                workbook.SheetNames.forEach(sheetName => {
+                    if (norm(sheetName).includes("PEDAGOGIC")) {
+                        nomeAbaCorreta = sheetName;
+                    }
+                });
+
+                if (!nomeAbaCorreta) {
+                    if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                    return alert("❌ Não encontrei a aba 'Pedagógico' nesta planilha. Verifique se é a folha de presenças correta.");
+                }
+
+                const sheet = workbook.Sheets[nomeAbaCorreta];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+                let indexCabecalho = -1;
+                let mapeamentoUCs = []; 
+
+                for (let r = 0; r < Math.min(5, rows.length); r++) {
+                    let achouUC = false;
+                    for (let c = 0; c < rows[r].length; c++) {
+                        let valorCelula = norm(rows[r][c]);
+                        
+                        if (valorCelula.includes("APROVEITAMENTO FREQUENCIA UC")) {
+                            achouUC = true;
+                            indexCabecalho = r;
+                            
+                            let nomeUC = "UC" + valorCelula.split("UC")[1];
+                            let proximaColuna = norm(rows[r][c+1] || "");
+                            let indexAva = (proximaColuna.includes("RESULTADO AVA")) ? (c + 1) : -1;
+                            
+                            mapeamentoUCs.push({
+                                nome: nomeUC.trim(),
+                                indexFreq: c,
+                                indexAva: indexAva
+                            });
+                        }
+                    }
+                    if (achouUC) break; 
+                }
+
+                if (mapeamentoUCs.length === 0) {
+                    throw new Error("O ficheiro não possui as colunas 'Aproveitamento Frequência UC...' no cabeçalho.");
+                }
+
+                const ctx = window.STATE ? window.STATE.planContext : null;
+                if (!ctx || !window.DB.planning || !window.DB.planning[ctx]) {
+                    throw new Error("Nenhum roteiro aberto para preencher.");
+                }
+                const roteiro = window.DB.planning[ctx];
+
+                let alunosAtualizados = 0;
+
+                roteiro.forEach(item => {
+                    if (!item.student) return;
+                    const nomeAlunoRoteiro = norm(item.student.nome);
+                    
+                    for (let i = indexCabecalho + 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        const celulaNome = norm(row[0]) + " " + norm(row[1]) + " " + norm(row[2]) + " " + norm(row[3]); 
+                        
+                        if (celulaNome.includes(nomeAlunoRoteiro)) {
+                            let relatorio = "[PEDAGÓGICO] ";
+                            let ucsStatus = [];
+
+                            mapeamentoUCs.forEach(uc => {
+                                let freqVal = row[uc.indexFreq];
+                                let avaVal = uc.indexAva !== -1 ? norm(row[uc.indexAva]) : "";
+                                
+                                let freqStr = "";
+                                if (typeof freqVal === 'number') {
+                                    freqStr = Math.round(freqVal * 100) + "%";
+                                } else {
+                                    freqStr = String(freqVal || "").trim();
+                                }
+
+                                if (freqStr && freqStr !== "0%" && freqStr !== "" && freqStr !== "0") {
+                                    let icon = "⚪ N/I"; 
+                                    
+                                    if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
+                                        icon = "🔴 Pendente";
+                                    } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
+                                        icon = "🟢 OK";
+                                    } else if (avaVal.includes("PARCIAL")) {
+                                        icon = "🟡 Parcial";
+                                    }
+
+                                    ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
+                                }
+                            });
+
+                            if (ucsStatus.length > 0) {
+                                relatorio += ucsStatus.join(" | ") + ".";
+                                const obsAtual = item.obs ? item.obs + "\n" : "";
+                                item.obs = obsAtual + relatorio;
+                                alunosAtualizados++;
+                            }
+                            break; 
+                        }
+                    }
+                });
+
+                if(typeof saveToStorage === 'function') saveToStorage();
+                if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                
+                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                
+                alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o seu relatório pedagógico atualizado.`);
+
+            } catch (e) {
+                console.error(e); 
+                alert("Erro ao ler pedagógico: " + e.message);
+                const loader = document.getElementById('globalLoader');
+                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+            } finally {
+                event.target.value = ''; 
+            }
+        };
+
         // =========================================================
         // 🏁 O "MOTOR DE ARRANQUE" ATUALIZADO (SEMPRE A ÚLTIMA COISA)
         // =========================================================
