@@ -6180,7 +6180,8 @@ window.importTurmasLote = function() {
                 const data = await file.arrayBuffer();
                 const workbook = XLSX.read(data, { type: 'array' });
                 
-                const norm = str => (str || "").toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+                // Normaliza texto: tira acentos e remove "quebras de linha ocultas" do Excel (Alt+Enter)
+                const norm = str => (str || "").toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").toUpperCase().trim();
                 
                 let nomeAbaCorreta = null;
                 workbook.SheetNames.forEach(sheetName => {
@@ -6200,21 +6201,25 @@ window.importTurmasLote = function() {
                 let indexCabecalho = -1;
                 let mapeamentoUCs = []; 
 
-                for (let r = 0; r < Math.min(5, rows.length); r++) {
+                // Varre as primeiras 10 linhas buscando as colunas das matérias
+                for (let r = 0; r < Math.min(10, rows.length); r++) {
                     let achouUC = false;
                     for (let c = 0; c < rows[r].length; c++) {
                         let valorCelula = norm(rows[r][c]);
                         
-                        if (valorCelula.includes("APROVEITAMENTO FREQUENCIA UC")) {
+                        if (valorCelula.includes("FREQUENCIA") && valorCelula.includes("UC")) {
                             achouUC = true;
                             indexCabecalho = r;
                             
-                            let nomeUC = "UC" + valorCelula.split("UC")[1];
+                            let partesUC = valorCelula.split("UC");
+                            let numUC = partesUC.length > 1 ? partesUC[1].trim().split(" ")[0] : "?";
+                            let nomeUC = "UC" + numUC;
+                            
                             let proximaColuna = norm(rows[r][c+1] || "");
-                            let indexAva = (proximaColuna.includes("RESULTADO AVA")) ? (c + 1) : -1;
+                            let indexAva = (proximaColuna.includes("RESULTADO") || proximaColuna.includes("AVA")) ? (c + 1) : -1;
                             
                             mapeamentoUCs.push({
-                                nome: nomeUC.trim(),
+                                nome: nomeUC,
                                 indexFreq: c,
                                 indexAva: indexAva
                             });
@@ -6224,7 +6229,7 @@ window.importTurmasLote = function() {
                 }
 
                 if (mapeamentoUCs.length === 0) {
-                    throw new Error("O ficheiro não possui as colunas 'Aproveitamento Frequência UC...' no cabeçalho.");
+                    throw new Error("O sistema não encontrou o cabeçalho com os nomes das UCs na planilha.");
                 }
 
                 const ctx = window.STATE ? window.STATE.planContext : null;
@@ -6235,15 +6240,21 @@ window.importTurmasLote = function() {
 
                 let alunosAtualizados = 0;
 
+                // Percorre TODOS os alunos do roteiro
                 roteiro.forEach(item => {
-                    if (!item.student) return;
+                    if (!item.student || !item.student.nome) return;
                     const nomeAlunoRoteiro = norm(item.student.nome);
                     
+                    // Procura o aluno no Excel
                     for (let i = indexCabecalho + 1; i < rows.length; i++) {
                         const row = rows[i];
-                        const celulaNome = norm(row[0]) + " " + norm(row[1]) + " " + norm(row[2]) + " " + norm(row[3]); 
+                        if (!row) continue;
                         
-                        if (celulaNome.includes(nomeAlunoRoteiro)) {
+                        // Transforma a linha do Excel numa frase única para achar o nome não importa em qual coluna esteja!
+                        const linhaCompleta = row.map(c => norm(c)).join(" "); 
+                        
+                        // SE ENCONTRAR O ALUNO NESTE DOCUMENTO:
+                        if (linhaCompleta.includes(nomeAlunoRoteiro)) {
                             let relatorio = "[PEDAGÓGICO] ";
                             let ucsStatus = [];
 
@@ -6258,7 +6269,7 @@ window.importTurmasLote = function() {
                                     freqStr = String(freqVal || "").trim();
                                 }
 
-                                if (freqStr && freqStr !== "0%" && freqStr !== "" && freqStr !== "0") {
+                                if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
                                     let icon = "⚪ N/I"; 
                                     
                                     if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
@@ -6275,12 +6286,19 @@ window.importTurmasLote = function() {
 
                             if (ucsStatus.length > 0) {
                                 relatorio += ucsStatus.join(" | ") + ".";
-                                const obsAtual = item.obs ? item.obs + "\n" : "";
-                                item.obs = obsAtual + relatorio;
+                                
+                                // Evita duplicar se você ler a mesma planilha duas vezes
+                                if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
+                                    item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
+                                } else {
+                                    const obsAtual = item.obs ? item.obs + "\n" : "";
+                                    item.obs = obsAtual + relatorio;
+                                }
                                 alunosAtualizados++;
                             }
-                            break; 
+                            break; // Achou o aluno, vai para o próximo do roteiro
                         }
+                        // SE NÃO ENCONTRAR: O loop termina e ele pula o aluno (deixando intacto para outra turma)
                     }
                 });
 
@@ -6289,11 +6307,12 @@ window.importTurmasLote = function() {
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
-                alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o seu relatório pedagógico atualizado.`);
+                // Exibe no final quantos foram achados!
+                alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) DESTA TURMA tiveram o relatório atualizado.`);
 
             } catch (e) {
                 console.error(e); 
-                alert("Erro ao ler pedagógico: " + e.message);
+                alert("Erro ao ler pedagógico:\n" + e.message);
                 const loader = document.getElementById('globalLoader');
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
             } finally {
