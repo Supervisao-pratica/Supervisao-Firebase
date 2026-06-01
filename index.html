@@ -6230,14 +6230,15 @@ window.importTurmasLote = function() {
                     throw new Error("O sistema não encontrou o cabeçalho com os nomes das UCs na planilha.");
                 }
 
-                // 🔥 CORREÇÃO AQUI: Ele agora lê diretamente as variáveis originais 'STATE' e 'DB' 
-                const ctx = typeof STATE !== 'undefined' ? STATE.planContext : null;
-                const bd = typeof DB !== 'undefined' ? DB : null;
+                const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+
+                const ctx = stateObj ? stateObj.planContext : null;
                 
-                if (!ctx || !bd || !bd.planning || !bd.planning[ctx]) {
-                    throw new Error("Nenhum roteiro aberto para preencher.");
+                if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
+                    throw new Error("Nenhum roteiro aberto para preencher. Por favor, selecione um roteiro na tela.");
                 }
-                const roteiro = bd.planning[ctx];
+                const roteiro = dbObj.planning[ctx];
 
                 let alunosAtualizados = 0;
 
@@ -6260,22 +6261,31 @@ window.importTurmasLote = function() {
                                 let avaVal = uc.indexAva !== -1 ? norm(row[uc.indexAva]) : "";
                                 
                                 let freqStr = "";
+                                let freqNumber = null;
+
                                 if (typeof freqVal === 'number') {
-                                    freqStr = Math.round(freqVal * 100) + "%";
+                                    freqNumber = freqVal * 100;
+                                    freqStr = Math.round(freqNumber) + "%";
                                 } else {
                                     freqStr = String(freqVal || "").trim();
+                                    let parseado = parseFloat(freqStr.replace(',', '.').replace('%', ''));
+                                    if (!isNaN(parseado)) {
+                                        freqNumber = parseado;
+                                    }
                                 }
 
                                 if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
                                     let icon = "⚪ N/I"; 
                                     
-                                    // 🔥 AS SUAS NOVAS REGRAS ESTÃO AQUI:
-                                    if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
+                                    // 🔥 REGRA ATUALIZADA: Se for menor que 75, Conselho. Senão...
+                                    if (freqNumber !== null && freqNumber < 75) {
+                                        icon = "🔴 Conselho de Classe";
+                                    } else if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
                                         icon = "🔴 Recuperação";
                                     } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
                                         icon = "🟢 OK";
-                                    } else if (avaVal === "" || avaVal.includes("PARCIAL")) {
-                                        // Se a frequência existe mas o AVA está vazio (sem desenvolver/não desenvolver), é Parcial!
+                                    } else if (avaVal === "" || avaVal === "0" || avaVal === "-" || avaVal.includes("PARCIAL")) {
+                                        // 🔥 AGORA LÊ O "0" ou "-" COMO PARCIAL!
                                         icon = "🟡 Parcial";
                                     }
 
