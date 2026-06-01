@@ -6269,11 +6269,13 @@ window.importTurmasLote = function() {
                                 if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
                                     let icon = "⚪ N/I"; 
                                     
+                                    // 🔥 AS SUAS NOVAS REGRAS ESTÃO AQUI:
                                     if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
                                         icon = "🔴 Recuperação";
                                     } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
                                         icon = "🟢 OK";
-                                    } else if (avaVal.includes("PARCIAL")) {
+                                    } else if (avaVal === "" || avaVal.includes("PARCIAL")) {
+                                        // Se a frequência existe mas o AVA está vazio (sem desenvolver/não desenvolver), é Parcial!
                                         icon = "🟡 Parcial";
                                     }
 
