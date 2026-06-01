@@ -6180,7 +6180,6 @@ window.importTurmasLote = function() {
                 const data = await file.arrayBuffer();
                 const workbook = XLSX.read(data, { type: 'array' });
                 
-                // Normaliza texto: tira acentos e remove "quebras de linha ocultas" do Excel (Alt+Enter)
                 const norm = str => (str || "").toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").toUpperCase().trim();
                 
                 let nomeAbaCorreta = null;
@@ -6201,7 +6200,6 @@ window.importTurmasLote = function() {
                 let indexCabecalho = -1;
                 let mapeamentoUCs = []; 
 
-                // Varre as primeiras 10 linhas buscando as colunas das matérias
                 for (let r = 0; r < Math.min(10, rows.length); r++) {
                     let achouUC = false;
                     for (let c = 0; c < rows[r].length; c++) {
@@ -6232,28 +6230,27 @@ window.importTurmasLote = function() {
                     throw new Error("O sistema não encontrou o cabeçalho com os nomes das UCs na planilha.");
                 }
 
-                const ctx = window.STATE ? window.STATE.planContext : null;
-                if (!ctx || !window.DB.planning || !window.DB.planning[ctx]) {
+                // 🔥 CORREÇÃO AQUI: Ele agora lê diretamente as variáveis originais 'STATE' e 'DB' 
+                const ctx = typeof STATE !== 'undefined' ? STATE.planContext : null;
+                const bd = typeof DB !== 'undefined' ? DB : null;
+                
+                if (!ctx || !bd || !bd.planning || !bd.planning[ctx]) {
                     throw new Error("Nenhum roteiro aberto para preencher.");
                 }
-                const roteiro = window.DB.planning[ctx];
+                const roteiro = bd.planning[ctx];
 
                 let alunosAtualizados = 0;
 
-                // Percorre TODOS os alunos do roteiro
                 roteiro.forEach(item => {
                     if (!item.student || !item.student.nome) return;
                     const nomeAlunoRoteiro = norm(item.student.nome);
                     
-                    // Procura o aluno no Excel
                     for (let i = indexCabecalho + 1; i < rows.length; i++) {
                         const row = rows[i];
                         if (!row) continue;
                         
-                        // Transforma a linha do Excel numa frase única para achar o nome não importa em qual coluna esteja!
                         const linhaCompleta = row.map(c => norm(c)).join(" "); 
                         
-                        // SE ENCONTRAR O ALUNO NESTE DOCUMENTO:
                         if (linhaCompleta.includes(nomeAlunoRoteiro)) {
                             let relatorio = "[PEDAGÓGICO] ";
                             let ucsStatus = [];
@@ -6287,7 +6284,6 @@ window.importTurmasLote = function() {
                             if (ucsStatus.length > 0) {
                                 relatorio += ucsStatus.join(" | ") + ".";
                                 
-                                // Evita duplicar se você ler a mesma planilha duas vezes
                                 if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
                                     item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
                                 } else {
@@ -6296,9 +6292,8 @@ window.importTurmasLote = function() {
                                 }
                                 alunosAtualizados++;
                             }
-                            break; // Achou o aluno, vai para o próximo do roteiro
+                            break; 
                         }
-                        // SE NÃO ENCONTRAR: O loop termina e ele pula o aluno (deixando intacto para outra turma)
                     }
                 });
 
@@ -6307,7 +6302,6 @@ window.importTurmasLote = function() {
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
-                // Exibe no final quantos foram achados!
                 alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) DESTA TURMA tiveram o relatório atualizado.`);
 
             } catch (e) {
