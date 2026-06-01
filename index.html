@@ -657,7 +657,8 @@
                             <div class="w-px h-6 bg-slate-200 mx-1"></div>
                             <button id="btnToggleFullscreen" onclick="toggleFullscreenPlan()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-xs font-bold flex items-center gap-1 shadow-md transition-colors" title="Expandir/Reduzir Tela"><i data-lucide="maximize" class="w-3 h-3"></i> <span class="hidden md:inline">Expandir</span></button>
 
-                            <button onclick="window.print()" class="px-3 py-1.5 bg-white border hover:bg-slate-50 text-slate-600 rounded text-xs font-bold flex items-center gap-1"><i data-lucide="printer" class="w-3 h-3"></i> Imprimir</button>
+                            <!-- 🖨️ BOTÃO DE IMPRIMIR ATUALIZADO COM OPÇÕES -->
+<button onclick="window.imprimirPlanejamento()" class="px-3 py-1.5 bg-white border hover:bg-slate-50 text-slate-600 rounded text-xs font-bold flex items-center gap-1"><i data-lucide="printer" class="w-3 h-3"></i> Imprimir</button>
                             <button onclick="exportPlan()" class="px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 rounded text-xs font-bold flex items-center gap-1"><i data-lucide="file-spreadsheet" class="w-3 h-3"></i> Excel</button>
                             
                             <!-- Botão Lixeira com Segurança Inline -->
@@ -5663,6 +5664,46 @@ window.importTurmasLote = function() {
             const labelHoras = document.getElementById('rateioLabelHoras');
             if (labelCusto) labelCusto.innerText = `R$ ${custoTotalGlobal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
             if (labelHoras) labelHoras.innerText = totalHoras.toFixed(2).replace('.', ',');
+        };
+        // =========================================================
+        // 🖨️ MOTOR DE IMPRESSÃO INTELIGENTE (ALFABÉTICA OU ORIGINAL)
+        // =========================================================
+        window.imprimirPlanejamento = function() {
+            // Verifica se tem roteiro aberto
+            if (!STATE || !STATE.planContext || !DB.planning[STATE.planContext] || DB.planning[STATE.planContext].length === 0) {
+                return window.print(); // Se estiver vazio, imprime normal
+            }
+
+            // Pergunta ao usuário qual a ordem desejada
+            const querAlfabetica = confirm("🖨️ OPÇÃO DE IMPRESSÃO\n\nDeseja organizar a lista de alunos em ORDEM ALFABÉTICA apenas para a impressão?\n\n• Clique em [OK] para Ordem Alfabética.\n• Clique em [Cancelar] para manter a Ordem Original do Roteiro.");
+
+            const ctx = STATE.planContext;
+
+            if (querAlfabetica) {
+                // Organiza temporariamente em ordem alfabética pelo nome do aluno
+                DB.planning[ctx].sort((a, b) => {
+                    const nomeA = (a.student && a.student.nome) ? a.student.nome.toUpperCase() : "";
+                    const nomeB = (b.student && b.student.nome) ? b.student.nome.toUpperCase() : "";
+                    return nomeA.localeCompare(nomeB);
+                });
+                // Atualiza a tela com a nova ordem
+                if (typeof renderPlanningTable === 'function') renderPlanningTable();
+            }
+
+            // Dá um tempinho de meio segundo para a tela piscar/atualizar, e chama a impressora
+            setTimeout(() => {
+                window.print();
+
+                // 🔄 MÁGICA: Assim que a janela de impressão fechar, ele devolve a ordem original!
+                if (querAlfabetica) {
+                    DB.planning[ctx].sort((a, b) => {
+                        const ordA = parseInt(a.ordem) || 999;
+                        const ordB = parseInt(b.ordem) || 999;
+                        return ordA - ordB;
+                    });
+                    if (typeof renderPlanningTable === 'function') renderPlanningTable();
+                }
+            }, 500);
         };
 // =========================================================================
         // MOTOR DE BUSCA DE ENDEREÇOS (SISTEMA INTERNO + INTERNET)
