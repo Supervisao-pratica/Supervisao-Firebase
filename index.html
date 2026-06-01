@@ -6255,6 +6255,7 @@ window.importTurmasLote = function() {
                         if (linhaCompleta.includes(nomeAlunoRoteiro)) {
                             let relatorio = "[PEDAGÓGICO] ";
                             let ucsStatus = [];
+                            let ucsAvaliadas = 0; // Vai contar se o aluno já fez alguma matéria
 
                             mapeamentoUCs.forEach(uc => {
                                 let freqVal = row[uc.indexFreq];
@@ -6275,26 +6276,40 @@ window.importTurmasLote = function() {
                                 }
 
                                 if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
-                                    let icon = "⚪ N/I"; 
+                                    ucsAvaliadas++; // Contabiliza que existe uma matéria cursada
                                     
-                                    // 🔥 REGRA ATUALIZADA: Se for menor que 75, Conselho. Senão...
+                                    let icon = ""; 
+                                    let registrarFalha = false; // Só anota se for problema
+                                    
                                     if (freqNumber !== null && freqNumber < 75) {
                                         icon = "🔴 Conselho de Classe";
+                                        registrarFalha = true;
                                     } else if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
                                         icon = "🔴 Recuperação";
+                                        registrarFalha = true;
                                     } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
+                                        // Se Desenvolveu e a Frequência é >= 75...
                                         icon = "🟢 OK";
+                                        registrarFalha = false; // Ignora o aluno bom!
                                     } else if (avaVal === "" || avaVal === "0" || avaVal === "-" || avaVal.includes("PARCIAL")) {
-                                        // 🔥 AGORA LÊ O "0" ou "-" COMO PARCIAL!
                                         icon = "🟡 Parcial";
+                                        registrarFalha = true;
                                     }
 
-                                    ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
+                                    // Se ele caiu em alguma das falhas, a gente adiciona ao relatório
+                                    if (registrarFalha) {
+                                        ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
+                                    }
                                 }
                             });
 
-                            if (ucsStatus.length > 0) {
-                                relatorio += ucsStatus.join(" | ") + ".";
+                            // Só escreve o relatório se o aluno tiver pelo menos uma UC cursada
+                            if (ucsAvaliadas > 0) {
+                                if (ucsStatus.length > 0) {
+                                    relatorio += "Atenção: " + ucsStatus.join(" | ") + ".";
+                                } else {
+                                    relatorio += "✅ Sem pendências nas UCs avaliadas.";
+                                }
                                 
                                 if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
                                     item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
