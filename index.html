@@ -679,6 +679,10 @@
                                 <i data-lucide="brain-circuit" class="w-3 h-3"></i> Ler Pedagógico
                             </button>
 
+                            <button onclick="prepararProximaVisita()" class="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Avançar alunos Realizados para a próxima visita">
+    <i data-lucide="calendar-clock" class="w-3 h-3"></i> Próxima Visita
+</button>
+
                         </div>
                     </div>
                     
@@ -6231,7 +6235,61 @@ window.importTurmasLote = function() {
                 });
             }
         };
+// =========================================================================
+        // 🔄 MOTOR DE AVANÇO DE CICLO (PRÓXIMA VISITA)
+        // =========================================================================
+        window.prepararProximaVisita = function() {
+            const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
+            const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+            const ctx = stateObj ? stateObj.planContext : null;
+            
+            if (!ctx || !dbObj.planning || !dbObj.planning[ctx]) {
+                return alert("Nenhum roteiro aberto para avançar.");
+            }
+            
+            const roteiro = dbObj.planning[ctx];
+            let alterados = 0;
 
+            // Pergunta de segurança para evitar cliques acidentais
+            const confirmar = confirm("🔄 AVANÇAR CICLO DE VISITAS\n\nIsso fará com que todos os alunos com status 'Realizada' voltem para 'Realizar' e avancem para a próxima visita (ex: 1ª para 2ª).\n\nDeseja continuar?");
+            if (!confirmar) return;
+
+            roteiro.forEach(item => {
+                const statusNormalizado = String(item.status || "").trim().toUpperCase();
+                
+                if (statusNormalizado === 'REALIZADA') {
+                    // 1. Volta o status para pendente
+                    item.status = 'Realizar'; 
+                    
+                    // 2. Avança o número da visita magicamente (1ª -> 2ª -> 3ª)
+                    if (item.visitaTipo) {
+                        item.visitaTipo = item.visitaTipo.replace(/(\d+)(ª|º|a|o)/i, (match, numero, sufixo) => {
+                            return (parseInt(numero) + 1) + sufixo;
+                        });
+                    }
+                    
+                    // 3. Limpa a data e hora para você poder agendar de novo
+                    item.date = '';
+                    item.hrAtend = '';
+                    
+                    // 4. Limpa os alertas do sistema da observação (mantém o que você digitou)
+                    if (item.obs) {
+                       item.obs = item.obs.replace(/🚨 ALERTA: Visita agendada no dia do Contraturno!/g, "").trim();
+                       item.obs = item.obs.replace(/\[PEDAGÓGICO\](.*?)(\n|$)/g, "").trim();
+                    }
+                    
+                    alterados++;
+                }
+            });
+
+            if (alterados > 0) {
+                if(typeof saveToStorage === 'function') saveToStorage();
+                if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                alert(`✅ Sucesso!\n${alterados} aluno(s) foram movidos para o próximo ciclo de visitas.\nAs datas e horários deles foram zerados para um novo agendamento.`);
+            } else {
+                alert("ℹ️ Não encontramos nenhum aluno com o status 'Realizada' neste roteiro.");
+            }
+        };
         // =========================================================================
         // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO DE FREQUÊNCIA (SENAC)
         // =========================================================================
