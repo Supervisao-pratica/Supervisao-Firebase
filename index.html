@@ -6198,6 +6198,7 @@ window.importTurmasLote = function() {
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
                 let indexCabecalho = -1;
+                let indexContraturno = -1; // 🔥 NOVO: Variável para achar a coluna do Ensino Médio
                 let mapeamentoUCs = []; 
 
                 for (let r = 0; r < Math.min(10, rows.length); r++) {
@@ -6205,6 +6206,11 @@ window.importTurmasLote = function() {
                     for (let c = 0; c < rows[r].length; c++) {
                         let valorCelula = norm(rows[r][c]);
                         
+                        // 🔥 NOVO: Procura a coluna do Contraturno/Ensino Médio
+                        if (valorCelula.includes("ENSINO MEDIO") || valorCelula.includes("CONTRATURNO")) {
+                            indexContraturno = c;
+                        }
+
                         if (valorCelula.includes("FREQUENCIA") && valorCelula.includes("UC")) {
                             achouUC = true;
                             indexCabecalho = r;
@@ -6223,6 +6229,7 @@ window.importTurmasLote = function() {
                             });
                         }
                     }
+                    // Se achou o cabeçalho das UCs, já podemos parar de descer as linhas
                     if (achouUC) break; 
                 }
 
@@ -6253,9 +6260,8 @@ window.importTurmasLote = function() {
                         const linhaCompleta = row.map(c => norm(c)).join(" "); 
                         
                         if (linhaCompleta.includes(nomeAlunoRoteiro)) {
-                            let relatorio = "[PEDAGÓGICO] ";
                             let ucsStatus = [];
-                            let ucsAvaliadas = 0; // Vai contar se o aluno já fez alguma matéria
+                            let ucsAvaliadas = 0; 
 
                             mapeamentoUCs.forEach(uc => {
                                 let freqVal = row[uc.indexFreq];
@@ -6276,10 +6282,10 @@ window.importTurmasLote = function() {
                                 }
 
                                 if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
-                                    ucsAvaliadas++; // Contabiliza que existe uma matéria cursada
+                                    ucsAvaliadas++; 
                                     
                                     let icon = ""; 
-                                    let registrarFalha = false; // Só anota se for problema
+                                    let registrarFalha = false; 
                                     
                                     if (freqNumber !== null && freqNumber < 75) {
                                         icon = "🔴 Conselho de Classe";
@@ -6288,29 +6294,53 @@ window.importTurmasLote = function() {
                                         icon = "🔴 Recuperação";
                                         registrarFalha = true;
                                     } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
-                                        // Se Desenvolveu e a Frequência é >= 75...
                                         icon = "🟢 OK";
-                                        registrarFalha = false; // Ignora o aluno bom!
+                                        registrarFalha = false; 
                                     } else if (avaVal === "" || avaVal === "0" || avaVal === "-" || avaVal.includes("PARCIAL")) {
                                         icon = "🟡 Parcial";
                                         registrarFalha = true;
                                     }
 
-                                    // Se ele caiu em alguma das falhas, a gente adiciona ao relatório
                                     if (registrarFalha) {
                                         ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
                                     }
                                 }
                             });
 
-                            // Só escreve o relatório se o aluno tiver pelo menos uma UC cursada
+                            // 🔥 NOVO: Coleta a informação do Contraturno
+                            let textoContraturno = "";
+                            if (indexContraturno !== -1) {
+                                let valOriginal = row[indexContraturno];
+                                let valString = String(valOriginal || "").trim();
+                                let valNorm = norm(valString);
+                                
+                                // Só preenche se NÃO for 0, vazio ou falso
+                                if (valNorm !== "" && valNorm !== "0" && valNorm !== "-" && valNorm !== "FALSO") {
+                                    textoContraturno = `🕒 Contraturno: ${valString}`;
+                                }
+                            }
+
+                            // Junta o Pedagógico com o Contraturno
+                            let textoPedagogico = "";
                             if (ucsAvaliadas > 0) {
                                 if (ucsStatus.length > 0) {
-                                    relatorio += "Atenção: " + ucsStatus.join(" | ") + ".";
+                                    textoPedagogico = "Atenção: " + ucsStatus.join(" | ") + ".";
                                 } else {
-                                    relatorio += "✅ Sem pendências nas UCs avaliadas.";
+                                    textoPedagogico = "✅ Sem pendências nas UCs avaliadas.";
                                 }
+                            }
+
+                            // Se houver qualquer uma das informações (UCs ou Contraturno), escrevemos na tela
+                            if (textoPedagogico !== "" || textoContraturno !== "") {
+                                let relatorio = "[PEDAGÓGICO] ";
+                                let blocos = [];
                                 
+                                if (textoPedagogico) blocos.push(textoPedagogico);
+                                if (textoContraturno) blocos.push(textoContraturno);
+                                
+                                relatorio += blocos.join(" | ");
+                                
+                                // Grava a observação sem duplicar
                                 if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
                                     item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
                                 } else {
