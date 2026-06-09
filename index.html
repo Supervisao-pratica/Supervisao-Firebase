@@ -4880,15 +4880,23 @@ window.salvarTurmaSegura = function() {
     if (!nome) { alert("Por favor, digite o nome da turma!"); return; }
     if (!cc) { alert("Por favor, digite o Centro de Custo (CC)!"); return; }
 
-    window.sincronizarCofreTurmas(); 
+    if(typeof window.sincronizarCofreTurmas === 'function') window.sincronizarCofreTurmas(); 
 
     // Motor de normalização para garantir que TDS-23A bata com tds-23a
     const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
     const busca = normalizar(nome);
 
-    // 1. Atualiza o Cofre de Turmas (Controle de Rateio)
+    if (!window.DB.controle_turmas) window.DB.controle_turmas = [];
+
+    // 1. Acha a turma no Cofre
     const existeNoCofre = window.DB.controle_turmas.find(t => t && t.nome && normalizar(t.nome) === busca);
     
+    // 🔥 NOVO: Inteligência que avisa que já existe e pergunta se quer atualizar!
+    if (existeNoCofre && String(existeNoCofre.cc).trim() !== cc) {
+        const querAtualizar = confirm(`⚠️ A turma ${nome} já possui o CC ${existeNoCofre.cc} cadastrado.\n\nDeseja ATUALIZAR a turma e todos os seus alunos para o novo CC ${cc}?`);
+        if (!querAtualizar) return; // Se clicar em cancelar, ele para tudo e não salva.
+    }
+
     if (!existeNoCofre) {
         window.DB.controle_turmas.push({ nome: nome, cc: cc });
     } else {
@@ -4896,12 +4904,12 @@ window.salvarTurmaSegura = function() {
     }
 
     // 2. Atualiza o Mapa de Consulta Global (usado no preenchimento automático)
-    if (!DB.cc_map) DB.cc_map = {};
-    DB.cc_map[nome.toUpperCase()] = cc;
+    if (!window.DB.cc_map) window.DB.cc_map = {};
+    window.DB.cc_map[nome.toUpperCase()] = cc;
 
     // 3. PROPAGAÇÃO PARA A BASE DE ALUNOS (Quali e Técnica)
     let alunosImpactados = 0;
-    const bases = [DB.quali || [], DB.tec || []];
+    const bases = [window.DB.quali || [], window.DB.tec || []];
     bases.forEach(lista => {
         lista.forEach(aluno => {
             if (aluno.turma && normalizar(aluno.turma) === busca) {
@@ -4914,9 +4922,9 @@ window.salvarTurmaSegura = function() {
 
     // 4. PROPAGAÇÃO PARA ROTEIROS DE PLANEJAMENTO SALVOS
     let registrosRoteiroImpactados = 0;
-    if (DB.planning) {
-        Object.keys(DB.planning).forEach(nomeRoteiro => {
-            const roteiro = DB.planning[nomeRoteiro];
+    if (window.DB.planning) {
+        Object.keys(window.DB.planning).forEach(nomeRoteiro => {
+            const roteiro = window.DB.planning[nomeRoteiro];
             if (Array.isArray(roteiro)) {
                 roteiro.forEach(visita => {
                     if (visita.student && visita.student.turma && normalizar(visita.student.turma) === busca) {
@@ -4934,11 +4942,18 @@ window.salvarTurmaSegura = function() {
     
     // 6. Atualização Visual Imediata das Telas
     if(typeof window.renderControleRateio === 'function') window.renderControleRateio();
-    if(typeof renderPlanningTable === 'function' && STATE.planContext) renderPlanningTable();
+    if(typeof renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) renderPlanningTable();
     if(typeof runFilter === 'function') runFilter();
     
-    alert(`Sucesso!\n\nTurma: ${nome}\nCC: ${cc}\n\n- ${alunosImpactados} alunos atualizados na base.\n- ${registrosRoteiroImpactados} linhas de planejamento corrigidas.`);
-    window.fecharModalNovaTurma(); 
+    alert(`✅ Sucesso!\n\nTurma: ${nome}\nCC: ${cc}\n\n- ${alunosImpactados} alunos atualizados na base.\n- ${registrosRoteiroImpactados} linhas de planejamento corrigidas.`);
+    
+    // Fecha a janela
+    if(typeof window.fecharModalNovaTurma === 'function') {
+        window.fecharModalNovaTurma(); 
+    } else {
+        const modal = document.getElementById('modalAddTurmaSeguro');
+        if (modal) modal.classList.add('hidden');
+    }
 };
 
 // =========================================================
@@ -6098,8 +6113,57 @@ window.importTurmasLote = function() {
         };
 
         // =========================================================
-        // ☁️ MOTOR DE SINCRONIZAÇÃO EM TEMPO REAL E BACKUP
         // =========================================================
+        // ☁️ MOTOR DE SINCRONIZAÇÃO E FISCAL DE AGENDAMENTO
+        // =========================================================
+        window.verificarChoquesContraturno = function() {
+            const ctx = window.STATE ? window.STATE.planContext : null;
+            if (!ctx || !window.DB || !window.DB.planning || !window.DB.planning[ctx]) return;
+            
+            const roteiro = window.DB.planning[ctx];
+            let encontrouNovoChoque = false;
+
+            roteiro.forEach(item => {
+                if (!item.student || !item.student.contraturno || !item.date) return;
+                
+                // Pega a data (ex: 2026-05-18) e descobre o dia da semana matemático
+                const partes = item.date.split('-');
+                if(partes.length !== 3) return;
+                
+                // Mês em JavaScript começa do zero (0=Jan), então subtraímos 1 do mês
+                const dObj = new Date(partes[0], partes[1]-1, partes[2]);
+                const diasExtenso = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+                const diaVisita = diasExtenso[dObj.getDay()];
+                
+                const msgAlerta = "🚨 ALERTA: Visita agendada no dia do Contraturno!";
+                
+                // Se o dia do calendário for igual ao dia de contraturno do aluno
+                if (diaVisita === item.student.contraturno) {
+                    if (!item.obs) {
+                        item.obs = msgAlerta;
+                        encontrouNovoChoque = true;
+                    } else if (!item.obs.includes(msgAlerta)) {
+                        item.obs = item.obs + "\n" + msgAlerta;
+                        encontrouNovoChoque = true;
+                    }
+                } else {
+                    // Dinamismo: Se você mudar para um dia que não tem choque, ele apaga o alerta sozinho!
+                    if (item.obs && item.obs.includes(msgAlerta)) {
+                        item.obs = item.obs.replace(msgAlerta, "").trim();
+                        item.obs = item.obs.replace(/\n\n/g, "\n"); // Limpa quebras de linha soltas
+                    }
+                }
+            });
+            
+            // Mostra o pop-up na tela apenas se achou um choque que você ainda não tinha visto
+            if (encontrouNovoChoque) {
+                setTimeout(() => {
+                    alert("⚠️ ATENÇÃO: Você agendou visita(s) para o mesmo dia do Contraturno escolar do aprendiz!\nVerifique os alertas nas observações do roteiro.");
+                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                }, 100); 
+            }
+        };
+
         window.sincronizarComNuvem = function() {
             if(typeof firebase === 'undefined' || !firebase.firestore) return;
             const db = firebase.firestore();
@@ -6118,6 +6182,10 @@ window.importTurmasLote = function() {
         };
         
         window.saveToStorage = function() {
+            // Toda vez que salvar qualquer coisa, ele varre os agendamentos atrás de choque
+            if (typeof window.verificarChoquesContraturno === 'function') {
+                window.verificarChoquesContraturno();
+            }
             saveToStorageOriginal(); 
             sincronizarComNuvem();  
         };
