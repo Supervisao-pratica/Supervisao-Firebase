@@ -5144,29 +5144,45 @@ window.importTurmasLote = function() {
             ccsUnicos.forEach(c => dlCc.appendChild(new Option(c)));
         };
 // =========================================================
-        // 🚀 MOTOR DE PREENCHIMENTO AUTOMÁTICO DE ENDEREÇOS (CNPJ/RAZÃO)
+        // =========================================================
+        // 🚀 MOTOR BLINDADO DE ENDEREÇOS (RAZÃO + CIDADE + REGIÃO)
         // =========================================================
         window.sincronizarEnderecosEmpresas = function(silencioso = false) {
             const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
-            let dicEnderecos = {}; // Dicionário por CNPJ
-            let dicEnderecosPorRazao = {}; // Dicionário por Razão Social
+            let dicEnderecos = {}; // Dicionário usando a Chave Blindada
 
-            // 1. Mapeia quem já tem um endereço bom gravado na base
+            // Função para limpar textos e criar a Chave de Comparação (tudo maiúsculo, sem acentos, sem espaços soltos)
+            const limparTexto = (txt) => {
+                if (!txt) return "N/D";
+                return String(txt).normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+            };
+
+            // 1. Mapeia quem já tem um endereço BOM gravado na base
             todosAlunos.forEach(a => {
-                const cnpj = String(a.cnpj_empresa || (a.empresa && a.empresa.cnpj) || a.cnpj || "").replace(/\D/g, '');
-                const razao = String((a.empresa && a.empresa.razao) || a.razao_social || "").trim().toUpperCase();
+                const cnpjCompleto = String(a.cnpj_empresa || (a.empresa && a.empresa.cnpj) || a.cnpj || "").replace(/\D/g, '');
+                const razao = limparTexto((a.empresa && a.empresa.razao) || a.razao_social || "");
+                const cidade = limparTexto(a.cidade || "");
+                const regiao = limparTexto(a.regiao || "");
                 const endereco = String((a.empresa && a.empresa.endereco) || a.endereco || a.endereco_empresa || "").trim();
                 const link = String((a.empresa && a.empresa.link) || a.link || a.link_mapa || "").trim();
 
+                // Se o endereço for válido (não for apenas "Não informado" ou vazio)
                 if (endereco.length > 5 && !endereco.toLowerCase().includes('informado')) {
-                    if (cnpj.length >= 11) {
-                        if (!dicEnderecos[cnpj] || (endereco.length > dicEnderecos[cnpj].endereco.length)) {
-                            dicEnderecos[cnpj] = { endereco, link };
+                    
+                    // Prioridade 1: O CNPJ Completo (Se tiver as 14 posições, incluindo a filial, é único)
+                    if (cnpjCompleto.length === 14) {
+                        const chaveCnpj = `CNPJ_${cnpjCompleto}`;
+                        if (!dicEnderecos[chaveCnpj] || (endereco.length > dicEnderecos[chaveCnpj].endereco.length)) {
+                            dicEnderecos[chaveCnpj] = { endereco, link };
                         }
-                    }
-                    if (razao.length > 3) {
-                        if (!dicEnderecosPorRazao[razao] || (endereco.length > dicEnderecosPorRazao[razao].endereco.length)) {
-                            dicEnderecosPorRazao[razao] = { endereco, link };
+                    } 
+                    
+                    // Prioridade 2: Razão Social + Cidade + Região (A Chave Blindada)
+                    // Só cria a chave se houver o nome da empresa e a cidade
+                    if (razao !== "N/D" && cidade !== "N/D") {
+                        const chaveLocal = `${razao}_${cidade}_${regiao}`;
+                        if (!dicEnderecos[chaveLocal] || (endereco.length > dicEnderecos[chaveLocal].endereco.length)) {
+                            dicEnderecos[chaveLocal] = { endereco, link };
                         }
                     }
                 }
@@ -5177,13 +5193,26 @@ window.importTurmasLote = function() {
 
             const preencherFaltante = (student) => {
                 if (!student) return false;
-                const cnpj = String(student.cnpj_empresa || (student.empresa && student.empresa.cnpj) || student.cnpj || "").replace(/\D/g, '');
-                const razao = String((student.empresa && student.empresa.razao) || student.razao_social || "").trim().toUpperCase();
+                
+                const cnpjCompleto = String(student.cnpj_empresa || (student.empresa && student.empresa.cnpj) || student.cnpj || "").replace(/\D/g, '');
+                const razao = limparTexto((student.empresa && student.empresa.razao) || student.razao_social || "");
+                const cidade = limparTexto(student.cidade || "");
+                const regiao = limparTexto(student.regiao || "");
                 const endAtual = String((student.empresa && student.empresa.endereco) || "").trim();
                 const linkAtual = String((student.empresa && student.empresa.link) || "").trim();
 
-                let ref = (cnpj && dicEnderecos[cnpj]) ? dicEnderecos[cnpj] : (razao && dicEnderecosPorRazao[razao] ? dicEnderecosPorRazao[razao] : null);
+                // Primeiro procura pelo CNPJ completo exato
+                let ref = (cnpjCompleto.length === 14 && dicEnderecos[`CNPJ_${cnpjCompleto}`]) 
+                          ? dicEnderecos[`CNPJ_${cnpjCompleto}`] 
+                          : null;
+                
+                // Se não achar pelo CNPJ completo, procura pela Chave Blindada (Empresa + Cidade + Região)
+                if (!ref && razao !== "N/D" && cidade !== "N/D") {
+                    const chaveLocal = `${razao}_${cidade}_${regiao}`;
+                    ref = dicEnderecos[chaveLocal] || null;
+                }
 
+                // Se encontrou uma referência válida e segura
                 if (ref) {
                     // Preenche se estiver vazio ou com o clássico "Não informado"
                     if (endAtual.length < 5 || endAtual.toLowerCase().includes('informado') || (!linkAtual && ref.link)) {
@@ -5217,10 +5246,10 @@ window.importTurmasLote = function() {
                 if (typeof renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) renderPlanningTable();
                 
                 if (!silencioso) {
-                    alert(`✅ Autopreenchimento Concluído!\n\n- ${alunosAtualizados} alunos receberam o endereço da empresa.\n- ${planejamentosAtualizados} registros de roteiros foram atualizados.`);
+                    alert(`✅ Autopreenchimento Blindado Concluído!\n\n- ${alunosAtualizados} alunos receberam o endereço da filial correta.\n- ${planejamentosAtualizados} registros de roteiros foram atualizados.`);
                 }
             } else {
-                if (!silencioso) alert("Todos os alunos e planejamentos já estão com seus endereços perfeitamente sincronizados!");
+                if (!silencioso) alert("Todos os alunos e planejamentos já estão com os endereços perfeitamente sincronizados pela filial e cidade!");
             }
         };
 
