@@ -6384,11 +6384,10 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================================
-        // 🗺️ ORDENADOR LOGÍSTICO BLINDADO (CIDADE + PRIORIDADE 1ª VISITA)
+        // 🗺️ ORDENADOR LOGÍSTICO BLINDADO + VARREDURA DE DESLIGADOS
         // =========================================================================
         window.organizarRoteiro = function() {
             try {
-                // Busca o banco de dados e estado da tela de forma blindada contra erros
                 const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 
@@ -6398,8 +6397,30 @@ window.atualizarAutocompleteGlobal = function() {
                     return alert("⚠️ Nenhum roteiro aberto no momento para organizar.");
                 }
 
-                // Realiza a ordenação inteligente
-                dbObj.planning[ctx].sort((a, b) => {
+                let roteiro = dbObj.planning[ctx];
+                let removidos = 0;
+
+                // 1. Mapeia os status de todos os alunos na base central do Senac
+                const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
+                const statusMap = {};
+                todos.forEach(a => statusMap[a.id] = String(a.status || a.situacao || "").toUpperCase());
+
+                // 2. FAXINA: Varre de trás para frente para remover os desligados
+                for (let i = roteiro.length - 1; i >= 0; i--) {
+                    const item = roteiro[i];
+                    if (!item.student) continue;
+
+                    const statusDb = statusMap[item.student.id] || "";
+                    
+                    // Se estiver inativo no sistema, remove do roteiro atual
+                    if (statusDb.includes('DESLIGADO') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
+                        roteiro.splice(i, 1);
+                        removidos++;
+                    }
+                }
+
+                // 3. ORDENAÇÃO: Organiza os sobreviventes por Cidade e Prioridade
+                roteiro.sort((a, b) => {
                     const sA = a.student || {};
                     const sB = b.student || {};
 
@@ -6421,14 +6442,19 @@ window.atualizarAutocompleteGlobal = function() {
                     return nomeA.localeCompare(nomeB);
                 });
 
-                // Refaz a numeração (coluna Ordem)
-                dbObj.planning[ctx].forEach((item, idx) => item.ordem = idx + 1);
+                // 4. Refaz a numeração (coluna Ordem)
+                roteiro.forEach((item, idx) => item.ordem = idx + 1);
 
                 // Salva e atualiza a tela
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
-                alert("✅ Roteiro Organizado com sucesso!\nAgrupado por Cidade e priorizando quem aguarda a 1ª Visita.");
+                // Monta o aviso final
+                let msg = "✅ Roteiro Organizado com sucesso!\nAgrupado por Cidade e priorizando quem aguarda a 1ª Visita.";
+                if (removidos > 0) {
+                    msg += `\n\n🧹 VARREDURA ATUOU: ${removidos} aluno(s) que estavam desligados ou evadidos foram removidos da lista!`;
+                }
+                alert(msg);
                 
             } catch (error) {
                 console.error("Erro na organização:", error);
