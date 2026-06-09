@@ -6198,7 +6198,7 @@ window.importTurmasLote = function() {
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
                 let indexCabecalho = -1;
-                let indexContraturno = -1; // 🔥 NOVO: Variável para achar a coluna do Ensino Médio
+                let indexContraturno = -1; 
                 let mapeamentoUCs = []; 
 
                 for (let r = 0; r < Math.min(10, rows.length); r++) {
@@ -6206,7 +6206,6 @@ window.importTurmasLote = function() {
                     for (let c = 0; c < rows[r].length; c++) {
                         let valorCelula = norm(rows[r][c]);
                         
-                        // 🔥 NOVO: Procura a coluna do Contraturno/Ensino Médio
                         if (valorCelula.includes("ENSINO MEDIO") || valorCelula.includes("CONTRATURNO")) {
                             indexContraturno = c;
                         }
@@ -6229,7 +6228,6 @@ window.importTurmasLote = function() {
                             });
                         }
                     }
-                    // Se achou o cabeçalho das UCs, já podemos parar de descer as linhas
                     if (achouUC) break; 
                 }
 
@@ -6307,20 +6305,41 @@ window.importTurmasLote = function() {
                                 }
                             });
 
-                            // 🔥 NOVO: Coleta a informação do Contraturno
+                            // 🔥 NOVO: TRADUTOR INTELIGENTE DE DIAS DA SEMANA
                             let textoContraturno = "";
                             if (indexContraturno !== -1) {
                                 let valOriginal = row[indexContraturno];
                                 let valString = String(valOriginal || "").trim();
                                 let valNorm = norm(valString);
                                 
-                                // Só preenche se NÃO for 0, vazio ou falso
                                 if (valNorm !== "" && valNorm !== "0" && valNorm !== "-" && valNorm !== "FALSO") {
-                                    textoContraturno = `🕒 Contraturno: ${valString}`;
+                                    
+                                    // Traduz as variações do Excel para o formato exato da sua janelinha
+                                    let diaTraduzido = valString; // Mantém o original se não reconhecer
+                                    
+                                    if (valNorm.includes("SEGUNDA") || valNorm.includes("2A") || valNorm.includes("2ª")) diaTraduzido = "Segunda";
+                                    else if (valNorm.includes("TERCA") || valNorm.includes("3A") || valNorm.includes("3ª")) diaTraduzido = "Terça";
+                                    else if (valNorm.includes("QUARTA") || valNorm.includes("4A") || valNorm.includes("4ª")) diaTraduzido = "Quarta";
+                                    else if (valNorm.includes("QUINTA") || valNorm.includes("5A") || valNorm.includes("5ª")) diaTraduzido = "Quinta";
+                                    else if (valNorm.includes("SEXTA") || valNorm.includes("6A") || valNorm.includes("6ª")) diaTraduzido = "Sexta";
+
+                                    textoContraturno = `🕒 Contraturno: ${diaTraduzido}`;
+                                    
+                                    // 1. Atualiza no Roteiro atual (já traduzido!)
+                                    item.student.contraturno = diaTraduzido;
+                                    
+                                    // 2. Atualiza no Banco de Dados Oficial (Qualificação ou Técnica)
+                                    if (dbObj.quali) {
+                                        let alunoQuali = dbObj.quali.find(a => a.id === item.student.id);
+                                        if (alunoQuali) alunoQuali.contraturno = diaTraduzido;
+                                    }
+                                    if (dbObj.tec) {
+                                        let alunoTec = dbObj.tec.find(a => a.id === item.student.id);
+                                        if (alunoTec) alunoTec.contraturno = diaTraduzido;
+                                    }
                                 }
                             }
 
-                            // Junta o Pedagógico com o Contraturno
                             let textoPedagogico = "";
                             if (ucsAvaliadas > 0) {
                                 if (ucsStatus.length > 0) {
@@ -6330,7 +6349,6 @@ window.importTurmasLote = function() {
                                 }
                             }
 
-                            // Se houver qualquer uma das informações (UCs ou Contraturno), escrevemos na tela
                             if (textoPedagogico !== "" || textoContraturno !== "") {
                                 let relatorio = "[PEDAGÓGICO] ";
                                 let blocos = [];
@@ -6340,7 +6358,6 @@ window.importTurmasLote = function() {
                                 
                                 relatorio += blocos.join(" | ");
                                 
-                                // Grava a observação sem duplicar
                                 if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
                                     item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
                                 } else {
@@ -6354,12 +6371,13 @@ window.importTurmasLote = function() {
                     }
                 });
 
+                // Salva todas as alterações do contraturno no LocalStorage e na Nuvem
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
-                alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) DESTA TURMA tiveram o relatório atualizado.`);
+                alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório e o cadastro de contraturno atualizados.`);
 
             } catch (e) {
                 console.error(e); 
