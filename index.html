@@ -4879,90 +4879,86 @@ window.sincronizarCofreTurmas = function() {
 window.sincronizarCofreTurmas();
 
 // =========================================================
-// 2. BOTÃO DE SALVAR TURMA COM PROPAGAÇÃO AUTOMÁTICA DE CC
-// =========================================================
-window.salvarTurmaSegura = function() {
-    const nome = document.getElementById('inputNovaTurmaSegura').value.trim();
-    const cc = document.getElementById('inputCCSeguro').value.trim();
+        // 🏗️ BOTÃO DE SALVAR TURMA COM PROPAGAÇÃO BLINDADA (CC)
+        // =========================================================
+        window.salvarTurmaSegura = function() {
+            // Busca as caixinhas de texto (Tanto do Modal quanto se houver direto no Rateio)
+            const nomeInput = document.getElementById('inputNovaTurmaSegura') || document.getElementById('novaTurmaInput'); 
+            const ccInput = document.getElementById('inputCCSeguro') || document.getElementById('novoCCInput');
+            
+            if (!nomeInput || !ccInput) return alert("Erro: Campos de entrada da Turma não encontrados na tela.");
+            
+            const nome = nomeInput.value.trim().toUpperCase();
+            const cc = ccInput.value.trim();
 
-    if (!nome) { alert("Por favor, digite o nome da turma!"); return; }
-    if (!cc) { alert("Por favor, digite o Centro de Custo (CC)!"); return; }
+            if (!nome || !cc) { alert("⚠️ Preencha a Turma e o CC!"); return; }
 
-    if(typeof window.sincronizarCofreTurmas === 'function') window.sincronizarCofreTurmas(); 
+            const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+            if (!dbObj.controle_turmas) dbObj.controle_turmas = [];
+            if (!dbObj.cc_map) dbObj.cc_map = {};
 
-    // Motor de normalização para garantir que TDS-23A bata com tds-23a
-    const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
-    const busca = normalizar(nome);
+            const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+            const busca = normalizar(nome);
 
-    if (!window.DB.controle_turmas) window.DB.controle_turmas = [];
+            let indexNoCofre = dbObj.controle_turmas.findIndex(t => t && t.nome && normalizar(t.nome) === busca);
 
-    // 1. Acha a turma no Cofre
-    let indexNoCofre = window.DB.controle_turmas.findIndex(t => t && t.nome && normalizar(t.nome) === busca);
-    
-    if (indexNoCofre !== -1) {
-        const existeNoCofre = window.DB.controle_turmas[indexNoCofre];
-        // 🔥 NOVO: Inteligência que avisa que já existe e pergunta se quer atualizar FORÇADAMENTE!
-        if (String(existeNoCofre.cc).trim() !== cc) {
-            const querAtualizar = confirm(`⚠️ A turma ${nome} já existe no sistema.\n\nDeseja FORÇAR A ATUALIZAÇÃO para o novo CC ${cc}?\nIsso vai corrigir todos os alunos e roteiros que estão com o CC em branco.`);
-            if (!querAtualizar) return; // Se clicar em cancelar, ele para tudo e não salva.
-            window.DB.controle_turmas[indexNoCofre].cc = cc;
-        }
-    } else {
-        window.DB.controle_turmas.push({ nome: nome, cc: cc });
-    }
-
-    // 2. Atualiza o Mapa de Consulta Global (usado no preenchimento automático)
-    if (!window.DB.cc_map) window.DB.cc_map = {};
-    window.DB.cc_map[nome.toUpperCase()] = cc;
-
-    // 3. PROPAGAÇÃO PARA A BASE DE ALUNOS (Quali e Técnica)
-    let alunosImpactados = 0;
-    const bases = [window.DB.quali || [], window.DB.tec || []];
-    bases.forEach(lista => {
-        lista.forEach(aluno => {
-            if (aluno.turma && normalizar(aluno.turma) === busca) {
-                aluno.cc = cc;
-                if (aluno.empresa && typeof aluno.empresa === 'object') aluno.empresa.cc = cc;
-                alunosImpactados++;
+            if (indexNoCofre !== -1) {
+                // 🔥 AGORA ELE SEMPRE PERGUNTA E FORÇA A CORREÇÃO DE CCS EM BRANCO!
+                const querAtualizar = confirm(`⚠️ A turma ${nome} já está cadastrada no sistema.\n\nDeseja FORÇAR A PROPAGAÇÃO e injetar o CC ${cc} em todos os roteiros e alunos que estão com o CC em branco?`);
+                if (!querAtualizar) return; 
+                dbObj.controle_turmas[indexNoCofre].cc = cc; 
+            } else {
+                dbObj.controle_turmas.push({ nome: nome, cc: cc });
             }
-        });
-    });
 
-    // 4. PROPAGAÇÃO PARA ROTEIROS DE PLANEJAMENTO SALVOS (Isso arruma o CC em branco!)
-    let registrosRoteiroImpactados = 0;
-    if (window.DB.planning) {
-        Object.keys(window.DB.planning).forEach(nomeRoteiro => {
-            const roteiro = window.DB.planning[nomeRoteiro];
-            if (Array.isArray(roteiro)) {
-                roteiro.forEach(visita => {
-                    if (visita.student && visita.student.turma && normalizar(visita.student.turma) === busca) {
-                        visita.student.cc = cc;
-                        registrosRoteiroImpactados++;
+            dbObj.cc_map[busca] = cc;
+
+            // === 🚀 PROPAGAÇÃO MASSIVA ===
+            let alunosCorrigidos = 0;
+            let roteirosCorrigidos = 0;
+
+            const bases = [dbObj.quali || [], dbObj.tec || []];
+            bases.forEach(lista => {
+                lista.forEach(aluno => {
+                    if (aluno.turma && normalizar(aluno.turma) === busca) {
+                        aluno.cc = cc;
+                        if (aluno.empresa && typeof aluno.empresa === 'object') aluno.empresa.cc = cc;
+                        alunosCorrigidos++;
                     }
                 });
-            }
-        });
-    }
+            });
 
-    // 5. Persistência dos Dados
-    localStorage.setItem('senac_cofre_cc', JSON.stringify(window.DB.controle_turmas));
-    if(typeof saveToStorage === 'function') saveToStorage();
-    
-    // 6. Atualização Visual Imediata das Telas
-    if(typeof window.renderControleRateio === 'function') window.renderControleRateio();
-    if(typeof renderPlanningTable === 'function' && typeof STATE !== 'undefined' && STATE.planContext) renderPlanningTable();
-    if(typeof runFilter === 'function') runFilter();
-    
-    alert(`✅ Sucesso!\n\nTurma: ${nome}\nCC: ${cc}\n\n- ${alunosImpactados} alunos atualizados na base.\n- ${registrosRoteiroImpactados} linhas de planejamento corrigidas.`);
-    
-    // Fecha a janela
-    if(typeof window.fecharModalNovaTurma === 'function') {
-        window.fecharModalNovaTurma(); 
-    } else {
-        const modal = document.getElementById('modalAddTurmaSeguro');
-        if (modal) modal.classList.add('hidden');
-    }
-};
+            // Arruma de vez o CC em branco no Planejamento!
+            if (dbObj.planning) {
+                Object.keys(dbObj.planning).forEach(ctx => {
+                    dbObj.planning[ctx].forEach(visita => {
+                        if (visita.student && visita.student.turma && normalizar(visita.student.turma) === busca) {
+                            visita.student.cc = cc;
+                            roteirosCorrigidos++;
+                        }
+                    });
+                });
+            }
+
+            localStorage.setItem('senac_cofre_cc', JSON.stringify(dbObj.controle_turmas));
+            if(typeof saveToStorage === 'function') saveToStorage();
+            
+            if(typeof window.renderControleRateio === 'function') window.renderControleRateio();
+            if(typeof renderPlanningTable === 'function') renderPlanningTable();
+            if(typeof runFilter === 'function') runFilter();
+            
+            alert(`✅ Turma ${nome} processada!\n\n- ${alunosCorrigidos} alunos corrigidos.\n- ${roteirosCorrigidos} registros de planejamento consertados.`);
+            
+            nomeInput.value = ''; ccInput.value = '';
+            
+            // Fecha o Modal (Se estiver usando)
+            if(typeof window.fecharModalNovaTurma === 'function') {
+                window.fecharModalNovaTurma(); 
+            } else {
+                const modal = document.getElementById('modalAddTurmaSeguro');
+                if (modal) modal.classList.add('hidden');
+            }
+        };
 
 // =========================================================
 // 3. IMPORTAÇÃO EM LOTE (Salva todas no Cofre de uma vez)
@@ -6119,7 +6115,7 @@ window.atualizarAutocompleteGlobal = function() {
         }
 
         // =========================================================
-        // CONTROLES DO MODAL DE NOVA TURMA (Segurança)
+        // CONTROLES DO MODAL DE NOVA TURMA E PROPAGAÇÃO (Segurança)
         // =========================================================
         window.fecharModalNovaTurma = function() {
             const modal = document.getElementById('modalAddTurmaSeguro');
@@ -6135,17 +6131,68 @@ window.atualizarAutocompleteGlobal = function() {
 
             if (!nome) return alert("Digite o nome da turma!");
 
-            window.DB.controle_turmas = window.DB.controle_turmas || [];
-            if (window.DB.controle_turmas.find(t => t.nome === nome)) return alert("Essa turma já existe no Cofre!");
+            const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+            if (!dbObj.controle_turmas) dbObj.controle_turmas = [];
+            if (!dbObj.cc_map) dbObj.cc_map = {};
 
-            window.DB.controle_turmas.push({ nome: nome, cc: cc, manualVisitor: "" });
-            localStorage.setItem('senac_cofre_cc', JSON.stringify(window.DB.controle_turmas));
+            const normalizar = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+            const busca = normalizar(nome);
+
+            // 1. Procura se a turma já existe
+            let indexNoCofre = dbObj.controle_turmas.findIndex(t => t && t.nome && normalizar(t.nome) === busca);
+
+            if (indexNoCofre !== -1) {
+                // 🔥 A MÁGICA: Em vez de bloquear, ele pergunta se você quer consertar o sistema!
+                const querAtualizar = confirm(`⚠️ A turma ${nome} já está no Cofre!\n\nDeseja FORÇAR A ATUALIZAÇÃO e aplicar o CC ${cc} a todos os roteiros e alunos que estão com o campo em branco?`);
+                if (!querAtualizar) return; 
+                
+                dbObj.controle_turmas[indexNoCofre].cc = cc; 
+            } else {
+                // Insere nova mantendo a propriedade manualVisitor vazia para não quebrar o seu Rateio
+                dbObj.controle_turmas.push({ nome: nome, cc: cc, manualVisitor: "" });
+            }
+
+            dbObj.cc_map[busca] = cc;
+
+            // === 🚀 PROPAGAÇÃO MASSIVA ===
+            let alunosCorrigidos = 0;
+            let roteirosCorrigidos = 0;
+
+            const bases = [dbObj.quali || [], dbObj.tec || []];
+            bases.forEach(lista => {
+                lista.forEach(aluno => {
+                    if (aluno.turma && normalizar(aluno.turma) === busca) {
+                        aluno.cc = cc;
+                        if (aluno.empresa && typeof aluno.empresa === 'object') aluno.empresa.cc = cc;
+                        alunosCorrigidos++;
+                    }
+                });
+            });
+
+            // Vai até o fundo do sistema e arruma o Planejamento!
+            if (dbObj.planning) {
+                Object.keys(dbObj.planning).forEach(ctx => {
+                    dbObj.planning[ctx].forEach(visita => {
+                        if (visita.student && visita.student.turma && normalizar(visita.student.turma) === busca) {
+                            visita.student.cc = cc;
+                            roteirosCorrigidos++;
+                        }
+                    });
+                });
+            }
+
+            localStorage.setItem('senac_cofre_cc', JSON.stringify(dbObj.controle_turmas));
+            if(typeof saveToStorage === 'function') saveToStorage();
             
-            if (typeof saveToStorage === 'function') saveToStorage();
-            if (typeof window.renderControleRateio === 'function') window.renderControleRateio();
+            // Atualiza a tela de Rateio e de Planejamento na mesma hora
+            if(typeof window.renderControleRateio === 'function') window.renderControleRateio();
+            if(typeof renderPlanningTable === 'function') renderPlanningTable();
+            if(typeof runFilter === 'function') runFilter();
             
-            alert(`Turma ${nome} adicionada com sucesso!`);
-            nomeInput.value = ""; ccInput.value = "";
+            alert(`✅ Sucesso Absoluto!\n\n- ${alunosCorrigidos} alunos corrigidos.\n- ${roteirosCorrigidos} roteiros consertados com o novo CC.`);
+            
+            if(nomeInput) nomeInput.value = ""; 
+            if(ccInput) ccInput.value = "";
             window.fecharModalNovaTurma();
         };
 
@@ -6337,266 +6384,57 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================================
-        // 🗺️ ORDENADOR LOGÍSTICO (CIDADE + PRIORIDADE 1ª VISITA)
+        // 🗺️ ORDENADOR LOGÍSTICO BLINDADO (CIDADE + PRIORIDADE 1ª VISITA)
         // =========================================================================
         window.organizarRoteiro = function() {
-            const ctx = window.STATE ? window.STATE.planContext : null;
-            if (!ctx || !window.DB.planning || !window.DB.planning[ctx]) return;
-
-            window.DB.planning[ctx].sort((a, b) => {
-                const sA = a.student || {};
-                const sB = b.student || {};
-
-                // 1º Crtitério: Cidade (Agrupa por região)
-                const cidA = String(sA.cidade || "").toUpperCase();
-                const cidB = String(sB.cidade || "").toUpperCase();
-                if (cidA < cidB) return -1;
-                if (cidA > cidB) return 1;
-
-                // 2º Critério: Prioridade de Visita (1ª Visita aparece antes da 2ª, 3ª...)
-                const visA = String(a.visitaTipo || "").toUpperCase();
-                const visB = String(b.visitaTipo || "").toUpperCase();
-                if (visA < visB) return -1;
-                if (visA > visB) return 1;
-
-                // 3º Critério: Ordem Alfabética do Nome
-                const nomeA = String(sA.nome || "").toUpperCase();
-                const nomeB = String(sB.nome || "").toUpperCase();
-                return nomeA.localeCompare(nomeB);
-            });
-
-            // Refaz a numeração
-            window.DB.planning[ctx].forEach((item, idx) => item.ordem = idx + 1);
-
-            if(typeof saveToStorage === 'function') saveToStorage();
-            if(typeof renderPlanningTable === 'function') renderPlanningTable();
-            alert("✅ Roteiro Organizado com sucesso!\nAgrupado por Cidade e priorizando quem aguarda a 1ª Visita.");
-        };
-        // =========================================================================
-        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO DE FREQUÊNCIA (SENAC)
-        // =========================================================================
-        window.processarFrequenciaPedagogica = async function(event) {
             try {
-                const file = event.target.files[0];
-                if(!file) return;
-
-                const loader = document.getElementById('globalLoader');
-                const loadMsg = document.getElementById('loadingMsg');
-                if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
-                if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO PEDAGÓGICO...";
-
-                const data = await file.arrayBuffer();
-                const workbook = XLSX.read(data, { type: 'array' });
-                
-                const norm = str => (str || "").toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").toUpperCase().trim();
-                
-                let nomeAbaCorreta = null;
-                workbook.SheetNames.forEach(sheetName => {
-                    if (norm(sheetName).includes("PEDAGOGIC")) {
-                        nomeAbaCorreta = sheetName;
-                    }
-                });
-
-                if (!nomeAbaCorreta) {
-                    if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                    return alert("❌ Não encontrei a aba 'Pedagógico' nesta planilha. Verifique se é a folha de presenças correta.");
-                }
-
-                const sheet = workbook.Sheets[nomeAbaCorreta];
-                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-                let indexCabecalho = -1;
-                let indexContraturno = -1; 
-                let mapeamentoUCs = []; 
-
-                for (let r = 0; r < Math.min(10, rows.length); r++) {
-                    let achouUC = false;
-                    for (let c = 0; c < rows[r].length; c++) {
-                        let valorCelula = norm(rows[r][c]);
-                        
-                        if (valorCelula.includes("ENSINO MEDIO") || valorCelula.includes("CONTRATURNO")) {
-                            indexContraturno = c;
-                        }
-
-                        if (valorCelula.includes("FREQUENCIA") && valorCelula.includes("UC")) {
-                            achouUC = true;
-                            indexCabecalho = r;
-                            
-                            let partesUC = valorCelula.split("UC");
-                            let numUC = partesUC.length > 1 ? partesUC[1].trim().split(" ")[0] : "?";
-                            let nomeUC = "UC" + numUC;
-                            
-                            let proximaColuna = norm(rows[r][c+1] || "");
-                            let indexAva = (proximaColuna.includes("RESULTADO") || proximaColuna.includes("AVA")) ? (c + 1) : -1;
-                            
-                            mapeamentoUCs.push({
-                                nome: nomeUC,
-                                indexFreq: c,
-                                indexAva: indexAva
-                            });
-                        }
-                    }
-                    if (achouUC) break; 
-                }
-
-                if (mapeamentoUCs.length === 0) {
-                    throw new Error("O sistema não encontrou o cabeçalho com os nomes das UCs na planilha.");
-                }
-
+                // Busca o banco de dados e estado da tela de forma blindada contra erros
                 const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
-
+                
                 const ctx = stateObj ? stateObj.planContext : null;
                 
                 if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
-                    throw new Error("Nenhum roteiro aberto para preencher. Por favor, selecione um roteiro na tela.");
+                    return alert("⚠️ Nenhum roteiro aberto no momento para organizar.");
                 }
-                const roteiro = dbObj.planning[ctx];
 
-                let alunosAtualizados = 0;
+                // Realiza a ordenação inteligente
+                dbObj.planning[ctx].sort((a, b) => {
+                    const sA = a.student || {};
+                    const sB = b.student || {};
 
-                roteiro.forEach(item => {
-                    if (!item.student || !item.student.nome) return;
-                    const nomeAlunoRoteiro = norm(item.student.nome);
-                    
-                    for (let i = indexCabecalho + 1; i < rows.length; i++) {
-                        const row = rows[i];
-                        if (!row) continue;
-                        
-                        const linhaCompleta = row.map(c => norm(c)).join(" "); 
-                        
-                        if (linhaCompleta.includes(nomeAlunoRoteiro)) {
-                            let ucsStatus = [];
-                            let ucsAvaliadas = 0; 
+                    // 1º Crtitério: Cidade (Alfabético)
+                    const cidA = String(sA.cidade || "").toUpperCase().trim();
+                    const cidB = String(sB.cidade || "").toUpperCase().trim();
+                    if (cidA < cidB) return -1;
+                    if (cidA > cidB) return 1;
 
-                            mapeamentoUCs.forEach(uc => {
-                                let freqVal = row[uc.indexFreq];
-                                let avaVal = uc.indexAva !== -1 ? norm(row[uc.indexAva]) : "";
-                                
-                                let freqStr = "";
-                                let freqNumber = null;
+                    // 2º Critério: Tipo de Visita (Ex: 1ª Visita vem antes da 2ª Visita)
+                    const visA = String(a.visitaTipo || "").toUpperCase().trim();
+                    const visB = String(b.visitaTipo || "").toUpperCase().trim();
+                    if (visA < visB) return -1;
+                    if (visA > visB) return 1;
 
-                                if (typeof freqVal === 'number') {
-                                    freqNumber = freqVal * 100;
-                                    freqStr = Math.round(freqNumber) + "%";
-                                } else {
-                                    freqStr = String(freqVal || "").trim();
-                                    let parseado = parseFloat(freqStr.replace(',', '.').replace('%', ''));
-                                    if (!isNaN(parseado)) {
-                                        freqNumber = parseado;
-                                    }
-                                }
-
-                                if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
-                                    ucsAvaliadas++; 
-                                    
-                                    let icon = ""; 
-                                    let registrarFalha = false; 
-                                    
-                                    if (freqNumber !== null && freqNumber < 75) {
-                                        icon = "🔴 Conselho de Classe";
-                                        registrarFalha = true;
-                                    } else if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
-                                        icon = "🔴 Recuperação";
-                                        registrarFalha = true;
-                                    } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
-                                        icon = "🟢 OK";
-                                        registrarFalha = false; 
-                                    } else if (avaVal === "" || avaVal === "0" || avaVal === "-" || avaVal.includes("PARCIAL")) {
-                                        icon = "🟡 Parcial";
-                                        registrarFalha = true;
-                                    }
-
-                                    if (registrarFalha) {
-                                        ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
-                                    }
-                                }
-                            });
-
-                            // 🔥 NOVO: TRADUTOR INTELIGENTE DE DIAS DA SEMANA
-                            let textoContraturno = "";
-                            if (indexContraturno !== -1) {
-                                let valOriginal = row[indexContraturno];
-                                let valString = String(valOriginal || "").trim();
-                                let valNorm = norm(valString);
-                                
-                                if (valNorm !== "" && valNorm !== "0" && valNorm !== "-" && valNorm !== "FALSO") {
-                                    
-                                    // Traduz as variações do Excel para o formato exato da sua janelinha
-                                    let diaTraduzido = valString; // Mantém o original se não reconhecer
-                                    
-                                    if (valNorm.includes("SEGUNDA") || valNorm.includes("2A") || valNorm.includes("2ª")) diaTraduzido = "Segunda";
-                                    else if (valNorm.includes("TERCA") || valNorm.includes("3A") || valNorm.includes("3ª")) diaTraduzido = "Terça";
-                                    else if (valNorm.includes("QUARTA") || valNorm.includes("4A") || valNorm.includes("4ª")) diaTraduzido = "Quarta";
-                                    else if (valNorm.includes("QUINTA") || valNorm.includes("5A") || valNorm.includes("5ª")) diaTraduzido = "Quinta";
-                                    else if (valNorm.includes("SEXTA") || valNorm.includes("6A") || valNorm.includes("6ª")) diaTraduzido = "Sexta";
-
-                                    textoContraturno = `🕒 Contraturno: ${diaTraduzido}`;
-                                    
-                                    // 1. Atualiza no Roteiro atual (já traduzido!)
-                                    item.student.contraturno = diaTraduzido;
-                                    
-                                    // 2. Atualiza no Banco de Dados Oficial (Qualificação ou Técnica)
-                                    if (dbObj.quali) {
-                                        let alunoQuali = dbObj.quali.find(a => a.id === item.student.id);
-                                        if (alunoQuali) alunoQuali.contraturno = diaTraduzido;
-                                    }
-                                    if (dbObj.tec) {
-                                        let alunoTec = dbObj.tec.find(a => a.id === item.student.id);
-                                        if (alunoTec) alunoTec.contraturno = diaTraduzido;
-                                    }
-                                }
-                            }
-
-                            let textoPedagogico = "";
-                            if (ucsAvaliadas > 0) {
-                                if (ucsStatus.length > 0) {
-                                    textoPedagogico = "Atenção: " + ucsStatus.join(" | ") + ".";
-                                } else {
-                                    textoPedagogico = "✅ Sem pendências nas UCs avaliadas.";
-                                }
-                            }
-
-                            if (textoPedagogico !== "" || textoContraturno !== "") {
-                                let relatorio = "[PEDAGÓGICO] ";
-                                let blocos = [];
-                                
-                                if (textoPedagogico) blocos.push(textoPedagogico);
-                                if (textoContraturno) blocos.push(textoContraturno);
-                                
-                                relatorio += blocos.join(" | ");
-                                
-                                if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
-                                    item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
-                                } else {
-                                    const obsAtual = item.obs ? item.obs + "\n" : "";
-                                    item.obs = obsAtual + relatorio;
-                                }
-                                alunosAtualizados++;
-                            }
-                            break; 
-                        }
-                    }
+                    // 3º Critério: Nome (Ordem Alfabética)
+                    const nomeA = String(sA.nome || "").toUpperCase().trim();
+                    const nomeB = String(sB.nome || "").toUpperCase().trim();
+                    return nomeA.localeCompare(nomeB);
                 });
 
-                // Salva todas as alterações do contraturno no LocalStorage e na Nuvem
+                // Refaz a numeração (coluna Ordem)
+                dbObj.planning[ctx].forEach((item, idx) => item.ordem = idx + 1);
+
+                // Salva e atualiza a tela
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
-                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                alert("✅ Roteiro Organizado com sucesso!\nAgrupado por Cidade e priorizando quem aguarda a 1ª Visita.");
                 
-                alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório e o cadastro de contraturno atualizados.`);
-
-            } catch (e) {
-                console.error(e); 
-                alert("Erro ao ler pedagógico:\n" + e.message);
-                const loader = document.getElementById('globalLoader');
-                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-            } finally {
-                event.target.value = ''; 
+            } catch (error) {
+                console.error("Erro na organização:", error);
+                alert("Erro ao tentar organizar o roteiro. Detalhe técnico: " + error.message);
             }
         };
-
         // =========================================================
         // 🏁 O "MOTOR DE ARRANQUE" ATUALIZADO (SEMPRE A ÚLTIMA COISA)
         // =========================================================
