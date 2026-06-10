@@ -6201,51 +6201,80 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================
-        // ☁️ MOTOR DE SINCRONIZAÇÃO E FISCAL DE AGENDAMENTO
+        // ☁️ MOTOR DE SINCRONIZAÇÃO E FISCAL DE AGENDAMENTO (Contraturno e Contrato)
         // =========================================================
         window.verificarChoquesContraturno = function() {
             const ctx = window.STATE ? window.STATE.planContext : null;
             if (!ctx || !window.DB || !window.DB.planning || !window.DB.planning[ctx]) return;
             
             const roteiro = window.DB.planning[ctx];
-            let encontrouNovoChoque = false;
+            let encontrouNovoAlerta = false;
 
             roteiro.forEach(item => {
-                if (!item.student || !item.student.contraturno || !item.date) return;
+                if (!item.student || !item.date) return;
                 
-                // Pega a data (ex: 2026-05-18) e descobre o dia da semana matemático
-                const partes = item.date.split('-');
-                if(partes.length !== 3) return;
+                const partesVisita = item.date.split('-');
+                if(partesVisita.length !== 3) return;
                 
-                // Mês em JavaScript começa do zero (0=Jan), então subtraímos 1 do mês
-                const dObj = new Date(partes[0], partes[1]-1, partes[2]);
+                const dataVisitaObj = new Date(partesVisita[0], partesVisita[1]-1, partesVisita[2]);
+                
+                // 1. ANÁLISE DE CONTRATURNO
                 const diasExtenso = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
-                const diaVisita = diasExtenso[dObj.getDay()];
+                const diaVisita = diasExtenso[dataVisitaObj.getDay()];
+                const msgContraturno = "🚨 ALERTA: Visita agendada no dia do Contraturno!";
                 
-                const msgAlerta = "🚨 ALERTA: Visita agendada no dia do Contraturno!";
+                let temChoqueContraturno = (item.student.contraturno && diaVisita === item.student.contraturno);
+
+                // 2. ANÁLISE DE FIM DE CONTRATO
+                let temFimContrato = false;
+                let dataFimObj = null;
                 
-                // Se o dia do calendário for igual ao dia de contraturno do aluno
-                if (diaVisita === item.student.contraturno) {
-                    if (!item.obs) {
-                        item.obs = msgAlerta;
-                        encontrouNovoChoque = true;
-                    } else if (!item.obs.includes(msgAlerta)) {
-                        item.obs = item.obs + "\n" + msgAlerta;
-                        encontrouNovoChoque = true;
+                // Procura a data de término no cadastro (Geralmente data_fim, termino ou fim_contrato)
+                const dataFimStr = String(item.student.data_fim || item.student.termino || item.student.fim_contrato || "").trim();
+                
+                if (dataFimStr.length >= 8) {
+                    if (dataFimStr.includes('/')) {
+                        const p = dataFimStr.split('/');
+                        if (p.length === 3) dataFimObj = new Date(p[2], p[1]-1, p[0]);
+                    } else if (dataFimStr.includes('-')) {
+                        const p = dataFimStr.split('-');
+                        if (p.length === 3) dataFimObj = new Date(p[0], p[1]-1, p[2]);
                     }
+                }
+
+                // Se existir uma data de fim, zera as horas e compara as datas
+                if (dataFimObj) {
+                    dataFimObj.setHours(0,0,0,0);
+                    dataVisitaObj.setHours(0,0,0,0);
+                    if (dataVisitaObj > dataFimObj) {
+                        temFimContrato = true;
+                    }
+                }
+
+                const msgContrato = `🚨 ALERTA: Visita agendada APÓS o fim do contrato (${dataFimStr})!`;
+
+                // 3. ATUALIZA A OBSERVAÇÃO
+                let obsAtual = item.obs || "";
+                
+                // Limpa alertas antigos para não duplicar se você ficar mudando a data
+                obsAtual = obsAtual.replace(msgContraturno, "").replace(/🚨 ALERTA: Visita agendada APÓS o fim do contrato.*?(\n|$)/g, "").trim();
+                
+                let novosAlertas = [];
+                if (temChoqueContraturno) novosAlertas.push(msgContraturno);
+                if (temFimContrato) novosAlertas.push(msgContrato);
+
+                if (novosAlertas.length > 0) {
+                    item.obs = (obsAtual + "\n\n" + novosAlertas.join("\n")).trim();
+                    encontrouNovoAlerta = true;
                 } else {
-                    // Dinamismo: Se você mudar para um dia que não tem choque, ele apaga o alerta sozinho!
-                    if (item.obs && item.obs.includes(msgAlerta)) {
-                        item.obs = item.obs.replace(msgAlerta, "").trim();
-                        item.obs = item.obs.replace(/\n\n/g, "\n"); // Limpa quebras de linha soltas
-                    }
+                    item.obs = obsAtual.replace(/\n\n/g, "\n").trim();
                 }
             });
             
-            // Mostra o pop-up na tela apenas se achou um choque que você ainda não tinha visto
-            if (encontrouNovoChoque) {
+            // Avisa o usuário na tela
+            if (encontrouNovoAlerta) {
                 setTimeout(() => {
-                    alert("⚠️ ATENÇÃO: Você agendou visita(s) para o mesmo dia do Contraturno escolar do aprendiz!\nVerifique os alertas nas observações do roteiro.");
+                    alert("⚠️ ATENÇÃO: Conflitos de agenda detectados!\n\nVerifique os alertas vermelhos nas observações. Há alunos agendados no dia do Contraturno ou com contrato já Encerrado nessa data.");
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 }, 100); 
             }
@@ -6603,84 +6632,79 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================================
-        // 🗺️ ORDENADOR LOGÍSTICO BLINDADO + VARREDURA DE DESLIGADOS
+        // 🗺️ ORDENADOR LOGÍSTICO + FAXINA GLOBAL DE DESLIGADOS
         // =========================================================================
         window.organizarRoteiro = function() {
             try {
-                const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
-                
-                const ctx = stateObj ? stateObj.planContext : null;
-                
-                if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
-                    return alert("⚠️ Nenhum roteiro aberto no momento para organizar.");
-                }
-
-                let roteiro = dbObj.planning[ctx];
-                let removidos = 0;
+                if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
 
                 // 1. Mapeia os status de todos os alunos na base central do Senac
                 const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
                 const statusMap = {};
                 todos.forEach(a => statusMap[a.id] = String(a.status || a.situacao || "").toUpperCase());
 
-                // 2. FAXINA: Varre de trás para frente para remover os desligados
-                for (let i = roteiro.length - 1; i >= 0; i--) {
-                    const item = roteiro[i];
-                    if (!item.student) continue;
+                let totalRemovidos = 0;
 
-                    const statusDb = statusMap[item.student.id] || "";
+                // 2. FAXINA GLOBAL: Varre TODOS os roteiros salvos no sistema
+                Object.keys(dbObj.planning).forEach(nomeRoteiro => {
+                    let roteiro = dbObj.planning[nomeRoteiro];
                     
-                    // Se estiver inativo no sistema, remove do roteiro atual
-                    if (statusDb.includes('DESLIGADO') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
-                        roteiro.splice(i, 1);
-                        removidos++;
+                    // Varre de trás para frente para deletar em segurança
+                    for (let i = roteiro.length - 1; i >= 0; i--) {
+                        const item = roteiro[i];
+                        if (!item.student) continue;
+
+                        const statusDb = statusMap[item.student.id] || "";
+                        
+                        // Se estiver inativo, remove do planejamento
+                        if (statusDb.includes('DESLIGADO') || statusDb.includes('ENCERRAD') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
+                            roteiro.splice(i, 1);
+                            totalRemovidos++;
+                        }
                     }
-                }
-
-                // 3. ORDENAÇÃO: Organiza os sobreviventes por Cidade e Prioridade
-                roteiro.sort((a, b) => {
-                    const sA = a.student || {};
-                    const sB = b.student || {};
-
-                    // 1º Crtitério: Cidade (Alfabético)
-                    const cidA = String(sA.cidade || "").toUpperCase().trim();
-                    const cidB = String(sB.cidade || "").toUpperCase().trim();
-                    if (cidA < cidB) return -1;
-                    if (cidA > cidB) return 1;
-
-                    // 2º Critério: Tipo de Visita (Ex: 1ª Visita vem antes da 2ª Visita)
-                    const visA = String(a.visitaTipo || "").toUpperCase().trim();
-                    const visB = String(b.visitaTipo || "").toUpperCase().trim();
-                    if (visA < visB) return -1;
-                    if (visA > visB) return 1;
-
-                    // 3º Critério: Nome (Ordem Alfabética)
-                    const nomeA = String(sA.nome || "").toUpperCase().trim();
-                    const nomeB = String(sB.nome || "").toUpperCase().trim();
-                    return nomeA.localeCompare(nomeB);
+                    // Refaz a numeração interna daquele roteiro
+                    roteiro.forEach((item, idx) => item.ordem = idx + 1);
                 });
 
-                // 4. Refaz a numeração (coluna Ordem)
-                roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                // 3. ORDENAÇÃO: Pega o Roteiro que está aberto na tela e organiza (Cidade -> Visita)
+                const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
+                const ctx = stateObj ? stateObj.planContext : null;
 
-                // Salva e atualiza a tela
+                if (ctx && dbObj.planning[ctx]) {
+                    dbObj.planning[ctx].sort((a, b) => {
+                        const sA = a.student || {}; const sB = b.student || {};
+                        
+                        const cidA = String(sA.cidade || "").toUpperCase().trim();
+                        const cidB = String(sB.cidade || "").toUpperCase().trim();
+                        if (cidA < cidB) return -1; if (cidA > cidB) return 1;
+
+                        const visA = String(a.visitaTipo || "").toUpperCase().trim();
+                        const visB = String(b.visitaTipo || "").toUpperCase().trim();
+                        if (visA < visB) return -1; if (visA > visB) return 1;
+
+                        return String(sA.nome || "").toUpperCase().trim().localeCompare(String(sB.nome || "").toUpperCase().trim());
+                    });
+                    
+                    // Refaz a numeração visível na tela
+                    dbObj.planning[ctx].forEach((item, idx) => item.ordem = idx + 1);
+                }
+
+                // Salva e atualiza
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
-                // Monta o aviso final
-                let msg = "✅ Roteiro Organizado com sucesso!\nAgrupado por Cidade e priorizando quem aguarda a 1ª Visita.";
-                if (removidos > 0) {
-                    msg += `\n\n🧹 VARREDURA ATUOU: ${removidos} aluno(s) que estavam desligados ou evadidos foram removidos da lista!`;
+                let msg = "✅ Roteiro atual organizado com sucesso (Cidades e Prioridades)!";
+                if (totalRemovidos > 0) {
+                    msg += `\n\n🧹 FAXINA GLOBAL CONCLUÍDA:\n${totalRemovidos} aluno(s) Desligados/Encerrados foram removidos de TODOS os seus planejamentos!`;
                 }
                 alert(msg);
                 
             } catch (error) {
                 console.error("Erro na organização:", error);
-                alert("Erro ao tentar organizar o roteiro. Detalhe técnico: " + error.message);
+                alert("Erro ao tentar organizar o roteiro: " + error.message);
             }
         };
-
         // =========================================================================
         // 🚗 MOTOR DE LOGÍSTICA: GERADOR DE ROTA NO GOOGLE MAPS
         // =========================================================================
