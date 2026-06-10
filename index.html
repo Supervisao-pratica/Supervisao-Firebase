@@ -686,6 +686,10 @@
                             <button onclick="organizarRoteiro()" class="px-3 py-1.5 bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100 hover:text-sky-700 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Agrupar por cidade e priorizar 1ª Visita">
                                 <i data-lucide="map" class="w-3 h-3"></i> Organizar
                             </button>
+                            
+                            <button onclick="tracarRotaMaps()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Criar rota no Google Maps para o dia">
+                                <i data-lucide="navigation" class="w-3 h-3"></i> Traçar Rota
+                            </button>
 
                         </div>
                     </div>
@@ -6679,6 +6683,113 @@ window.atualizarAutocompleteGlobal = function() {
                 alert("Erro ao tentar organizar o roteiro. Detalhe técnico: " + error.message);
             }
         };
+
+        // =========================================================================
+        // 🚗 MOTOR DE LOGÍSTICA: GERADOR DE ROTA NO GOOGLE MAPS
+        // =========================================================================
+        window.tracarRotaMaps = function() {
+            try {
+                const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+                
+                const ctx = stateObj ? stateObj.planContext : null;
+                
+                if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
+                    return alert("⚠️ Nenhum roteiro aberto para traçar rota.");
+                }
+
+                const roteiro = dbObj.planning[ctx];
+                
+                // 1. Pega todas as visitas que já têm data e endereço válidos
+                const visitasValidas = roteiro.filter(item => {
+                    const temData = item.date && String(item.date).trim() !== "";
+                    const temEnd = item.student && item.student.empresa && item.student.empresa.endereco && item.student.empresa.endereco.length > 5;
+                    return temData && temEnd;
+                });
+
+                if (visitasValidas.length === 0) {
+                    return alert("❌ Nenhuma visita com Data e Endereço válidos encontrada neste roteiro.\n\nCertifique-se de preencher a data da visita e de que os alunos possuam o endereço da empresa cadastrado (Rua, Número, Bairro).");
+                }
+
+                // 2. Descobre os dias únicos agendados para perguntar qual dia você quer roteirizar
+                const diasUnicos = [...new Set(visitasValidas.map(item => item.date))].sort();
+                let dataEscolhida = diasUnicos[0];
+                
+                if (diasUnicos.length > 1) {
+                    const diasBr = diasUnicos.map(d => d.split('-').reverse().join('/'));
+                    const msg = `📅 Encontramos visitas em várias datas:\n${diasBr.join('  |  ')}\n\nDigite a data que deseja roteirizar (Formato: DD/MM/AAAA):`;
+                    let inputData = prompt(msg, diasBr[0]);
+                    
+                    if (!inputData) return; // O usuário clicou em cancelar
+                    
+                    // Converte a data digitada de volta para o formato interno do sistema
+                    const partes = inputData.split('/');
+                    if (partes.length === 3) {
+                        dataEscolhida = `${partes[2]}-${partes[1]}-${partes[0]}`;
+                    } else {
+                        return alert("❌ Formato de data inválido. Use DD/MM/AAAA.");
+                    }
+                }
+
+                // 3. Filtra apenas os alunos do dia escolhido
+                let visitasDoDia = visitasValidas.filter(item => item.date === dataEscolhida);
+                
+                if (visitasDoDia.length === 0) {
+                    return alert("❌ Nenhuma visita com endereço encontrada para a data informada.");
+                }
+
+                // 4. Ordena pelo horário da visita para a rota seguir a sua agenda!
+                visitasDoDia.sort((a, b) => {
+                    const hrA = a.hrAtend || "23:59";
+                    const hrB = b.hrAtend || "23:59";
+                    return hrA.localeCompare(hrB);
+                });
+
+                // 5. Pede o seu ponto de partida
+                const origem = prompt("📍 Qual é o seu ponto de PARTIDA?\n(Pode ser a sua cidade, rua ou o endereço do Senac)", "Curitiba, PR");
+                if (!origem) return;
+
+                // 6. Constrói o link do Google Maps empilhando os destinos
+                let urlMaps = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origem)}`;
+                let waypoints = [];
+                let destinoFinal = "";
+                let resumoParadas = [];
+
+                visitasDoDia.forEach((item, index) => {
+                    const s = item.student;
+                    const endLimpo = s.empresa.endereco.replace(/\n/g, ' ').replace(/\r/g, '');
+                    const enderecoCompleto = `${endLimpo}, ${s.cidade} - ${s.regiao || 'PR'}`;
+                    
+                    if (index === visitasDoDia.length - 1) {
+                        // O último item é o destino
+                        destinoFinal = enderecoCompleto;
+                    } else {
+                        // Os do meio são waypoints
+                        waypoints.push(enderecoCompleto);
+                    }
+                    
+                    resumoParadas.push(`⏰ ${item.hrAtend || 'S/ Hora'} - ${s.nome.split(' ')[0]} (${s.cidade})`);
+                });
+
+                // Adiciona o destino
+                urlMaps += `&destination=${encodeURIComponent(destinoFinal)}`;
+                
+                // Adiciona os waypoints se houver
+                if (waypoints.length > 0) {
+                    urlMaps += `&waypoints=${waypoints.map(w => encodeURIComponent(w)).join('|')}`;
+                }
+
+                // 7. Abre o Google Maps numa nova aba
+                window.open(urlMaps, '_blank');
+                
+                alert(`🗺️ Rota traçada com sucesso!\n\nForam adicionadas ${visitasDoDia.length} paradas cronológicas no seu Maps:\n\n${resumoParadas.join('\n')}\n\nDICA: Lá no Maps, você pode arrastar as paradas para cima e para baixo caso queira achar um caminho mais rápido entre elas!`);
+
+            } catch (error) {
+                console.error("Erro ao traçar rota:", error);
+                alert("Erro ao traçar rota: " + error.message);
+            }
+        };
+        
         // =========================================================
         // 🏁 O "MOTOR DE ARRANQUE" ATUALIZADO (SEMPRE A ÚLTIMA COISA)
         // =========================================================
