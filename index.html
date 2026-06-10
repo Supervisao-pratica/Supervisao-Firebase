@@ -6564,70 +6564,83 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
 // =========================================================================
-        // 🔄 MOTOR DE AVANÇO DE CICLO (PRÓXIMA VISITA E FAXINA DE DESLIGADOS)
+        // 🔄 MOTOR DE AVANÇO DE CICLO BLINDADO (PRÓXIMA VISITA E FAXINA)
         // =========================================================================
         window.prepararProximaVisita = function() {
-            const ctx = window.STATE ? window.STATE.planContext : null;
-            if (!ctx || !window.DB.planning || !window.DB.planning[ctx]) {
-                return alert("Nenhum roteiro aberto para avançar.");
-            }
-
-            const confirmar = confirm("🔄 AVANÇAR CICLO DE VISITAS E FAXINA\n\n1. Alunos 'Realizados' irão para a próxima visita (ex: 1ª para 2ª).\n2. Alunos com status 'Desligado/Evadido' na base serão removidos do roteiro.\n\nDeseja continuar?");
-            if (!confirmar) return;
-
-            let roteiro = window.DB.planning[ctx];
-            let alterados = 0;
-            let removidos = 0;
-
-            // Dicionário de status reais do DB central para saber quem foi desligado
-            const todos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
-            const statusMap = {};
-            todos.forEach(a => statusMap[a.id] = String(a.status || a.situacao || "").toUpperCase());
-
-            // Loop de trás para frente para poder remover itens da lista com segurança
-            for (let i = roteiro.length - 1; i >= 0; i--) {
-                const item = roteiro[i];
-                if (!item.student) continue;
-
-                const statusDb = statusMap[item.student.id] || "";
+            try {
+                // A mesma blindagem à prova de falhas que usamos no botão Organizar
+                const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 
-                // 🛑 FAXINA: Remove se desligado, evadido, concluído ou cancelado
-                if (statusDb.includes('DESLIGADO') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
-                    roteiro.splice(i, 1);
-                    removidos++;
-                    continue;
+                const ctx = stateObj ? stateObj.planContext : null;
+                
+                if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
+                    return alert("⚠️ Nenhum roteiro aberto no momento para avançar.");
                 }
 
-                // 🔄 AVANÇO DE CICLO
-                const statusPlano = String(item.status || "").trim().toUpperCase();
-                if (statusPlano === 'REALIZADA') {
-                    item.status = 'Realizar'; 
-                    
-                    if (item.visitaTipo) {
-                        item.visitaTipo = item.visitaTipo.replace(/(\d+)(ª|º|a|o)/i, (match, numero, sufixo) => {
-                            return (parseInt(numero) + 1) + sufixo;
-                        });
-                    }
-                    
-                    item.date = '';
-                    item.hrAtend = '';
-                    if (item.obs) {
-                       item.obs = item.obs.replace(/🚨 ALERTA: Visita agendada no dia do Contraturno!/g, "").trim();
-                       item.obs = item.obs.replace(/\[PEDAGÓGICO\](.*?)(\n|$)/g, "").trim();
-                    }
-                    alterados++;
-                }
-            }
+                const confirmar = confirm("🔄 AVANÇAR CICLO DE VISITAS E FAXINA\n\n1. Alunos 'Realizados' irão para a próxima visita (ex: 1ª para 2ª).\n2. Alunos com status 'Desligado/Evadido/Encerrado' na base serão removidos do roteiro.\n\nDeseja continuar?");
+                if (!confirmar) return;
 
-            if (alterados > 0 || removidos > 0) {
-                // Reordena a numeração da coluna "Ordem" caso alguém tenha sido apagado
-                roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                let roteiro = dbObj.planning[ctx];
+                let alterados = 0;
+                let removidos = 0;
+
+                // Dicionário de status reais do DB central para saber quem foi desligado
+                const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
+                const statusMap = {};
+                todos.forEach(a => statusMap[a.id] = String(a.status || a.situacao || "").toUpperCase());
+
+                // Loop de trás para frente para poder remover itens da lista com segurança
+                for (let i = roteiro.length - 1; i >= 0; i--) {
+                    const item = roteiro[i];
+                    if (!item.student) continue;
+
+                    const statusDb = statusMap[item.student.id] || "";
+                    
+                    // 🛑 FAXINA: Remove se desligado, evadido, concluído ou cancelado
+                    if (statusDb.includes('DESLIGADO') || statusDb.includes('ENCERRAD') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
+                        roteiro.splice(i, 1);
+                        removidos++;
+                        continue;
+                    }
+
+                    // 🔄 AVANÇO DE CICLO
+                    const statusPlano = String(item.status || "").trim().toUpperCase();
+                    if (statusPlano === 'REALIZADA') {
+                        item.status = 'Realizar'; 
+                        
+                        // Soma +1 no número da visita
+                        if (item.visitaTipo) {
+                            item.visitaTipo = item.visitaTipo.replace(/(\d+)(ª|º|a|o)/i, (match, numero, sufixo) => {
+                                return (parseInt(numero) + 1) + sufixo;
+                            });
+                        }
+                        
+                        // Zera os dados de agendamento e limpa os alertas passados
+                        item.date = '';
+                        item.hrAtend = '';
+                        if (item.obs) {
+                           item.obs = item.obs.replace(/🚨 ALERTA:(.*?)(?=\n|$)/g, "").trim(); 
+                           item.obs = item.obs.replace(/\[PEDAGÓGICO\](.*?)(\n|$)/g, "").trim();
+                        }
+                        alterados++;
+                    }
+                }
+
+                if (alterados > 0 || removidos > 0) {
+                    // Reordena a numeração da coluna "Ordem" caso alguém tenha sido apagado
+                    roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                    
+                    if(typeof saveToStorage === 'function') saveToStorage();
+                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                    alert(`✅ Ciclo Avançado!\n\n- ${alterados} aluno(s) movidos para o próximo ciclo (Datas zeradas).\n- ${removidos} aluno(s) inativos/desligados foram removidos do roteiro.`);
+                } else {
+                    alert("ℹ️ Nenhuma alteração necessária. Não há alunos 'Realizados' ou 'Desligados'.");
+                }
                 
-                if(typeof saveToStorage === 'function') saveToStorage();
-                if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                alert(`✅ Ciclo Avançado!\n\n- ${alterados} aluno(s) movidos para o próximo ciclo (Datas zeradas).\n- ${removidos} aluno(s) inativos/desligados foram removidos do roteiro.`);
-            } else {
-                alert("ℹ️ Nenhuma alteração necessária. Não há alunos 'Realizados' ou 'Desligados'.");
+            } catch (error) {
+                console.error("Erro ao avançar ciclo:", error);
+                alert("Erro técnico ao tentar avançar: " + error.message);
             }
         };
 
