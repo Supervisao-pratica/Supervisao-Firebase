@@ -2379,7 +2379,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             });
         };
 
-        // NOVA: Função de Copiar com Layout de CARDS IDÊNTICO À TELA (Para Teams/Email)
+        // NOVA: Função de Copiar com Layout de CARDS IDÊNTICO À TELA e identificação QUALI/TEC
         window.copiarRelatorioTexto = function(tipo) {
             if(!window.lastRelatorioData) return;
             
@@ -2388,6 +2388,9 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 alert("Não há alunos nesta situação para copiar.");
                 return;
             }
+
+            // Puxa o banco para checar se é técnica
+            const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
 
             // Pega o Mês e Ano atual para o título
             const now = new Date();
@@ -2398,11 +2401,15 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                         tipo === 'atrasado' ? 'VISITAS ATRASADAS' :
                         'VISITAS PARA NESTE MÊS';
             
-            // 1. Monta a versão TEXTO SIMPLES (Para o WhatsApp, que não aceita design)
+            // 1. Monta a versão TEXTO SIMPLES (Para o WhatsApp)
             let plainText = `*${title.toUpperCase()}*\n\n`;
             dados.forEach(r => {
+                const isTecnico = dbObj && dbObj.tec && dbObj.tec.some(t => t.id === r.item.id);
+                const tagCursoText = isTecnico ? 'TÉCNICA' : 'QUALI';
+
                 let dataLimpa = r.dataMostrada.replace('Fim do Contrato: ', '').replace('Previsão: ', '').replace('Previsão era: ', '');
-                plainText += `Aluno: ${r.item.nome}\n`;
+                
+                plainText += `Aluno: ${r.item.nome} [${tagCursoText}]\n`;
                 plainText += `Cidade: ${r.item.cidade || 'N/A'}\n`;
                 plainText += `Empresa: ${r.item.empresa ? r.item.empresa.razao : 'N/A'}\n`;
                 plainText += `Turma: ${r.item.turma || 'N/A'}  |  Visitas Feitas: ${r.vDone}\n`;
@@ -2427,6 +2434,13 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 htmlText += `<tr>`;
 
                 const buildCard = (r) => {
+                    const isTecnico = dbObj && dbObj.tec && dbObj.tec.some(t => t.id === r.item.id);
+                    
+                    // Cria a etiqueta com o CSS embutido (para não quebrar no e-mail)
+                    const tagCursoHtml = isTecnico 
+                        ? '<span style="background-color: #e0e7ff; color: #4338ca; padding: 3px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; border: 1px solid #c7d2fe; margin-left: 6px;">TÉCNICA</span>' 
+                        : '<span style="background-color: #ccfbf1; color: #0f766e; padding: 3px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; border: 1px solid #99f6e4; margin-left: 6px;">QUALI</span>';
+
                     let cor = tipo === 'urgente' ? '#ef4444' : tipo === 'atrasado' ? '#f97316' : '#3b82f6';
                     let badgeLabel = tipo === 'urgente' ? 'URGENTE' : tipo === 'atrasado' ? 'VISITA ATRASADA' : 'VISITA NESTE MÊS';
                     let dataLimpa = r.dataMostrada.replace('Fim do Contrato: ', '').replace('Previsão: ', '').replace('Previsão era: ', '');
@@ -2447,6 +2461,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                                 <tr>
                                     <td colspan="2" style="padding-bottom: 12px;">
                                         <span style="background-color: ${cor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">${badgeLabel}</span>
+                                        ${tagCursoHtml}
                                     </td>
                                 </tr>
                                 <tr>
