@@ -2160,22 +2160,36 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         };
 
         // =========================================================================
-        // RELATÓRIO MENSAL - DESIGN PREMIUM E EXPORTAÇÕES
+        // RELATÓRIO MENSAL GLOBAL - ABRANGE QUALI E TEC (COM DESIGN PREMIUM E EXPORTAÇÕES)
         // =========================================================================
         window.gerarRelatorioVisitasMes = function() {
             try {
-                if(typeof STATE === 'undefined' || !STATE.filter || STATE.filter.length === 0) {
-                    alert("Aviso: Selecione uma região com alunos para gerar o relatório.");
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+                if (!dbObj) return alert("Erro: Banco de dados não carregado.");
+
+                // 1. JUNTA TODOS OS ALUNOS (Técnica e Qualificação)
+                let todosAlunos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
+
+                // 2. RESPEITA OS FILTROS DE REGIÃO E CIDADE DA TELA PRINCIPAL
+                const filterRegiao = document.getElementById('filterRegiao') ? document.getElementById('filterRegiao').value : '';
+                const filterCidade = document.getElementById('filterCidade') ? document.getElementById('filterCidade').value : '';
+
+                if (filterRegiao) todosAlunos = todosAlunos.filter(a => a.regiao === filterRegiao);
+                if (filterCidade) todosAlunos = todosAlunos.filter(a => a.cidade === filterCidade);
+
+                if (todosAlunos.length === 0) {
+                    alert("Aviso: Nenhum aluno encontrado para a região ou cidade filtrada.");
                     return;
                 }
-                
+
                 const now = new Date();
                 const currentMonth = now.getMonth();
                 const currentYear = now.getFullYear();
                 const mesNome = now.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
                 const relatorio = [];
-                
-                STATE.filter.forEach(item => {
+
+                // 3. VARRE TODOS OS ALUNOS ENCONTRADOS
+                todosAlunos.forEach(item => {
                     // BLOQUEIO: Ignora alunos desligados/encerrados para não sujar o relatório
                     const s = typeof analyzeStatus === 'function' ? analyzeStatus(item) : { status: 'none' };
                     if (s.status === 'desligado') return;
@@ -2243,7 +2257,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                         <div class="bg-[#004587] p-5 text-white flex justify-between items-center shrink-0">
                             <div>
                                 <h2 class="text-xl font-black flex items-center gap-2"><i data-lucide="calendar-clock" class="w-6 h-6 text-orange-400"></i> RELATÓRIO DE VISITAS - ${mesNome}/${currentYear}</h2>
-                                <p class="text-xs text-blue-100 mt-1">Baseado na aba e região filtradas atualmente</p>
+                                <p class="text-xs text-blue-100 mt-1">Abrangendo todos os alunos (Qualificação e Técnica) da região selecionada</p>
                             </div>
                             <button onclick="document.getElementById('modalRelatorioMes').style.display='none'" class="p-2 hover:bg-white/20 rounded-lg transition-colors"><i data-lucide="x" class="w-6 h-6"></i></button>
                         </div>
@@ -2259,15 +2273,18 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 `;
 
                 if (relatorio.length === 0) {
-                    html += `<div class="text-center p-12 text-slate-400 font-bold"><i data-lucide="check-circle-2" class="w-16 h-16 mx-auto text-emerald-400 mb-4"></i> <p class="text-lg">Excelente!</p><p class="text-sm font-medium mt-2">Nenhuma visita pendente, atrasada ou urgente.</p></div>`;
+                    html += `<div class="text-center p-12 text-slate-400 font-bold"><i data-lucide="check-circle-2" class="w-16 h-16 mx-auto text-emerald-400 mb-4"></i> <p class="text-lg">Excelente!</p><p class="text-sm font-medium mt-2">Nenhuma visita pendente, atrasada ou urgente para esta região.</p></div>`;
                 } else {
                     html += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-5" id="relatorioGridCards">`;
                     relatorio.forEach(r => {
-                        // Cores e Labels adaptadas para o layout limpo
                         let borderColor = r.statusRelatorio === 'urgente' ? 'border-l-red-500' : r.statusRelatorio === 'atrasado' ? 'border-l-orange-500' : 'border-l-blue-500';
                         let badgeBg = r.statusRelatorio === 'urgente' ? 'bg-red-500' : r.statusRelatorio === 'atrasado' ? 'bg-orange-500' : 'bg-blue-600';
                         let badgeLabel = r.statusRelatorio === 'urgente' ? 'URGENTE (FIM CONTRATO)' : r.statusRelatorio === 'atrasado' ? 'VISITA ATRASADA' : 'VISITA NESTE MÊS';
                         let iconText = r.statusRelatorio === 'urgente' ? 'text-red-600' : r.statusRelatorio === 'atrasado' ? 'text-orange-500' : 'text-blue-600';
+
+                        // NOVA INTELIGÊNCIA: Mostra a tag de "Quali" ou "Técnica" no card para não confundir
+                        const isTecnico = dbObj.tec && dbObj.tec.some(t => t.id === r.item.id);
+                        const tagCurso = isTecnico ? '<span class="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] font-black tracking-wide border border-indigo-200">TÉCNICA</span>' : '<span class="bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded text-[9px] font-black tracking-wide border border-teal-200">QUALI</span>';
 
                         html += `
                             <div class="relatorio-card status-${r.statusRelatorio} bg-white rounded-xl shadow-sm border border-slate-200 border-l-[6px] ${borderColor} p-6 flex flex-col gap-4 hover:shadow-md transition-shadow">
@@ -2275,7 +2292,10 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                                 <div class="flex justify-between items-start w-full">
                                     <div class="flex flex-col items-start gap-2 max-w-[75%]">
                                         <h3 class="font-bold text-slate-800 text-sm md:text-base leading-tight uppercase">${r.item.nome}</h3>
-                                        <span class="${badgeBg} text-white px-2.5 py-1 rounded text-[10px] font-bold tracking-wide shadow-sm">${badgeLabel}</span>
+                                        <div class="flex gap-2 items-center">
+                                            <span class="${badgeBg} text-white px-2.5 py-1 rounded text-[10px] font-bold tracking-wide shadow-sm">${badgeLabel}</span>
+                                            ${tagCurso}
+                                        </div>
                                     </div>
                                     <div class="flex flex-col items-end shrink-0">
                                         <span class="text-[9px] font-bold text-slate-400 tracking-wider">VISITAS</span>
