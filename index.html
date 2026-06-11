@@ -5148,14 +5148,14 @@ window.atualizarAutocompleteGlobal = function() {
     ccsUnicos.forEach(c => dlCc.appendChild(new Option(c)));
 };
 // =========================================================
-        // =========================================================
-        // 🚀 MOTOR BLINDADO DE ENDEREÇOS (RAZÃO + CIDADE + REGIÃO)
+        // 🚀 MOTOR BLINDADO DE ENDEREÇOS (TRAVA DE CIDADE ABSOLUTA)
         // =========================================================
         window.sincronizarEnderecosEmpresas = function(silencioso = false) {
             const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
-            let dicEnderecos = {}; // Dicionário usando a Chave Blindada
+            let dicCnpjCidade = {}; 
+            let dicRazaoCidade = {}; 
 
-            // Função para limpar textos e criar a Chave de Comparação (tudo maiúsculo, sem acentos, sem espaços soltos)
+            // Função para limpar textos e criar a Chave de Comparação perfeitamente igual
             const limparTexto = (txt) => {
                 if (!txt) return "N/D";
                 return String(txt).normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
@@ -5163,30 +5163,27 @@ window.atualizarAutocompleteGlobal = function() {
 
             // 1. Mapeia quem já tem um endereço BOM gravado na base
             todosAlunos.forEach(a => {
-                const cnpjCompleto = String(a.cnpj_empresa || (a.empresa && a.empresa.cnpj) || a.cnpj || "").replace(/\D/g, '');
+                const cnpj = String(a.cnpj_empresa || (a.empresa && a.empresa.cnpj) || a.cnpj || "").replace(/\D/g, '');
                 const razao = limparTexto((a.empresa && a.empresa.razao) || a.razao_social || "");
                 const cidade = limparTexto(a.cidade || "");
-                const regiao = limparTexto(a.regiao || "");
                 const endereco = String((a.empresa && a.empresa.endereco) || a.endereco || a.endereco_empresa || "").trim();
                 const link = String((a.empresa && a.empresa.link) || a.link || a.link_mapa || "").trim();
 
-                // Se o endereço for válido (não for apenas "Não informado" ou vazio)
-                if (endereco.length > 5 && !endereco.toLowerCase().includes('informado')) {
+                // Se o endereço for válido e a cidade existir
+                if (endereco.length > 5 && !endereco.toLowerCase().includes('informado') && cidade !== "N/D") {
                     
-                    // Prioridade 1: O CNPJ Completo (Se tiver as 14 posições, incluindo a filial, é único)
-                    if (cnpjCompleto.length === 14) {
-                        const chaveCnpj = `CNPJ_${cnpjCompleto}`;
-                        if (!dicEnderecos[chaveCnpj] || (endereco.length > dicEnderecos[chaveCnpj].endereco.length)) {
-                            dicEnderecos[chaveCnpj] = { endereco, link };
+                    // Cria uma chave única que OBRIGA a cidade a ser a mesma
+                    if (cnpj.length >= 8) { // Funciona com CNPJ raiz ou completo
+                        const chaveCnpj = `${cnpj}_${cidade}`;
+                        if (!dicCnpjCidade[chaveCnpj] || (endereco.length > dicCnpjCidade[chaveCnpj].endereco.length)) {
+                            dicCnpjCidade[chaveCnpj] = { endereco, link };
                         }
                     } 
                     
-                    // Prioridade 2: Razão Social + Cidade + Região (A Chave Blindada)
-                    // Só cria a chave se houver o nome da empresa e a cidade
-                    if (razao !== "N/D" && cidade !== "N/D") {
-                        const chaveLocal = `${razao}_${cidade}_${regiao}`;
-                        if (!dicEnderecos[chaveLocal] || (endereco.length > dicEnderecos[chaveLocal].endereco.length)) {
-                            dicEnderecos[chaveLocal] = { endereco, link };
+                    if (razao !== "N/D") {
+                        const chaveRazao = `${razao}_${cidade}`;
+                        if (!dicRazaoCidade[chaveRazao] || (endereco.length > dicRazaoCidade[chaveRazao].endereco.length)) {
+                            dicRazaoCidade[chaveRazao] = { endereco, link };
                         }
                     }
                 }
@@ -5198,27 +5195,28 @@ window.atualizarAutocompleteGlobal = function() {
             const preencherFaltante = (student) => {
                 if (!student) return false;
                 
-                const cnpjCompleto = String(student.cnpj_empresa || (student.empresa && student.empresa.cnpj) || student.cnpj || "").replace(/\D/g, '');
+                const cnpj = String(student.cnpj_empresa || (student.empresa && student.empresa.cnpj) || student.cnpj || "").replace(/\D/g, '');
                 const razao = limparTexto((student.empresa && student.empresa.razao) || student.razao_social || "");
                 const cidade = limparTexto(student.cidade || "");
-                const regiao = limparTexto(student.regiao || "");
                 const endAtual = String((student.empresa && student.empresa.endereco) || "").trim();
                 const linkAtual = String((student.empresa && student.empresa.link) || "").trim();
 
-                // Primeiro procura pelo CNPJ completo exato
-                let ref = (cnpjCompleto.length === 14 && dicEnderecos[`CNPJ_${cnpjCompleto}`]) 
-                          ? dicEnderecos[`CNPJ_${cnpjCompleto}`] 
-                          : null;
-                
-                // Se não achar pelo CNPJ completo, procura pela Chave Blindada (Empresa + Cidade + Região)
-                if (!ref && razao !== "N/D" && cidade !== "N/D") {
-                    const chaveLocal = `${razao}_${cidade}_${regiao}`;
-                    ref = dicEnderecos[chaveLocal] || null;
+                // 🛑 A REGRA DE OURO: Se o aluno não tem cidade cadastrada, ele não recebe endereço automático para evitar erros!
+                if (cidade === "N/D") return false;
+
+                let ref = null;
+
+                // Tenta achar pelo CNPJ + A MESMA CIDADE
+                if (cnpj.length >= 8 && dicCnpjCidade[`${cnpj}_${cidade}`]) {
+                    ref = dicCnpjCidade[`${cnpj}_${cidade}`];
+                }
+                // Se não achar, tenta achar pela Razão Social + A MESMA CIDADE
+                else if (razao !== "N/D" && dicRazaoCidade[`${razao}_${cidade}`]) {
+                    ref = dicRazaoCidade[`${razao}_${cidade}`];
                 }
 
-                // Se encontrou uma referência válida e segura
+                // Se encontrou uma referência com a trava de cidade 100% segura
                 if (ref) {
-                    // Preenche se estiver vazio ou com o clássico "Não informado"
                     if (endAtual.length < 5 || endAtual.toLowerCase().includes('informado') || (!linkAtual && ref.link)) {
                         if (!student.empresa) student.empresa = {};
                         student.empresa.endereco = ref.endereco;
@@ -5250,10 +5248,10 @@ window.atualizarAutocompleteGlobal = function() {
                 if (typeof renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) renderPlanningTable();
                 
                 if (!silencioso) {
-                    alert(`✅ Autopreenchimento Blindado Concluído!\n\n- ${alunosAtualizados} alunos receberam o endereço da filial correta.\n- ${planejamentosAtualizados} registros de roteiros foram atualizados.`);
+                    alert(`✅ Autopreenchimento com Trava de Cidade Concluído!\n\n- ${alunosAtualizados} alunos corrigidos.\n- ${planejamentosAtualizados} registros de roteiros atualizados.\n\nAlunos de cidades diferentes não compartilham mais o mesmo endereço.`);
                 }
             } else {
-                if (!silencioso) alert("Todos os alunos e planejamentos já estão com os endereços perfeitamente sincronizados pela filial e cidade!");
+                if (!silencioso) alert("✅ Todos os endereços já estão organizados separadamente por cidade.");
             }
         };
 
