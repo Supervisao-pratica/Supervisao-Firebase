@@ -6800,38 +6800,57 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // ⏪ MÁQUINA DO TEMPO (SISTEMA DE DESFAZER / CTRL+Z DO PLANEJAMENTO)
+        // ⏪ MÁQUINA DO TEMPO (DESFAZER SISTÊMICO - SOBREVIVE A F5 E ATUALIZAÇÕES)
         // =========================================================================
-        window.PLANNING_HISTORY = [];
-
-        // Esta função tira uma "foto" do planejamento milissegundos antes de qualquer ação
+        
+        // Função que tira a "foto" ANTES de fazer qualquer alteração no planejamento
         window.salvarEstadoParaDesfazer = function() {
             try {
                 if (window.DB && window.DB.planning) {
-                    window.PLANNING_HISTORY.push(JSON.stringify(window.DB.planning));
-                    // Guarda na memória os últimos 10 cliques/alterações
-                    if(window.PLANNING_HISTORY.length > 10) window.PLANNING_HISTORY.shift(); 
+                    // Puxa o histórico da memória profunda do navegador
+                    let history = JSON.parse(localStorage.getItem('PLANNING_HISTORY') || '[]');
+                    
+                    // Salva os alunos e os deslocamentos (planning_admin)
+                    const estadoAtual = {
+                        planning: JSON.parse(JSON.stringify(window.DB.planning)),
+                        planning_admin: window.DB.planning_admin ? JSON.parse(JSON.stringify(window.DB.planning_admin)) : {}
+                    };
+                    
+                    history.push(estadoAtual);
+                    
+                    // Guarda as últimas 5 ações que você fez na memória
+                    if(history.length > 5) history.shift(); 
+                    
+                    localStorage.setItem('PLANNING_HISTORY', JSON.stringify(history));
                 }
             } catch(e) { console.error("Erro ao salvar histórico", e); }
         };
 
-        // Esta função restaura a última foto tirada
+        // Função do Botão de Desfazer
         window.desfazerUltimaAcao = function() {
-            if (!window.PLANNING_HISTORY || window.PLANNING_HISTORY.length === 0) {
-                return alert("⚠️ Não há nenhuma ação recente na memória para desfazer.");
-            }
-            
-            const confirmacao = confirm("⏪ DESFAZER AÇÃO (CTRL+Z)\n\nDeseja anular o último botão que você apertou (Organizar, Faxina, etc.) e voltar o planejamento exatamente para como estava antes?");
-            if (!confirmacao) return;
-
             try {
-                const estadoAnterior = window.PLANNING_HISTORY.pop();
-                window.DB.planning = JSON.parse(estadoAnterior);
+                let history = JSON.parse(localStorage.getItem('PLANNING_HISTORY') || '[]');
+                if (history.length === 0) {
+                    return alert("⚠️ Não há nenhuma ação salva na memória para desfazer.");
+                }
                 
+                const confirmacao = confirm("⏪ DESFAZER AÇÃO (CTRL+Z)\n\nDeseja anular a última alteração e voltar o planejamento para como estava antes?");
+                if (!confirmacao) return;
+
+                // Puxa a última foto tirada
+                const estadoAnterior = history.pop();
+                
+                window.DB.planning = estadoAnterior.planning;
+                window.DB.planning_admin = estadoAnterior.planning_admin;
+                
+                // Atualiza a memória apagando a ação que foi desfeita
+                localStorage.setItem('PLANNING_HISTORY', JSON.stringify(history));
+                
+                // Salva na nuvem e atualiza a tela
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
-                alert("✅ Ufa! Ação desfeita com sucesso. O planejamento voltou ao normal.");
+                alert("✅ Ufa! Ação desfeita com sucesso. O planejamento voltou exatamente como era.");
             } catch(e) {
                 alert("Erro ao tentar desfazer: " + e.message);
             }
