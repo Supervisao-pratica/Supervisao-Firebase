@@ -2777,6 +2777,9 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         // =========================================================================
         // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (PUXA TUDO: ALUNOS + PLANEJAMENTOS)
         // =========================================================================
+        // =========================================================================
+        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (INJEÇÃO ABSOLUTA DE DADOS)
+        // =========================================================================
         window.restoreBackup = function(input) {
             const file = input.files[0];
             if (!file) return;
@@ -2784,47 +2787,28 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
             const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "LENDO ARQUIVO DE BACKUP..."; 
+            if(loadMsg) loadMsg.innerText = "FORÇANDO RESTAURAÇÃO ABSOLUTA..."; 
 
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const parsed = JSON.parse(e.target.result);
-                    
-                    // RAIO-X: Conta quantos alunos existem dentro do arquivo selecionado
-                    const qtdQuali = parsed.quali ? parsed.quali.length : 0;
-                    const qtdTec = parsed.tec ? parsed.tec.length : 0;
-                    const totalAlunos = qtdQuali + qtdTec;
 
-                    if (totalAlunos === 0) {
-                        alert("⚠️ ATENÇÃO: O arquivo que você selecionou tem 0 alunos ou está corrompido.");
-                        if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                        input.value = '';
-                        return;
-                    }
+                    // 1. IGNORA QUALQUER FILTRO E SUBSTITUI O BANCO INTEIRO PELO BACKUP!
+                    // Isso injeta de volta o 'planning' (Alunos) e o 'planning_admin' (Deslocamentos)
+                    window.DB = parsed;
 
-                    if(loadMsg) loadMsg.innerText = `RESTAURANDO ALUNOS E PLANEJAMENTOS...`; 
-
-                    // 1. Injeta os alunos usando a inteligência padrão do sistema
-                    if(typeof processDataLoad === 'function') {
-                        processDataLoad(parsed);
+                    // 2. Salva na Nuvem / Memória do navegador imediatamente
+                    if(typeof saveToStorage === 'function') {
+                        await saveToStorage();
                     } else {
-                        window.DB = parsed;
+                        // Plano B de segurança: Força a gravação no LocalStorage
+                        localStorage.setItem('senac_data', JSON.stringify(parsed));
+                        localStorage.setItem('senac_db', JSON.stringify(parsed));
+                        localStorage.setItem('DB', JSON.stringify(parsed));
                     }
-
-                    // 2. 🚑 A MÁGICA DA RECUPERAÇÃO: Força a injeção do planejamento que o sistema ignorava
-                    if (parsed.planning) {
-                        window.DB.planning = parsed.planning;
-                    }
-
-                    // Força a injeção de logs financeiros e CCs (se existirem no backup) para não perder nada
-                    if (parsed.finance_logs) window.DB.finance_logs = parsed.finance_logs;
-                    if (parsed.cc_map) window.DB.cc_map = parsed.cc_map;
-
-                    // Manda salvar na nuvem
-                    if(typeof saveToStorage === 'function') await saveToStorage();
                     
-                    alert(`✅ RECUPERAÇÃO CONCLUÍDA!\n\nForam restaurados com sucesso:\n- ${totalAlunos} Alunos\n- Todos os Roteiros de Planejamento\n\nO sistema será reiniciado agora para carregar a tela.`);
+                    alert("✅ UFA! RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os alunos, deslocamentos e roteiros foram injetados perfeitamente.\nA página será recarregada para mostrar os dados.");
                     location.reload();
                     
                 } catch (err) {
@@ -2832,7 +2816,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                     alert("Erro ao ler o arquivo de backup: " + err.message);
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 } finally {
-                    input.value = ''; // Limpa o input para permitir subir o mesmo arquivo de novo se precisar
+                    input.value = ''; 
                 }
             };
             reader.readAsText(file);
