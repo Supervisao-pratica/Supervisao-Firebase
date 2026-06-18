@@ -6955,25 +6955,32 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL DE DESLIGADOS E ENCERRADOS
+        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL (LÓGICA INVERTIDA DE ABAS)
         // =========================================================================
         window.executarFaxinaGlobal = function() {
             try {
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
 
-                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL\n\nO sistema vai vasculhar TODOS os meses de planejamento já criados e remover qualquer aluno que esteja Desligado, Encerrado, Concluído ou Evadido na base principal.\n\nDeseja continuar?");
+                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL\n\nO sistema vai vasculhar todos os roteiros e remover qualquer aluno que tenha sido movido para a aba de Desligados ou Encerrados.\n\nDeseja continuar?");
                 if (!confirmar) return;
 
-                // 1. Mapeia os status de todos os alunos na base central do Senac (Técnica e Quali)
-                const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
-                const statusMap = {};
+                const limparNome = (str) => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+
+                // 1. Pega os alunos que AINDA ESTÃO nas abas principais (Ativos)
+                const alunosAtivos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
+                const mapaAtivosId = {};
+                const mapaAtivosNome = {};
                 
-                // Mapeamento duplo para garantir que ninguém escape (Por ID e por Nome)
-                todos.forEach(a => {
-                    const st = String(a.status || a.situacao || "").toUpperCase();
-                    if (a.id) statusMap[a.id] = st;
-                    if (a.nome) statusMap[a.nome.trim().toUpperCase()] = st; 
+                alunosAtivos.forEach(a => {
+                    // Prevenção extra caso o aluno continue na aba, mas com a palavra Desligado
+                    let st = String(a.status || a.situacao || "").toUpperCase();
+                    const isRealmenteDesligado = st.includes('DESLIGADO') || st.includes('ENCERRAD') || st.includes('CONCLU') || st.includes('EVADI');
+
+                    if (!isRealmenteDesligado) {
+                        if (a.id) mapaAtivosId[String(a.id)] = true;
+                        if (a.nome) mapaAtivosNome[limparNome(a.nome)] = true; 
+                    }
                 });
 
                 let totalRemovidos = 0;
@@ -6987,13 +6994,17 @@ window.atualizarAutocompleteGlobal = function() {
                     // Varre de trás para frente para deletar da lista com segurança
                     for (let i = roteiro.length - 1; i >= 0; i--) {
                         const item = roteiro[i];
-                        if (!item.student) continue;
+                        if (!item || !item.student) continue;
 
-                        // Busca pelo ID, se falhar busca pelo Nome exato
-                        const statusDb = statusMap[item.student.id] || statusMap[String(item.student.nome || "").trim().toUpperCase()] || "";
+                        const idAluno = String(item.student.id || "");
+                        const nomeAluno = limparNome(item.student.nome);
+
+                        // A MÁGICA ACONTECE AQUI:
+                        // O sistema verifica se o aluno AINDA EXISTE na aba de ativos.
+                        const alunoContinuaAtivo = mapaAtivosId[idAluno] || mapaAtivosNome[nomeAluno];
                         
-                        // Se encontrar as palavras-chave de inatividade, remove o aluno sem dó
-                        if (statusDb.includes('DESLIGADO') || statusDb.includes('ENCERRAD') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
+                        // Se ele NÃO está mais entre os ativos (porque foi movido para a aba Desligados), deleta!
+                        if (!alunoContinuaAtivo) {
                             roteiro.splice(i, 1);
                             totalRemovidos++;
                             removeuDeste = true;
@@ -7001,7 +7012,7 @@ window.atualizarAutocompleteGlobal = function() {
                     }
                     
                     if (removeuDeste) {
-                        // Refaz a numeração (coluna Ordem) daquele roteiro para não pular números
+                        // Refaz a numeração (coluna Ordem) daquele roteiro
                         roteiro.forEach((item, idx) => item.ordem = idx + 1);
                         roteirosAfetados++;
                     }
@@ -7011,9 +7022,9 @@ window.atualizarAutocompleteGlobal = function() {
                 if (totalRemovidos > 0) {
                     if(typeof saveToStorage === 'function') saveToStorage();
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                    alert(`🧹 FAXINA CONCLUÍDA COM SUCESSO!\n\n${totalRemovidos} aluno(s) inativos foram varridos e removidos de ${roteirosAfetados} roteiro(s) de planejamento!`);
+                    alert(`🧹 FAXINA CONCLUÍDA COM SUCESSO!\n\n${totalRemovidos} aluno(s) que haviam sido movidos para as abas inativas foram varridos de ${roteirosAfetados} roteiro(s) de planejamento!`);
                 } else {
-                    alert("✨ Tudo limpo! Nenhum aluno inativo ou desligado foi encontrado nos seus planejamentos.");
+                    alert("✨ Tudo limpo! Todos os alunos dos seus planejamentos atuais continuam firmes e fortes nas abas da Qualificação e Técnica.");
                 }
                 
             } catch (error) {
