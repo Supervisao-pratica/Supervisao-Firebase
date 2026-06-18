@@ -6955,38 +6955,51 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL (LÓGICA INVERTIDA DE ABAS)
+        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL COM BUSCA ABSOLUTA E RELATÓRIO
         // =========================================================================
         window.executarFaxinaGlobal = function() {
             try {
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
 
-                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL\n\nO sistema vai vasculhar todos os roteiros e remover qualquer aluno que tenha sido movido para a aba de Desligados ou Encerrados.\n\nDeseja continuar?");
+                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL COM RELATÓRIO\n\nO sistema vai vasculhar todas as abas (Qualificação e Técnica) procurando pelo campo 'Desl/Encerrados'.\nTodos os alunos encontrados serão retirados dos planejamentos.\n\nDeseja continuar?");
                 if (!confirmar) return;
 
                 const limparNome = (str) => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
 
-                // 1. Pega os alunos que AINDA ESTÃO nas abas principais (Ativos)
-                const alunosAtivos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
-                const mapaAtivosId = {};
-                const mapaAtivosNome = {};
-                
-                alunosAtivos.forEach(a => {
-                    // Prevenção extra caso o aluno continue na aba, mas com a palavra Desligado
-                    let st = String(a.status || a.situacao || "").toUpperCase();
-                    const isRealmenteDesligado = st.includes('DESLIGADO') || st.includes('ENCERRAD') || st.includes('CONCLU') || st.includes('EVADI');
+                // 1. Criar a "Lista Negra" (Quem deve sair)
+                const listaNegraIds = new Set();
+                const listaNegraNomes = new Set();
 
-                    if (!isRealmenteDesligado) {
-                        if (a.id) mapaAtivosId[String(a.id)] = true;
-                        if (a.nome) mapaAtivosNome[limparNome(a.nome)] = true; 
+                // Vasculha TODAS as listas do banco de dados (quali, tec, etc.)
+                Object.keys(dbObj).forEach(key => {
+                    if (Array.isArray(dbObj[key])) {
+                        
+                        // Verifica se a própria aba já tem nome de inativo
+                        const isAbaInativa = key.toLowerCase().includes('desl') || key.toLowerCase().includes('encerr');
+
+                        dbObj[key].forEach(a => {
+                            // Converte TODAS as informações do aluno em um texto só para não escapar nada
+                            const fichaCompleta = JSON.stringify(a).toUpperCase();
+                            
+                            // Busca pelas palavras exatas em qualquer campo
+                            const isStatusInativo = fichaCompleta.includes('DESL/ENCERRADOS') || 
+                                                    fichaCompleta.includes('DESLIGADO') || 
+                                                    fichaCompleta.includes('ENCERRADO') || 
+                                                    fichaCompleta.includes('EVADIDO');
+
+                            if (isAbaInativa || isStatusInativo) {
+                                if (a.id) listaNegraIds.add(String(a.id));
+                                if (a.nome) listaNegraNomes.add(limparNome(a.nome));
+                            }
+                        });
                     }
                 });
 
                 let totalRemovidos = 0;
-                let roteirosAfetados = 0;
+                let relatorioRemocoes = {}; // Vai guardar { "Contexto": ["Nome do Aluno"] }
 
-                // 2. FAXINA: Varre TODOS os roteiros salvos no sistema
+                // 2. FAXINA: Varre TODOS os roteiros salvos cruzando com a Lista Negra
                 Object.keys(dbObj.planning).forEach(nomeRoteiro => {
                     let roteiro = dbObj.planning[nomeRoteiro];
                     let removeuDeste = false;
@@ -6999,12 +7012,16 @@ window.atualizarAutocompleteGlobal = function() {
                         const idAluno = String(item.student.id || "");
                         const nomeAluno = limparNome(item.student.nome);
 
-                        // A MÁGICA ACONTECE AQUI:
-                        // O sistema verifica se o aluno AINDA EXISTE na aba de ativos.
-                        const alunoContinuaAtivo = mapaAtivosId[idAluno] || mapaAtivosNome[nomeAluno];
-                        
-                        // Se ele NÃO está mais entre os ativos (porque foi movido para a aba Desligados), deleta!
-                        if (!alunoContinuaAtivo) {
+                        // Além da Lista Negra, checa a própria ficha salva dentro do planejamento
+                        const fichaPlanejamento = JSON.stringify(item.student).toUpperCase();
+                        const isInativoNoPlanejamento = fichaPlanejamento.includes('DESL/ENCERRADOS') || fichaPlanejamento.includes('DESLIGADO') || fichaPlanejamento.includes('ENCERRADO');
+
+                        if (listaNegraIds.has(idAluno) || listaNegraNomes.has(nomeAluno) || isInativoNoPlanejamento) {
+                            
+                            // Adiciona no Relatório antes de excluir
+                            if (!relatorioRemocoes[nomeRoteiro]) relatorioRemocoes[nomeRoteiro] = [];
+                            relatorioRemocoes[nomeRoteiro].push(item.student.nome);
+
                             roteiro.splice(i, 1);
                             totalRemovidos++;
                             removeuDeste = true;
@@ -7012,19 +7029,31 @@ window.atualizarAutocompleteGlobal = function() {
                     }
                     
                     if (removeuDeste) {
-                        // Refaz a numeração (coluna Ordem) daquele roteiro
+                        // Refaz a numeração (coluna Ordem) daquele roteiro para não pular números
                         roteiro.forEach((item, idx) => item.ordem = idx + 1);
-                        roteirosAfetados++;
                     }
                 });
 
-                // 3. Salva no navegador e avisa o resultado
+                // 3. Salva e gera o Relatório Visual
                 if (totalRemovidos > 0) {
                     if(typeof saveToStorage === 'function') saveToStorage();
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                    alert(`🧹 FAXINA CONCLUÍDA COM SUCESSO!\n\n${totalRemovidos} aluno(s) que haviam sido movidos para as abas inativas foram varridos de ${roteirosAfetados} roteiro(s) de planejamento!`);
+                    
+                    // Monta o visual do extrato do relatório
+                    let msgRelatorio = `✅ FAXINA CONCLUÍDA!\n\nForam retirados ${totalRemovidos} aluno(s) com status Desligado/Encerrado.\n\n📋 DETALHAMENTO DAS REMOÇÕES:\n`;
+                    
+                    Object.keys(relatorioRemocoes).forEach(plan => {
+                        msgRelatorio += `\n📅 Roteiro: ${plan} (${relatorioRemocoes[plan].length} alunos)\n`;
+                        relatorioRemocoes[plan].forEach(nome => {
+                            msgRelatorio += `   ❌ ${nome}\n`;
+                        });
+                    });
+
+                    alert(msgRelatorio);
+                    console.log("Relatório de Faxina:", relatorioRemocoes); // Salva no console também caso a lista seja gigante
+                    
                 } else {
-                    alert("✨ Tudo limpo! Todos os alunos dos seus planejamentos atuais continuam firmes e fortes nas abas da Qualificação e Técnica.");
+                    alert("✨ Varredura Completa!\n\nNenhum aluno com status 'Desl/Encerrados' foi encontrado misturado nos seus planejamentos.");
                 }
                 
             } catch (error) {
