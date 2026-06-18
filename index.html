@@ -6951,6 +6951,73 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
+        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL DE DESLIGADOS E ENCERRADOS
+        // =========================================================================
+        window.executarFaxinaGlobal = function() {
+            try {
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+                if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
+
+                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL\n\nO sistema vai vasculhar TODOS os meses de planejamento já criados e remover qualquer aluno que esteja Desligado, Encerrado, Concluído ou Evadido na base principal.\n\nDeseja continuar?");
+                if (!confirmar) return;
+
+                // 1. Mapeia os status de todos os alunos na base central do Senac (Técnica e Quali)
+                const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
+                const statusMap = {};
+                
+                // Mapeamento duplo para garantir que ninguém escape (Por ID e por Nome)
+                todos.forEach(a => {
+                    const st = String(a.status || a.situacao || "").toUpperCase();
+                    if (a.id) statusMap[a.id] = st;
+                    if (a.nome) statusMap[a.nome.trim().toUpperCase()] = st; 
+                });
+
+                let totalRemovidos = 0;
+                let roteirosAfetados = 0;
+
+                // 2. FAXINA: Varre TODOS os roteiros salvos no sistema
+                Object.keys(dbObj.planning).forEach(nomeRoteiro => {
+                    let roteiro = dbObj.planning[nomeRoteiro];
+                    let removeuDeste = false;
+                    
+                    // Varre de trás para frente para deletar da lista com segurança
+                    for (let i = roteiro.length - 1; i >= 0; i--) {
+                        const item = roteiro[i];
+                        if (!item.student) continue;
+
+                        // Busca pelo ID, se falhar busca pelo Nome exato
+                        const statusDb = statusMap[item.student.id] || statusMap[String(item.student.nome || "").trim().toUpperCase()] || "";
+                        
+                        // Se encontrar as palavras-chave de inatividade, remove o aluno sem dó
+                        if (statusDb.includes('DESLIGADO') || statusDb.includes('ENCERRAD') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
+                            roteiro.splice(i, 1);
+                            totalRemovidos++;
+                            removeuDeste = true;
+                        }
+                    }
+                    
+                    if (removeuDeste) {
+                        // Refaz a numeração (coluna Ordem) daquele roteiro para não pular números
+                        roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                        roteirosAfetados++;
+                    }
+                });
+
+                // 3. Salva no navegador e avisa o resultado
+                if (totalRemovidos > 0) {
+                    if(typeof saveToStorage === 'function') saveToStorage();
+                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                    alert(`🧹 FAXINA CONCLUÍDA COM SUCESSO!\n\n${totalRemovidos} aluno(s) inativos foram varridos e removidos de ${roteirosAfetados} roteiro(s) de planejamento!`);
+                } else {
+                    alert("✨ Tudo limpo! Nenhum aluno inativo ou desligado foi encontrado nos seus planejamentos.");
+                }
+                
+            } catch (error) {
+                console.error("Erro na faxina:", error);
+                alert("Erro técnico ao tentar executar a faxina: " + error.message);
+            }
+        };
+        // =========================================================================
         // 🚗 MOTOR DE LOGÍSTICA: GERADOR DE ROTA NO GOOGLE MAPS
         // =========================================================================
         window.tracarRotaMaps = function() {
