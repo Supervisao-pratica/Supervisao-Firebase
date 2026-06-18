@@ -690,6 +690,10 @@
                             <button onclick="executarFaxinaGlobal()" class="px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Varrer e remover todos os alunos desligados/encerrados dos planejamentos">
                                 <i data-lucide="trash-2" class="w-3 h-3"></i> Faxina
                             </button>
+
+                            <button onclick="desfazerUltimaAcao()" class="px-3 py-1.5 bg-yellow-50 border border-yellow-300 text-yellow-700 hover:bg-yellow-100 hover:text-yellow-800 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Desfazer o último clique e recuperar a lista">
+                                <i data-lucide="undo-2" class="w-3 h-3"></i> Desfazer
+                            </button>
                             
                             <button onclick="tracarRotaMaps()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Criar rota no Google Maps para o dia">
                                 <i data-lucide="navigation" class="w-3 h-3"></i> Traçar Rota
@@ -6799,6 +6803,43 @@ window.atualizarAutocompleteGlobal = function() {
                 event.target.value = ''; 
             }
         };
+        // =========================================================================
+        // ⏪ MÁQUINA DO TEMPO (SISTEMA DE DESFAZER / CTRL+Z DO PLANEJAMENTO)
+        // =========================================================================
+        window.PLANNING_HISTORY = [];
+
+        // Esta função tira uma "foto" do planejamento milissegundos antes de qualquer ação
+        window.salvarEstadoParaDesfazer = function() {
+            try {
+                if (window.DB && window.DB.planning) {
+                    window.PLANNING_HISTORY.push(JSON.stringify(window.DB.planning));
+                    // Guarda na memória os últimos 10 cliques/alterações
+                    if(window.PLANNING_HISTORY.length > 10) window.PLANNING_HISTORY.shift(); 
+                }
+            } catch(e) { console.error("Erro ao salvar histórico", e); }
+        };
+
+        // Esta função restaura a última foto tirada
+        window.desfazerUltimaAcao = function() {
+            if (!window.PLANNING_HISTORY || window.PLANNING_HISTORY.length === 0) {
+                return alert("⚠️ Não há nenhuma ação recente na memória para desfazer.");
+            }
+            
+            const confirmacao = confirm("⏪ DESFAZER AÇÃO (CTRL+Z)\n\nDeseja anular o último botão que você apertou (Organizar, Faxina, etc.) e voltar o planejamento exatamente para como estava antes?");
+            if (!confirmacao) return;
+
+            try {
+                const estadoAnterior = window.PLANNING_HISTORY.pop();
+                window.DB.planning = JSON.parse(estadoAnterior);
+                
+                if(typeof saveToStorage === 'function') saveToStorage();
+                if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                
+                alert("✅ Ufa! Ação desfeita com sucesso. O planejamento voltou ao normal.");
+            } catch(e) {
+                alert("Erro ao tentar desfazer: " + e.message);
+            }
+        };
 // =========================================================================
         // 🔄 MOTOR DE AVANÇO DE CICLO BLINDADO (PRÓXIMA VISITA E FAXINA)
         // =========================================================================
@@ -6955,38 +6996,49 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL COM BUSCA ABSOLUTA E RELATÓRIO
+        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL BLINDADA COM BACKUP INSTANTÂNEO
         // =========================================================================
         window.executarFaxinaGlobal = function() {
             try {
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
 
-                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL COM RELATÓRIO\n\nO sistema vai vasculhar todas as abas (Qualificação e Técnica) procurando pelo campo 'Desl/Encerrados'.\nTodos os alunos encontrados serão retirados dos planejamentos.\n\nDeseja continuar?");
+                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL COM RELATÓRIO\n\nO sistema vai vasculhar todas as abas procurando pelos status 'Desligado' ou 'Encerrado'.\n\nDeseja continuar?");
                 if (!confirmar) return;
+
+                // 📸 1. SALVA O ESTADO ATUAL NA MÁQUINA DO TEMPO ANTES DE QUALQUER COISA
+                if (typeof salvarEstadoParaDesfazer === 'function') salvarEstadoParaDesfazer();
 
                 const limparNome = (str) => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
 
-                // 1. Criar a "Lista Negra" (Quem deve sair)
+                // FUNÇÃO DE RAIO-X SEGURO: Extrai APENAS os textos digitados (valores), ignorando os nomes das colunas
+                const extrairApenasValores = (obj) => {
+                    let valores = "";
+                    for (let chave in obj) {
+                        if (obj[chave] !== null && typeof obj[chave] === 'object') {
+                            valores += extrairApenasValores(obj[chave]) + " ";
+                        } else {
+                            valores += String(obj[chave] || "").toUpperCase() + " ";
+                        }
+                    }
+                    return valores;
+                };
+
                 const listaNegraIds = new Set();
                 const listaNegraNomes = new Set();
 
-                // Vasculha TODAS as listas do banco de dados (quali, tec, etc.)
+                // 2. Criar a "Lista Negra" (Quem deve sair)
                 Object.keys(dbObj).forEach(key => {
                     if (Array.isArray(dbObj[key])) {
-                        
-                        // Verifica se a própria aba já tem nome de inativo
                         const isAbaInativa = key.toLowerCase().includes('desl') || key.toLowerCase().includes('encerr');
 
                         dbObj[key].forEach(a => {
-                            // Converte TODAS as informações do aluno em um texto só para não escapar nada
-                            const fichaCompleta = JSON.stringify(a).toUpperCase();
+                            const valoresDaFicha = extrairApenasValores(a);
                             
-                            // Busca pelas palavras exatas em qualquer campo
-                            const isStatusInativo = fichaCompleta.includes('DESL/ENCERRADOS') || 
-                                                    fichaCompleta.includes('DESLIGADO') || 
-                                                    fichaCompleta.includes('ENCERRADO') || 
-                                                    fichaCompleta.includes('EVADIDO');
+                            const isStatusInativo = valoresDaFicha.includes('DESL/ENCERRADOS') || 
+                                                    valoresDaFicha.includes('DESLIGADO') || 
+                                                    valoresDaFicha.includes('ENCERRADO') || 
+                                                    valoresDaFicha.includes('EVADIDO');
 
                             if (isAbaInativa || isStatusInativo) {
                                 if (a.id) listaNegraIds.add(String(a.id));
@@ -6997,14 +7049,13 @@ window.atualizarAutocompleteGlobal = function() {
                 });
 
                 let totalRemovidos = 0;
-                let relatorioRemocoes = {}; // Vai guardar { "Contexto": ["Nome do Aluno"] }
+                let relatorioRemocoes = {};
 
-                // 2. FAXINA: Varre TODOS os roteiros salvos cruzando com a Lista Negra
+                // 3. FAXINA REAL
                 Object.keys(dbObj.planning).forEach(nomeRoteiro => {
                     let roteiro = dbObj.planning[nomeRoteiro];
                     let removeuDeste = false;
                     
-                    // Varre de trás para frente para deletar da lista com segurança
                     for (let i = roteiro.length - 1; i >= 0; i--) {
                         const item = roteiro[i];
                         if (!item || !item.student) continue;
@@ -7012,13 +7063,12 @@ window.atualizarAutocompleteGlobal = function() {
                         const idAluno = String(item.student.id || "");
                         const nomeAluno = limparNome(item.student.nome);
 
-                        // Além da Lista Negra, checa a própria ficha salva dentro do planejamento
-                        const fichaPlanejamento = JSON.stringify(item.student).toUpperCase();
-                        const isInativoNoPlanejamento = fichaPlanejamento.includes('DESL/ENCERRADOS') || fichaPlanejamento.includes('DESLIGADO') || fichaPlanejamento.includes('ENCERRADO');
+                        const valoresPlanejamento = extrairApenasValores(item.student);
+                        const isInativoNoPlanejamento = valoresPlanejamento.includes('DESL/ENCERRADOS') || 
+                                                        valoresPlanejamento.includes('DESLIGADO') || 
+                                                        valoresPlanejamento.includes('ENCERRADO');
 
                         if (listaNegraIds.has(idAluno) || listaNegraNomes.has(nomeAluno) || isInativoNoPlanejamento) {
-                            
-                            // Adiciona no Relatório antes de excluir
                             if (!relatorioRemocoes[nomeRoteiro]) relatorioRemocoes[nomeRoteiro] = [];
                             relatorioRemocoes[nomeRoteiro].push(item.student.nome);
 
@@ -7028,32 +7078,22 @@ window.atualizarAutocompleteGlobal = function() {
                         }
                     }
                     
-                    if (removeuDeste) {
-                        // Refaz a numeração (coluna Ordem) daquele roteiro para não pular números
-                        roteiro.forEach((item, idx) => item.ordem = idx + 1);
-                    }
+                    if (removeuDeste) roteiro.forEach((item, idx) => item.ordem = idx + 1);
                 });
 
-                // 3. Salva e gera o Relatório Visual
+                // 4. Salva e gera o Relatório Visual
                 if (totalRemovidos > 0) {
                     if(typeof saveToStorage === 'function') saveToStorage();
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
                     
-                    // Monta o visual do extrato do relatório
-                    let msgRelatorio = `✅ FAXINA CONCLUÍDA!\n\nForam retirados ${totalRemovidos} aluno(s) com status Desligado/Encerrado.\n\n📋 DETALHAMENTO DAS REMOÇÕES:\n`;
-                    
+                    let msgRelatorio = `✅ FAXINA CONCLUÍDA!\n\nForam retirados ${totalRemovidos} aluno(s).\n\n📋 DETALHAMENTO:\n`;
                     Object.keys(relatorioRemocoes).forEach(plan => {
-                        msgRelatorio += `\n📅 Roteiro: ${plan} (${relatorioRemocoes[plan].length} alunos)\n`;
-                        relatorioRemocoes[plan].forEach(nome => {
-                            msgRelatorio += `   ❌ ${nome}\n`;
-                        });
+                        msgRelatorio += `\n📅 ${plan}:\n`;
+                        relatorioRemocoes[plan].forEach(nome => { msgRelatorio += `   ❌ ${nome}\n`; });
                     });
-
                     alert(msgRelatorio);
-                    console.log("Relatório de Faxina:", relatorioRemocoes); // Salva no console também caso a lista seja gigante
-                    
                 } else {
-                    alert("✨ Varredura Completa!\n\nNenhum aluno com status 'Desl/Encerrados' foi encontrado misturado nos seus planejamentos.");
+                    alert("✨ Varredura Completa!\n\nNenhum aluno inativo foi encontrado misturado nos seus planejamentos.");
                 }
                 
             } catch (error) {
