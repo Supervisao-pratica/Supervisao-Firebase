@@ -2774,11 +2774,9 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         }
         
         function downloadBackup() { try { const jsonStr = JSON.stringify(DB); const blob = new Blob([jsonStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date().toISOString().slice(0,10); a.download = `backup_senac_${date}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showToast("Arquivo de backup gerado!"); } catch(e) { alert("Erro ao gerar backup: " + e.message); } }
+        
         // =========================================================================
-        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (PUXA TUDO: ALUNOS + PLANEJAMENTOS)
-        // =========================================================================
-        // =========================================================================
-        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (INJEÇÃO ABSOLUTA DE DADOS)
+        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (BLINDADA CONTRA NUVEM E LOGIN)
         // =========================================================================
         window.restoreBackup = function(input) {
             const file = input.files[0];
@@ -2786,41 +2784,41 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
-            const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "FORÇANDO RESTAURAÇÃO ABSOLUTA..."; 
 
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const parsed = JSON.parse(e.target.result);
 
-                    // 1. IGNORA QUALQUER FILTRO E SUBSTITUI O BANCO INTEIRO PELO BACKUP!
-                    // Isso injeta de volta o 'planning' (Alunos) e o 'planning_admin' (Deslocamentos)
+                    // 1. Substitui TUDO sem exceções (Alunos, Planejamento, Rateio, etc.)
                     window.DB = parsed;
+                    if (typeof STATE !== 'undefined') window.STATE.db = parsed;
 
-                    // 2. Salva na Nuvem / Memória do navegador imediatamente
+                    // 2. Trava na memória profunda do navegador para o Login não apagar
+                    localStorage.setItem('senac_data', JSON.stringify(parsed));
+                    localStorage.setItem('senac_db', JSON.stringify(parsed));
+                    localStorage.setItem('DB', JSON.stringify(parsed));
+
+                    // 3. Se você fez o processo DEPOIS de logar, já envia pra nuvem na mesma hora:
                     if(typeof saveToStorage === 'function') {
                         await saveToStorage();
-                    } else {
-                        // Plano B de segurança: Força a gravação no LocalStorage
-                        localStorage.setItem('senac_data', JSON.stringify(parsed));
-                        localStorage.setItem('senac_db', JSON.stringify(parsed));
-                        localStorage.setItem('DB', JSON.stringify(parsed));
                     }
                     
-                    alert("✅ UFA! RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os alunos, deslocamentos e roteiros foram injetados perfeitamente.\nA página será recarregada para mostrar os dados.");
+                    alert("✅ RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os seus alunos, rotas, deslocamentos e controle de rateios voltaram à vida.\n\nSe você ainda não fez o Login, pode fazer agora. Os dados estão blindados e salvos!");
                     location.reload();
                     
                 } catch (err) {
-                    console.error(err);
                     alert("Erro ao ler o arquivo de backup: " + err.message);
-                    if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 } finally {
+                    if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     input.value = ''; 
                 }
             };
             reader.readAsText(file);
         };
+        
+        // Garante que o botão 'Restaurar Manual' acione a mesma trava de força bruta
+        window.restaurarManual = window.restoreBackup;
         function autoFillCC() { const t = document.getElementById('finTurma').value; document.getElementById('finCC').value = DB.cc_map[t] || "Não encontrado"; }
         function saveFinanceLog() { const t = document.getElementById('finTurma').value, c = document.getElementById('finCC').value, m = document.getElementById('finMotivo').value, d = document.getElementById('finData').value, v = document.getElementById('finValor').value, s = document.getElementById('finSupervisor').value; if(!t || !d || !v) return alert("Preencha todos os campos."); DB.finance_logs.unshift({ id: Date.now(), turma: t, cc: c, motivo: m, supervisor: s, data: d, valor: parseFloat(v) }); saveToStorage(); renderFinanceLogs(); showToast("Lançamento salvo!"); document.getElementById('finTurma').value = ''; }
         function renderFinanceLogs() { const tbody = document.getElementById('finLogsBody'); const budget = parseFloat(document.getElementById('finBudget') ? document.getElementById('finBudget').value : 0) || 0; const total = DB.finance_logs.reduce((acc, l) => acc + l.valor, 0); if(tbody) tbody.innerHTML = DB.finance_logs.map(l => `<tr class="border-b hover:bg-slate-50"><td class="p-3">${new Date(l.data).toLocaleDateString('pt-BR')}</td><td class="p-3 font-bold">${l.turma}</td><td class="p-3 text-xs italic text-slate-500">${l.motivo || '-'}</td><td class="p-3 text-xs">${l.supervisor||'-'}</td><td class="p-3 text-xs text-slate-400">${l.cc}</td><td class="p-3 text-right font-mono text-emerald-600">R$ ${l.valor.toFixed(2)}</td><td class="p-3 text-center"><button onclick="deleteLog(${l.id})" class="text-red-300 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join(""); lucide.createIcons(); const countEl = document.getElementById('finCount'); if(countEl) countEl.innerText = DB.finance_logs.length; const gastoEl = document.getElementById('finTotalGasto'); if(gastoEl) gastoEl.innerText = "R$ " + total.toLocaleString('pt-BR', {minimumFractionDigits: 2}); const balance = budget - total; const balEl = document.getElementById('finBalance'); if(balEl) { balEl.innerText = "R$ " + balance.toLocaleString('pt-BR', {minimumFractionDigits: 2}); balEl.className = `text-3xl font-black ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`; } const uniqueSup = [...new Set(DB.finance_logs.map(l => l.supervisor).filter(s => s))].sort(); const supEl = document.getElementById('listSupervisors'); if(supEl) supEl.innerHTML = uniqueSup.map(s => `<option value="${s}">`).join(""); }
