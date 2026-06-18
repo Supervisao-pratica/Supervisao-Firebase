@@ -686,14 +686,6 @@
                             <button onclick="organizarRoteiro()" class="px-3 py-1.5 bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100 hover:text-sky-700 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Agrupar por cidade e priorizar 1ª Visita">
                                 <i data-lucide="map" class="w-3 h-3"></i> Organizar
                             </button>
-
-                            <button onclick="executarFaxinaGlobal()" class="px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 hover:text-red-700 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Varrer e remover todos os alunos desligados/encerrados dos planejamentos">
-                                <i data-lucide="trash-2" class="w-3 h-3"></i> Faxina
-                            </button>
-
-                            <button onclick="desfazerUltimaAcao()" class="px-3 py-1.5 bg-yellow-50 border border-yellow-300 text-yellow-700 hover:bg-yellow-100 hover:text-yellow-800 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Desfazer o último clique e recuperar a lista">
-                                <i data-lucide="undo-2" class="w-3 h-3"></i> Desfazer
-                            </button>
                             
                             <button onclick="tracarRotaMaps()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Criar rota no Google Maps para o dia">
                                 <i data-lucide="navigation" class="w-3 h-3"></i> Traçar Rota
@@ -2774,53 +2766,55 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         }
         
         function downloadBackup() { try { const jsonStr = JSON.stringify(DB); const blob = new Blob([jsonStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date().toISOString().slice(0,10); a.download = `backup_senac_${date}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showToast("Arquivo de backup gerado!"); } catch(e) { alert("Erro ao gerar backup: " + e.message); } }
-        // =========================================================================
-        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (PUXA TUDO: ALUNOS + PLANEJAMENTOS)
-        // =========================================================================
-        // =========================================================================
-        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (INJEÇÃO ABSOLUTA DE DADOS)
-        // =========================================================================
-        window.restoreBackup = function(input) {
+        function restoreBackup(input) {
             const file = input.files[0];
             if (!file) return;
             
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
             const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "FORÇANDO RESTAURAÇÃO ABSOLUTA..."; 
+            if(loadMsg) loadMsg.innerText = "LENDO ARQUIVO..."; 
 
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const parsed = JSON.parse(e.target.result);
-
-                    // 1. IGNORA QUALQUER FILTRO E SUBSTITUI O BANCO INTEIRO PELO BACKUP!
-                    // Isso injeta de volta o 'planning' (Alunos) e o 'planning_admin' (Deslocamentos)
-                    window.DB = parsed;
-
-                    // 2. Salva na Nuvem / Memória do navegador imediatamente
-                    if(typeof saveToStorage === 'function') {
-                        await saveToStorage();
-                    } else {
-                        // Plano B de segurança: Força a gravação no LocalStorage
-                        localStorage.setItem('senac_data', JSON.stringify(parsed));
-                        localStorage.setItem('senac_db', JSON.stringify(parsed));
-                        localStorage.setItem('DB', JSON.stringify(parsed));
-                    }
                     
-                    alert("✅ UFA! RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os alunos, deslocamentos e roteiros foram injetados perfeitamente.\nA página será recarregada para mostrar os dados.");
+                    // RAIO-X: Conta quantos alunos existem dentro do arquivo selecionado
+                    const qtdQuali = parsed.quali ? parsed.quali.length : 0;
+                    const qtdTec = parsed.tec ? parsed.tec.length : 0;
+                    const totalAlunos = qtdQuali + qtdTec;
+
+                    if (totalAlunos === 0) {
+                        alert("⚠️ ATENÇÃO: O arquivo que você selecionou tem 0 alunos ou está em um formato irreconhecível. Verifique se é o backup correto!");
+                        if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                        input.value = '';
+                        return; // Para tudo aqui e não deixa estragar o banco
+                    }
+
+                    if(loadMsg) loadMsg.innerText = `ENCONTRADOS ${totalAlunos} ALUNOS! ENVIANDO PARA NUVEM...`; 
+
+                    // Injeta os dados
+                    if(typeof processDataLoad === 'function') {
+                        processDataLoad(parsed);
+                    } else {
+                        DB = parsed;
+                    }
+
+                    // Manda salvar na nuvem
+                    await saveToStorage();
+                    
+                    alert(`✅ SUCESSO! O backup contendo ${totalAlunos} alunos foi lido e salvo na nuvem!`);
                     location.reload();
                     
                 } catch (err) {
                     console.error(err);
                     alert("Erro ao ler o arquivo de backup: " + err.message);
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                } finally {
-                    input.value = ''; 
                 }
             };
             reader.readAsText(file);
-        };
+        }
         function autoFillCC() { const t = document.getElementById('finTurma').value; document.getElementById('finCC').value = DB.cc_map[t] || "Não encontrado"; }
         function saveFinanceLog() { const t = document.getElementById('finTurma').value, c = document.getElementById('finCC').value, m = document.getElementById('finMotivo').value, d = document.getElementById('finData').value, v = document.getElementById('finValor').value, s = document.getElementById('finSupervisor').value; if(!t || !d || !v) return alert("Preencha todos os campos."); DB.finance_logs.unshift({ id: Date.now(), turma: t, cc: c, motivo: m, supervisor: s, data: d, valor: parseFloat(v) }); saveToStorage(); renderFinanceLogs(); showToast("Lançamento salvo!"); document.getElementById('finTurma').value = ''; }
         function renderFinanceLogs() { const tbody = document.getElementById('finLogsBody'); const budget = parseFloat(document.getElementById('finBudget') ? document.getElementById('finBudget').value : 0) || 0; const total = DB.finance_logs.reduce((acc, l) => acc + l.valor, 0); if(tbody) tbody.innerHTML = DB.finance_logs.map(l => `<tr class="border-b hover:bg-slate-50"><td class="p-3">${new Date(l.data).toLocaleDateString('pt-BR')}</td><td class="p-3 font-bold">${l.turma}</td><td class="p-3 text-xs italic text-slate-500">${l.motivo || '-'}</td><td class="p-3 text-xs">${l.supervisor||'-'}</td><td class="p-3 text-xs text-slate-400">${l.cc}</td><td class="p-3 text-right font-mono text-emerald-600">R$ ${l.valor.toFixed(2)}</td><td class="p-3 text-center"><button onclick="deleteLog(${l.id})" class="text-red-300 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join(""); lucide.createIcons(); const countEl = document.getElementById('finCount'); if(countEl) countEl.innerText = DB.finance_logs.length; const gastoEl = document.getElementById('finTotalGasto'); if(gastoEl) gastoEl.innerText = "R$ " + total.toLocaleString('pt-BR', {minimumFractionDigits: 2}); const balance = budget - total; const balEl = document.getElementById('finBalance'); if(balEl) { balEl.innerText = "R$ " + balance.toLocaleString('pt-BR', {minimumFractionDigits: 2}); balEl.className = `text-3xl font-black ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`; } const uniqueSup = [...new Set(DB.finance_logs.map(l => l.supervisor).filter(s => s))].sort(); const supEl = document.getElementById('listSupervisors'); if(supEl) supEl.innerHTML = uniqueSup.map(s => `<option value="${s}">`).join(""); }
@@ -6801,43 +6795,6 @@ window.atualizarAutocompleteGlobal = function() {
                 event.target.value = ''; 
             }
         };
-        // =========================================================================
-        // ⏪ MÁQUINA DO TEMPO (SISTEMA DE DESFAZER / CTRL+Z DO PLANEJAMENTO)
-        // =========================================================================
-        window.PLANNING_HISTORY = [];
-
-        // Esta função tira uma "foto" do planejamento milissegundos antes de qualquer ação
-        window.salvarEstadoParaDesfazer = function() {
-            try {
-                if (window.DB && window.DB.planning) {
-                    window.PLANNING_HISTORY.push(JSON.stringify(window.DB.planning));
-                    // Guarda na memória os últimos 10 cliques/alterações
-                    if(window.PLANNING_HISTORY.length > 10) window.PLANNING_HISTORY.shift(); 
-                }
-            } catch(e) { console.error("Erro ao salvar histórico", e); }
-        };
-
-        // Esta função restaura a última foto tirada
-        window.desfazerUltimaAcao = function() {
-            if (!window.PLANNING_HISTORY || window.PLANNING_HISTORY.length === 0) {
-                return alert("⚠️ Não há nenhuma ação recente na memória para desfazer.");
-            }
-            
-            const confirmacao = confirm("⏪ DESFAZER AÇÃO (CTRL+Z)\n\nDeseja anular o último botão que você apertou (Organizar, Faxina, etc.) e voltar o planejamento exatamente para como estava antes?");
-            if (!confirmacao) return;
-
-            try {
-                const estadoAnterior = window.PLANNING_HISTORY.pop();
-                window.DB.planning = JSON.parse(estadoAnterior);
-                
-                if(typeof saveToStorage === 'function') saveToStorage();
-                if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                
-                alert("✅ Ufa! Ação desfeita com sucesso. O planejamento voltou ao normal.");
-            } catch(e) {
-                alert("Erro ao tentar desfazer: " + e.message);
-            }
-        };
 // =========================================================================
         // 🔄 MOTOR DE AVANÇO DE CICLO BLINDADO (PRÓXIMA VISITA E FAXINA)
         // =========================================================================
@@ -6994,104 +6951,65 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL BLINDADA COM BACKUP INSTANTÂNEO
+        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL DE DESLIGADOS E ENCERRADOS
         // =========================================================================
         window.executarFaxinaGlobal = function() {
             try {
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
 
-                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL COM RELATÓRIO\n\nO sistema vai vasculhar todas as abas procurando pelos status 'Desligado' ou 'Encerrado'.\n\nDeseja continuar?");
+                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL\n\nO sistema vai vasculhar TODOS os meses de planejamento já criados e remover qualquer aluno que esteja Desligado, Encerrado, Concluído ou Evadido na base principal.\n\nDeseja continuar?");
                 if (!confirmar) return;
 
-                // 📸 1. SALVA O ESTADO ATUAL NA MÁQUINA DO TEMPO ANTES DE QUALQUER COISA
-                if (typeof salvarEstadoParaDesfazer === 'function') salvarEstadoParaDesfazer();
-
-                const limparNome = (str) => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
-
-                // FUNÇÃO DE RAIO-X SEGURO: Extrai APENAS os textos digitados (valores), ignorando os nomes das colunas
-                const extrairApenasValores = (obj) => {
-                    let valores = "";
-                    for (let chave in obj) {
-                        if (obj[chave] !== null && typeof obj[chave] === 'object') {
-                            valores += extrairApenasValores(obj[chave]) + " ";
-                        } else {
-                            valores += String(obj[chave] || "").toUpperCase() + " ";
-                        }
-                    }
-                    return valores;
-                };
-
-                const listaNegraIds = new Set();
-                const listaNegraNomes = new Set();
-
-                // 2. Criar a "Lista Negra" (Quem deve sair)
-                Object.keys(dbObj).forEach(key => {
-                    if (Array.isArray(dbObj[key])) {
-                        const isAbaInativa = key.toLowerCase().includes('desl') || key.toLowerCase().includes('encerr');
-
-                        dbObj[key].forEach(a => {
-                            const valoresDaFicha = extrairApenasValores(a);
-                            
-                            const isStatusInativo = valoresDaFicha.includes('DESL/ENCERRADOS') || 
-                                                    valoresDaFicha.includes('DESLIGADO') || 
-                                                    valoresDaFicha.includes('ENCERRADO') || 
-                                                    valoresDaFicha.includes('EVADIDO');
-
-                            if (isAbaInativa || isStatusInativo) {
-                                if (a.id) listaNegraIds.add(String(a.id));
-                                if (a.nome) listaNegraNomes.add(limparNome(a.nome));
-                            }
-                        });
-                    }
+                // 1. Mapeia os status de todos os alunos na base central do Senac (Técnica e Quali)
+                const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
+                const statusMap = {};
+                
+                // Mapeamento duplo para garantir que ninguém escape (Por ID e por Nome)
+                todos.forEach(a => {
+                    const st = String(a.status || a.situacao || "").toUpperCase();
+                    if (a.id) statusMap[a.id] = st;
+                    if (a.nome) statusMap[a.nome.trim().toUpperCase()] = st; 
                 });
 
                 let totalRemovidos = 0;
-                let relatorioRemocoes = {};
+                let roteirosAfetados = 0;
 
-                // 3. FAXINA REAL
+                // 2. FAXINA: Varre TODOS os roteiros salvos no sistema
                 Object.keys(dbObj.planning).forEach(nomeRoteiro => {
                     let roteiro = dbObj.planning[nomeRoteiro];
                     let removeuDeste = false;
                     
+                    // Varre de trás para frente para deletar da lista com segurança
                     for (let i = roteiro.length - 1; i >= 0; i--) {
                         const item = roteiro[i];
-                        if (!item || !item.student) continue;
+                        if (!item.student) continue;
 
-                        const idAluno = String(item.student.id || "");
-                        const nomeAluno = limparNome(item.student.nome);
-
-                        const valoresPlanejamento = extrairApenasValores(item.student);
-                        const isInativoNoPlanejamento = valoresPlanejamento.includes('DESL/ENCERRADOS') || 
-                                                        valoresPlanejamento.includes('DESLIGADO') || 
-                                                        valoresPlanejamento.includes('ENCERRADO');
-
-                        if (listaNegraIds.has(idAluno) || listaNegraNomes.has(nomeAluno) || isInativoNoPlanejamento) {
-                            if (!relatorioRemocoes[nomeRoteiro]) relatorioRemocoes[nomeRoteiro] = [];
-                            relatorioRemocoes[nomeRoteiro].push(item.student.nome);
-
+                        // Busca pelo ID, se falhar busca pelo Nome exato
+                        const statusDb = statusMap[item.student.id] || statusMap[String(item.student.nome || "").trim().toUpperCase()] || "";
+                        
+                        // Se encontrar as palavras-chave de inatividade, remove o aluno sem dó
+                        if (statusDb.includes('DESLIGADO') || statusDb.includes('ENCERRAD') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
                             roteiro.splice(i, 1);
                             totalRemovidos++;
                             removeuDeste = true;
                         }
                     }
                     
-                    if (removeuDeste) roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                    if (removeuDeste) {
+                        // Refaz a numeração (coluna Ordem) daquele roteiro para não pular números
+                        roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                        roteirosAfetados++;
+                    }
                 });
 
-                // 4. Salva e gera o Relatório Visual
+                // 3. Salva no navegador e avisa o resultado
                 if (totalRemovidos > 0) {
                     if(typeof saveToStorage === 'function') saveToStorage();
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                    
-                    let msgRelatorio = `✅ FAXINA CONCLUÍDA!\n\nForam retirados ${totalRemovidos} aluno(s).\n\n📋 DETALHAMENTO:\n`;
-                    Object.keys(relatorioRemocoes).forEach(plan => {
-                        msgRelatorio += `\n📅 ${plan}:\n`;
-                        relatorioRemocoes[plan].forEach(nome => { msgRelatorio += `   ❌ ${nome}\n`; });
-                    });
-                    alert(msgRelatorio);
+                    alert(`🧹 FAXINA CONCLUÍDA COM SUCESSO!\n\n${totalRemovidos} aluno(s) inativos foram varridos e removidos de ${roteirosAfetados} roteiro(s) de planejamento!`);
                 } else {
-                    alert("✨ Varredura Completa!\n\nNenhum aluno inativo foi encontrado misturado nos seus planejamentos.");
+                    alert("✨ Tudo limpo! Nenhum aluno inativo ou desligado foi encontrado nos seus planejamentos.");
                 }
                 
             } catch (error) {
