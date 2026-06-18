@@ -2776,7 +2776,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         function downloadBackup() { try { const jsonStr = JSON.stringify(DB); const blob = new Blob([jsonStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date().toISOString().slice(0,10); a.download = `backup_senac_${date}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showToast("Arquivo de backup gerado!"); } catch(e) { alert("Erro ao gerar backup: " + e.message); } }
         
         // =========================================================================
-        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (BLINDADA CONTRA NUVEM E LOGIN)
+        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (BLINDADA E DIRETO NA MEMÓRIA)
         // =========================================================================
         window.restoreBackup = function(input) {
             const file = input.files[0];
@@ -2790,21 +2790,27 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 try {
                     const parsed = JSON.parse(e.target.result);
 
-                    // 1. Substitui TUDO sem exceções (Alunos, Planejamento, Rateio, etc.)
+                    // 1. Substitui TUDO direto na variável central
                     window.DB = parsed;
-                    if (typeof STATE !== 'undefined') window.STATE.db = parsed;
+                    if (typeof DB !== 'undefined') {
+                        DB = parsed;
+                    }
 
-                    // 2. Trava na memória profunda do navegador para o Login não apagar
+                    // 2. Trava na memória profunda do navegador (ignora a tela temporária)
                     localStorage.setItem('senac_data', JSON.stringify(parsed));
                     localStorage.setItem('senac_db', JSON.stringify(parsed));
                     localStorage.setItem('DB', JSON.stringify(parsed));
 
-                    // 3. Se você fez o processo DEPOIS de logar, já envia pra nuvem na mesma hora:
+                    // 3. Salva na nuvem silenciosamente
                     if(typeof saveToStorage === 'function') {
-                        await saveToStorage();
+                        try {
+                            await saveToStorage();
+                        } catch(err) {
+                            console.warn("Salvou localmente com sucesso. (Aviso da nuvem ignorado)", err);
+                        }
                     }
                     
-                    alert("✅ RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os seus alunos, rotas, deslocamentos e controle de rateios voltaram à vida.\n\nSe você ainda não fez o Login, pode fazer agora. Os dados estão blindados e salvos!");
+                    alert("✅ RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os seus alunos, rotas, deslocamentos e rateios foram resgatados com sucesso.\n\nA página será recarregada agora.");
                     location.reload();
                     
                 } catch (err) {
@@ -2818,6 +2824,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         };
         
         // Garante que o botão 'Restaurar Manual' acione a mesma trava de força bruta
+        window.restaurarManual = window.restoreBackup;
         window.restaurarManual = window.restoreBackup;
         function autoFillCC() { const t = document.getElementById('finTurma').value; document.getElementById('finCC').value = DB.cc_map[t] || "Não encontrado"; }
         function saveFinanceLog() { const t = document.getElementById('finTurma').value, c = document.getElementById('finCC').value, m = document.getElementById('finMotivo').value, d = document.getElementById('finData').value, v = document.getElementById('finValor').value, s = document.getElementById('finSupervisor').value; if(!t || !d || !v) return alert("Preencha todos os campos."); DB.finance_logs.unshift({ id: Date.now(), turma: t, cc: c, motivo: m, supervisor: s, data: d, valor: parseFloat(v) }); saveToStorage(); renderFinanceLogs(); showToast("Lançamento salvo!"); document.getElementById('finTurma').value = ''; }
