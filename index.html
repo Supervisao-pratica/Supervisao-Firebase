@@ -1203,7 +1203,7 @@
         }
 
         // =========================================================================
-        // 3. ADICIONAR NOVOS (E Corrigir os horários dos antigos!)
+        // 📥 ADICIONAR NOVOS ALUNOS E ATUALIZAR ANTIGOS (COM CNPJ)
         // =========================================================================
         async function runMergeImport(input) { 
             const file = input.files[0]; 
@@ -1212,66 +1212,130 @@
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
             const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "ATUALIZANDO ALUNOS E ADICIONANDO NOVOS..."; 
+            if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO DO SENAC E PROCESSANDO ALUNOS..."; 
             
-            setTimeout(async () => { 
-                try { 
-                    const data = await readAndParseFile(file); 
+            // Usamos FileReader nativo para ler o formato TSV (que vem disfarçado de XLS)
+            const reader = new FileReader();
+            
+            reader.onload = async function(e) {
+                try {
+                    const text = e.target.result;
+                    // Divide as linhas corretamente (suporta qualquer quebra de linha)
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    
+                    if(lines.length < 2) {
+                        throw new Error("O arquivo parece estar vazio ou sem o formato correto.");
+                    }
+
+                    // A primeira linha contém os cabeçalhos separados por Tabulação (\t)
+                    const headers = lines[0].split('\t').map(h => h.trim());
+                    const getCol = (name) => headers.findIndex(h => h === name);
+                    
+                    // Mapeamento das colunas exatas da sua planilha
+                    const idxTurma = getCol("Turma");
+                    const idxCurso = getCol("Curso");
+                    const idxNome = getCol("Apr. Nome");
+                    const idxCNPJ = getCol("CNPJ");
+                    const idxEmpresa = getCol("Razao Social");
+                    const idxTeoriaIni = getCol("Teoria Hr Ini");
+                    const idxTeoriaFim = getCol("Teoria Hr Fim");
+                    const idxPraticaIni = getCol("Pratica Hr Ini");
+                    
+                    if(idxTurma === -1 || idxNome === -1) {
+                        throw new Error("As colunas 'Turma' e 'Apr. Nome' não foram encontradas. Verifique se é a planilha Resumo de Aprendizagem original.");
+                    }
+
                     let adicionados = 0;
                     let corrigidos = 0;
                     
-                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
+                    const safeStr = (str) => (str || '').toString().trim();
+                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).toUpperCase()}|${safeStr(aluno.turma).toUpperCase()}`; 
                     
-                    const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
-                    const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
+                    // Garante que os bancos existam
+                    if(!window.DB.quali) window.DB.quali = [];
+                    if(!window.DB.tec) window.DB.tec = [];
+                    
+                    const bancoQuali = new Map(window.DB.quali.map(a => [getAssinatura(a), a])); 
+                    const bancoTec = new Map(window.DB.tec.map(a => [getAssinatura(a), a])); 
 
-                    data.quali.forEach(novoAluno => { 
+                    // Processa aluno por aluno
+                    for (let i = 1; i < lines.length; i++) {
+                        const colunas = lines[i].split('\t');
+                        if (colunas.length < (headers.length - 3)) continue; 
+                        
+                        const turmaStr = safeStr(colunas[idxTurma]);
+                        const nomeStr = safeStr(colunas[idxNome]);
+                        const cursoStr = safeStr(colunas[idxCurso]);
+                        
+                        if(!nomeStr || !turmaStr) continue;
+
+                        // Extrai Horários
+                        const tIni = safeStr(colunas[idxTeoriaIni]);
+                        const tFim = safeStr(colunas[idxTeoriaFim]);
+                        const teoriaStr = (tIni && tFim) ? `${tIni} às ${tFim}` : tIni;
+                        const praticaStr = safeStr(colunas[idxPraticaIni]);
+                        
+                        // Extrai Empresa e CNPJ
+                        const cnpjStr = safeStr(colunas[idxCNPJ]);
+                        const empresaStr = safeStr(colunas[idxEmpresa]);
+                        
+                        const isTecnico = cursoStr.toUpperCase().includes("TÉCNICO") || cursoStr.toUpperCase().includes("TECNICO");
+
+                        // Monta o Perfil Completo do Aluno
+                        const novoAluno = {
+                            nome: nomeStr,
+                            turma: turmaStr,
+                            curso: cursoStr,
+                            teoria: teoriaStr,
+                            pratica: praticaStr,
+                            empresa: empresaStr,
+                            cnpj: cnpjStr
+                        };
+
                         const ass = getAssinatura(novoAluno); 
-                        if(!bancoQuali.has(ass)) { 
-                            // Se não existe, adiciona!
-                            DB.quali.unshift(novoAluno); 
-                            bancoQuali.set(ass, novoAluno); 
+                        const bancoRef = isTecnico ? bancoTec : bancoQuali;
+                        const dbRef = isTecnico ? window.DB.tec : window.DB.quali;
+                        
+                        if (!bancoRef.has(ass)) { 
+                            // 1. INSERE NOVO ALUNO
+                            dbRef.unshift(novoAluno); 
+                            bancoRef.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
-                            const alunoAntigo = bancoQuali.get(ass);
-                            if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
-                            if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
-                            if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            corrigidos++;
+                            // 2. ATUALIZA ALUNO EXISTENTE
+                            const alunoAntigo = bancoRef.get(ass);
+                            let alterou = false;
+                            
+                            if (novoAluno.teoria && alunoAntigo.teoria !== novoAluno.teoria) { alunoAntigo.teoria = novoAluno.teoria; alterou = true; }
+                            if (novoAluno.pratica && alunoAntigo.pratica !== novoAluno.pratica) { alunoAntigo.pratica = novoAluno.pratica; alterou = true; }
+                            if (novoAluno.curso && alunoAntigo.curso !== novoAluno.curso) { alunoAntigo.curso = novoAluno.curso; alterou = true; }
+                            
+                            // Adiciona/Atualiza CNPJ e Empresa se estavam vazios antes
+                            if (novoAluno.cnpj && alunoAntigo.cnpj !== novoAluno.cnpj) { alunoAntigo.cnpj = novoAluno.cnpj; alterou = true; }
+                            if (novoAluno.empresa && alunoAntigo.empresa !== novoAluno.empresa) { alunoAntigo.empresa = novoAluno.empresa; alterou = true; }
+                            
+                            if(alterou) corrigidos++;
                         }
-                    }); 
+                    } 
 
-                    data.tec.forEach(novoAluno => { 
-                        const ass = getAssinatura(novoAluno); 
-                        if(!bancoTec.has(ass)) { 
-                            DB.tec.unshift(novoAluno); 
-                            bancoTec.set(ass, novoAluno); 
-                            adicionados++; 
-                        } else {
-                            // Conserta os antigos da Técnica também
-                            const alunoAntigo = bancoTec.get(ass);
-                            if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
-                            if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
-                            if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            corrigidos++;
-                        }
-                    }); 
-
+                    // Salva e atualiza o sistema
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
+                    alert(`✅ IMPORTAÇÃO CONCLUÍDA COM SUCESSO!\n\n🎓 ${adicionados} novos alunos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram seus dados (Horários, CNPJ ou Empresa) atualizados.`); 
                 } catch(e) { 
                     console.error(e); 
-                    alert("Erro na importação: " + e); 
+                    alert("Erro na leitura da planilha: " + e.message); 
                 } finally { 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     input.value = ''; 
-                } 
-            }, 100); 
+                }
+            };
+
+            // O formato nativo que o Senac usa para não dar erro de acentuação:
+            reader.readAsText(file, 'iso-8859-1');
         }
 
         // =========================================================================
