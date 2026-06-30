@@ -1203,7 +1203,7 @@
         }
 
         // =========================================================================
-        // 📥 ADICIONAR NOVOS ALUNOS E ATUALIZAR ANTIGOS (COM CNPJ E AUTO-RELOAD)
+        // 📥 ADICIONAR NOVOS E ATUALIZAR (COM MAPEAMENTO INTELIGENTE DE CIDADES)
         // =========================================================================
         async function runMergeImport(input) { 
             const file = input.files[0]; 
@@ -1212,7 +1212,7 @@
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
             const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO DO SENAC E PROCESSANDO ALUNOS..."; 
+            if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO E MAPEANDO CIDADES E REGIÕES..."; 
             
             const reader = new FileReader();
             
@@ -1220,10 +1220,7 @@
                 try {
                     const text = e.target.result;
                     const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-                    
-                    if(lines.length < 2) {
-                        throw new Error("O arquivo parece estar vazio ou sem o formato correto.");
-                    }
+                    if(lines.length < 2) throw new Error("Arquivo vazio ou incorreto.");
 
                     const headers = lines[0].split('\t').map(h => h.trim());
                     const getCol = (name) => headers.findIndex(h => h === name);
@@ -1236,10 +1233,10 @@
                     const idxTeoriaIni = getCol("Teoria Hr Ini");
                     const idxTeoriaFim = getCol("Teoria Hr Fim");
                     const idxPraticaIni = getCol("Pratica Hr Ini");
+                    // NOVA COLUNA: Captura a cidade da empresa!
+                    const idxCidade = getCol("Emp. Cidade"); 
                     
-                    if(idxTurma === -1 || idxNome === -1) {
-                        throw new Error("As colunas 'Turma' e 'Apr. Nome' não foram encontradas no arquivo.");
-                    }
+                    if(idxTurma === -1 || idxNome === -1) throw new Error("Colunas vitais não encontradas na planilha.");
 
                     let adicionados = 0;
                     let corrigidos = 0;
@@ -1247,13 +1244,20 @@
                     const safeStr = (str) => (str || '').toString().trim();
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).toUpperCase()}|${safeStr(aluno.turma).toUpperCase()}`; 
                     
-                    // Garante que os bancos existam usando a variável DB direta
-                    if(typeof DB === 'undefined') throw new Error("Banco de dados principal (DB) não encontrado.");
+                    if(typeof DB === 'undefined') throw new Error("Banco de dados principal não encontrado.");
                     if(!DB.quali) DB.quali = [];
                     if(!DB.tec) DB.tec = [];
                     
                     const bancoQuali = new Map(DB.quali.map(a => [getAssinatura(a), a])); 
                     const bancoTec = new Map(DB.tec.map(a => [getAssinatura(a), a])); 
+
+                    // 🧠 MOTOR DE INTELIGÊNCIA: Aprende as regiões baseado nos alunos antigos
+                    const mapaRegioes = {};
+                    [...DB.quali, ...DB.tec].forEach(a => {
+                        if (a.cidade && a.regiao && !a.regiao.includes("NOVO") && !a.regiao.includes("NOVAS")) {
+                            mapaRegioes[a.cidade.trim().toUpperCase()] = a.regiao;
+                        }
+                    });
 
                     for (let i = 1; i < lines.length; i++) {
                         const colunas = lines[i].split('\t');
@@ -1269,53 +1273,76 @@
                         const tFim = safeStr(colunas[idxTeoriaFim]);
                         const teoriaStr = (tIni && tFim) ? `${tIni} às ${tFim}` : tIni;
                         const praticaStr = safeStr(colunas[idxPraticaIni]);
-                        
                         const cnpjStr = safeStr(colunas[idxCNPJ]);
                         const empresaStr = safeStr(colunas[idxEmpresa]);
                         
+                        // Captura a Cidade e descobre a Região via Inteligência
+                        const cidadeStr = safeStr(colunas[idxCidade]);
+                        const regiaoMapeada = mapaRegioes[cidadeStr.toUpperCase()] || "NOVAS CIDADES";
+                        
                         const isTecnico = cursoStr.toUpperCase().includes("TÉCNICO") || cursoStr.toUpperCase().includes("TECNICO");
 
-                        const novoAluno = {
-                            nome: nomeStr,
-                            turma: turmaStr,
-                            curso: cursoStr,
-                            teoria: teoriaStr,
-                            pratica: praticaStr,
-                            empresa: empresaStr,
-                            cnpj: cnpjStr
-                        };
-
-                        const ass = getAssinatura(novoAluno); 
+                        const ass = `${nomeStr.toUpperCase()}|${turmaStr.toUpperCase()}`;
                         const bancoRef = isTecnico ? bancoTec : bancoQuali;
                         const dbRef = isTecnico ? DB.tec : DB.quali;
                         
                         if (!bancoRef.has(ass)) { 
+                            // 1. INSERE ALUNO TOTALMENTE ESTRUTURADO COM CIDADE E REGIÃO
+                            const novoAluno = {
+                                id: "ID_" + Math.random().toString(36).substring(2, 12),
+                                nome: nomeStr,
+                                turma: turmaStr,
+                                curso: cursoStr,
+                                teoria: teoriaStr,
+                                pratica: praticaStr,
+                                empresa: { razao: empresaStr },
+                                cnpj: cnpjStr,
+                                regiao: regiaoMapeada,
+                                cidade: cidadeStr || "N/D",
+                                status: "Ativo"
+                            };
                             dbRef.unshift(novoAluno); 
                             bancoRef.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // 2. ATUALIZA ALUNOS ANTIGOS E FANTASMAS
                             const alunoAntigo = bancoRef.get(ass);
                             let alterou = false;
                             
-                            if (novoAluno.teoria && alunoAntigo.teoria !== novoAluno.teoria) { alunoAntigo.teoria = novoAluno.teoria; alterou = true; }
-                            if (novoAluno.pratica && alunoAntigo.pratica !== novoAluno.pratica) { alunoAntigo.pratica = novoAluno.pratica; alterou = true; }
-                            if (novoAluno.curso && alunoAntigo.curso !== novoAluno.curso) { alunoAntigo.curso = novoAluno.curso; alterou = true; }
+                            // Conserta os problemas estruturais
+                            if (!alunoAntigo.id) { alunoAntigo.id = "ID_" + Math.random().toString(36).substring(2, 12); alterou = true; }
                             
-                            if (novoAluno.cnpj && alunoAntigo.cnpj !== novoAluno.cnpj) { alunoAntigo.cnpj = novoAluno.cnpj; alterou = true; }
-                            if (novoAluno.empresa && alunoAntigo.empresa !== novoAluno.empresa) { alunoAntigo.empresa = novoAluno.empresa; alterou = true; }
+                            // 🧠 Atribui a cidade e a região correta se estiver como "NOVO" ou faltando
+                            if (!alunoAntigo.regiao || alunoAntigo.regiao.includes("NOVO")) { 
+                                alunoAntigo.cidade = cidadeStr || "N/D";
+                                alunoAntigo.regiao = regiaoMapeada; 
+                                alterou = true; 
+                            }
+                            
+                            if (typeof alunoAntigo.empresa === 'string') {
+                                alunoAntigo.empresa = { razao: alunoAntigo.empresa };
+                                alterou = true;
+                            } else if (!alunoAntigo.empresa) {
+                                alunoAntigo.empresa = { razao: empresaStr };
+                                alterou = true;
+                            } else if (empresaStr && alunoAntigo.empresa.razao !== empresaStr) {
+                                alunoAntigo.empresa.razao = empresaStr;
+                                alterou = true;
+                            }
+
+                            if (teoriaStr && alunoAntigo.teoria !== teoriaStr) { alunoAntigo.teoria = teoriaStr; alterou = true; }
+                            if (praticaStr && alunoAntigo.pratica !== praticaStr) { alunoAntigo.pratica = praticaStr; alterou = true; }
+                            if (cursoStr && alunoAntigo.curso !== cursoStr) { alunoAntigo.curso = cursoStr; alterou = true; }
+                            if (cnpjStr && alunoAntigo.cnpj !== cnpjStr) { alunoAntigo.cnpj = cnpjStr; alterou = true; }
                             
                             if(alterou) corrigidos++;
                         }
                     } 
 
-                    // 1. Executa as funções de salvamento do seu sistema
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
                     
-                    // 2. Alerta o usuário
-                    alert(`✅ IMPORTAÇÃO CONCLUÍDA COM SUCESSO!\n\n🎓 ${adicionados} novos alunos cadastrados.\n🔄 ${corrigidos} alunos atualizados.\n\nO sistema será recarregado agora para mostrar os dados atualizados.`); 
-                    
-                    // 3. O SEGREDO ESTÁ AQUI: Recarrega a tela forçando a buscar os dados novos!
+                    alert(`✅ IMPORTAÇÃO INTELIGENTE CONCLUÍDA!\n\n🎓 ${adicionados} novos alunos.\n🛠️ ${corrigidos} alunos curados com Cidade e Região mapeadas.\n\nA página será recarregada.`); 
                     location.reload();
 
                 } catch(e) { 
@@ -1326,7 +1353,6 @@
                     input.value = ''; 
                 }
             };
-
             reader.readAsText(file, 'iso-8859-1');
         }
         // =========================================================================
