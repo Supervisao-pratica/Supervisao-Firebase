@@ -184,9 +184,9 @@
             </div>
 <!-- DADOS DE DESLOCAMENTO E ATENDIMENTO -->
             <div id="boxUept" class="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200 text-xs text-slate-700 flex flex-col gap-1 shadow-sm">
-                <p><strong class="text-senac-blue">Dados para deslocando:</strong> UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 3</p>
-                <p><strong class="text-senac-blue">Dados para atendimento:</strong> UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 24</p>
-                <p id="linhaAdmin" class="hidden"><strong class="text-senac-blue">Dados para administrativo:</strong> UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 24</p>
+                <p><strong class="text-senac-blue">Dados para deslocando:</strong> UEPT: 27 &nbsp;|&nbsp; TEPT: 6041 &nbsp;|&nbsp; Evento: 3</p>
+                <p><strong class="text-senac-blue">Dados para atendimento:</strong> UEPT: 27 &nbsp;|&nbsp; TEPT: 6041 &nbsp;|&nbsp; Evento: 24</p>
+                <p id="linhaAdmin" class="hidden"><strong class="text-senac-blue">Dados para administrativo:</strong> UEPT: 27 &nbsp;|&nbsp; TEPT: 6041 &nbsp;|&nbsp; Evento: 24</p>
             </div>
             <div class="flex-1 overflow-auto border rounded-lg bg-white relative">
                 <table class="w-full text-left text-xs border-collapse">
@@ -1203,195 +1203,77 @@
         }
 
         // =========================================================================
-        // 📥 MOTOR DE LEITURA (EXTRAI TODOS OS DADOS, DATAS, CNPJ E SUPERVISOR)
+        // 3. ADICIONAR NOVOS (E Corrigir os horários dos antigos!)
         // =========================================================================
-        window.readAndParseFile = async function(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, {type: 'array'});
-                        const firstSheet = workbook.SheetNames[0];
-                        const json = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {defval: ""});
-                        
-                        const result = { quali: [], tec: [] };
-                        const safe = (v) => String(v || '').trim();
-                        
-                        json.forEach(row => {
-                            const nome = safe(row['Apr. Nome'] || row['Nome']);
-                            const turma = safe(row['Turma']);
-                            if(!nome || !turma) return;
-                            
-                            const curso = safe(row['Curso']);
-                            const isTecnico = curso.toUpperCase().includes('TÉCNICO') || curso.toUpperCase().includes('TECNICO');
-                            
-                            // Conversor de Datas (DD/MM/YYYY para Padrão do Sistema)
-                            const formatDate = (dStr) => {
-                                if(!dStr) return null;
-                                const pts = dStr.split('/');
-                                if(pts.length === 3) return `${pts[2]}-${pts[1]}-${pts[0]}T15:00:00.000Z`;
-                                return null;
-                            };
-                            
-                            const tIni = safe(row['Teoria Hr Ini']);
-                            const tFim = safe(row['Teoria Hr Fim']);
-
-                            // Cria o perfil COMPLETO do aluno
-                            const aluno = {
-                                id: "ID_" + Math.random().toString(36).substring(2, 12),
-                                nome: nome,
-                                turma: turma,
-                                curso: curso,
-                                cnpj: safe(row['CNPJ']),
-                                cidade: safe(row['Emp. Cidade']),
-                                empresa: {
-                                    razao: safe(row['Razao Social']),
-                                    endereco: "",
-                                    link: ""
-                                },
-                                supervisor: {
-                                    display: safe(row['Sup. Nome']),
-                                    tel: safe(row['Sup Celular'] || row['Sup Telefone']),
-                                    email: safe(row['Sup. Email'])
-                                },
-                                ini: formatDate(safe(row['Contrato Inicio'])),
-                                fim: formatDate(safe(row['Contrato Fim'])),
-                                teoria: (tIni && tFim) ? `${tIni} às ${tFim}` : tIni,
-                                pratica: safe(row['Pratica Hr Ini']),
-                                cpf: safe(row['Apr CPF']),
-                                isDesligado: safe(row['Situacao Matr']).toUpperCase().includes('DESLIGADO'),
-                                visits: [ {ok:false, date:null}, {ok:false, date:null}, {ok:false, date:null} ]
-                            };
-                            
-                            if(isTecnico) result.tec.push(aluno);
-                            else result.quali.push(aluno);
-                        });
-                        resolve(result);
-                    } catch(err) { reject(err); }
-                };
-                reader.readAsArrayBuffer(file);
-            });
-        };
-
-        // =========================================================================
-        // 📥 INJETAR DADOS, MAPEAR CIDADES E SALVAR (SEM DAR F5)
-        // =========================================================================
-        window.runMergeImport = async function(input) { 
+        async function runMergeImport(input) { 
             const file = input.files[0]; 
             if(!file) return; 
             
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
             const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO E ESTRUTURANDO ALUNOS..."; 
+            if(loadMsg) loadMsg.innerText = "ATUALIZANDO ALUNOS E ADICIONANDO NOVOS..."; 
             
-            try {
-                // 1. Lê a planilha usando a função completa acima
-                const newData = await window.readAndParseFile(file);
-                
-                let adicionados = 0;
-                let corrigidos = 0;
-                
-                const safeStr = (str) => String(str || '').trim();
-                const getAssinatura = (a) => `${safeStr(a.nome).toUpperCase()}|${safeStr(a.turma).toUpperCase()}`; 
-                
-                if(typeof window.DB === 'undefined') window.DB = { quali: [], tec: [] };
-                if(!window.DB.quali) window.DB.quali = [];
-                if(!window.DB.tec) window.DB.tec = [];
-                
-                const bancoQuali = new Map(window.DB.quali.map(a => [getAssinatura(a), a])); 
-                const bancoTec = new Map(window.DB.tec.map(a => [getAssinatura(a), a])); 
+            setTimeout(async () => { 
+                try { 
+                    const data = await readAndParseFile(file); 
+                    let adicionados = 0;
+                    let corrigidos = 0;
+                    
+                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
+                    
+                    const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
+                    const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
-                // 2. Mapeamento de Cidades Inteligente
-                const mapaRegioes = {};
-                [...window.DB.quali, ...window.DB.tec].forEach(a => {
-                    if (a.cidade && a.regiao && !a.regiao.includes("NOVO")) {
-                        mapaRegioes[a.cidade.trim().toUpperCase()] = a.regiao;
-                    }
-                });
-
-                // 3. Processador Mestre
-                const processList = (newList, dbRef, bancoRef) => {
-                    newList.forEach(novoAluno => {
-                        const ass = getAssinatura(novoAluno);
-                        const regiaoMapeada = mapaRegioes[novoAluno.cidade.toUpperCase()] || "NOVAS CIDADES";
-                        
-                        if (!bancoRef.has(ass)) { 
-                            novoAluno.regiao = regiaoMapeada;
-                            dbRef.unshift(novoAluno); 
-                            bancoRef.set(ass, novoAluno); 
+                    data.quali.forEach(novoAluno => { 
+                        const ass = getAssinatura(novoAluno); 
+                        if(!bancoQuali.has(ass)) { 
+                            // Se não existe, adiciona!
+                            DB.quali.unshift(novoAluno); 
+                            bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // SE O ALUNO JÁ EXISTE (OU É UM "FANTASMA"), PREENCHE AS LACUNAS
-                            const alunoAntigo = bancoRef.get(ass);
-                            let alterou = false;
-                            
-                            if(!alunoAntigo.id) { alunoAntigo.id = novoAluno.id; alterou = true; }
-                            
-                            if(!alunoAntigo.regiao || alunoAntigo.regiao.includes("NOVO")) { 
-                                alunoAntigo.cidade = novoAluno.cidade;
-                                alunoAntigo.regiao = regiaoMapeada; 
-                                alterou = true; 
-                            }
-                            
-                            if(typeof alunoAntigo.empresa === 'string') { alunoAntigo.empresa = { razao: alunoAntigo.empresa }; alterou = true; }
-                            
-                            if(novoAluno.empresa.razao && (!alunoAntigo.empresa || alunoAntigo.empresa.razao !== novoAluno.empresa.razao)) {
-                                if(!alunoAntigo.empresa) alunoAntigo.empresa = {};
-                                alunoAntigo.empresa.razao = novoAluno.empresa.razao;
-                                alterou = true;
-                            }
-
-                            if(novoAluno.cnpj && alunoAntigo.cnpj !== novoAluno.cnpj) { alunoAntigo.cnpj = novoAluno.cnpj; alterou = true; }
-                            if(novoAluno.teoria && alunoAntigo.teoria !== novoAluno.teoria) { alunoAntigo.teoria = novoAluno.teoria; alterou = true; }
-                            if(novoAluno.pratica && alunoAntigo.pratica !== novoAluno.pratica) { alunoAntigo.pratica = novoAluno.pratica; alterou = true; }
-                            if(novoAluno.curso && alunoAntigo.curso !== novoAluno.curso) { alunoAntigo.curso = novoAluno.curso; alterou = true; }
-                            
-                            // Injeta as datas para quem virou fantasma
-                            if(!alunoAntigo.ini && novoAluno.ini) { alunoAntigo.ini = novoAluno.ini; alterou = true; }
-                            if(!alunoAntigo.fim && novoAluno.fim) { alunoAntigo.fim = novoAluno.fim; alterou = true; }
-                            
-                            // Injeta a estrutura de visitas para a tabela não travar
-                            if(!alunoAntigo.visits) { 
-                                alunoAntigo.visits = [ {ok:false, date:null}, {ok:false, date:null}, {ok:false, date:null} ]; 
-                                alterou = true; 
-                            }
-                            
-                            if(alterou) corrigidos++;
+                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
+                            const alunoAntigo = bancoQuali.get(ass);
+                            if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
+                            if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
+                            if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
+                            corrigidos++;
                         }
-                    });
-                };
+                    }); 
 
-                processList(newData.quali, window.DB.quali, bancoQuali);
-                processList(newData.tec, window.DB.tec, bancoTec);
+                    data.tec.forEach(novoAluno => { 
+                        const ass = getAssinatura(novoAluno); 
+                        if(!bancoTec.has(ass)) { 
+                            DB.tec.unshift(novoAluno); 
+                            bancoTec.set(ass, novoAluno); 
+                            adicionados++; 
+                        } else {
+                            // Conserta os antigos da Técnica também
+                            const alunoAntigo = bancoTec.get(ass);
+                            if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
+                            if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
+                            if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
+                            corrigidos++;
+                        }
+                    }); 
 
-                if(loadMsg) loadMsg.innerText = "RECONSTRUINDO ESTRUTURA (NORMALIZAÇÃO)..."; 
-                
-                // 4. CRUCIAL: Roda o motor original do sistema para aplicar as regras aos alunos novos
-                if(typeof window.processDataLoad === 'function') window.processDataLoad(window.DB);
+                    if(typeof rehydratePlanning === 'function') rehydratePlanning();
+                    if(typeof saveToStorage === 'function') await saveToStorage(); 
+                    if(typeof runFilter === 'function') runFilter(); 
+                    if(typeof setupFilters === 'function') setupFilters(); 
+                    
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
+                } catch(e) { 
+                    console.error(e); 
+                    alert("Erro na importação: " + e); 
+                } finally { 
+                    if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                    input.value = ''; 
+                } 
+            }, 100); 
+        }
 
-                if(loadMsg) loadMsg.innerText = "SALVANDO NA NUVEM (FIREBASE)..."; 
-                
-                // 5. Salva (E PERMITE QUE O FIREBASE TERMINE COM CALMA)
-                if(typeof saveToStorage === 'function') await saveToStorage(); 
-
-                // 6. Atualiza a tela AO VIVO sem deslogar
-                if(typeof setupFilters === 'function') setupFilters();
-                if(typeof runFilter === 'function') runFilter(); 
-                if(typeof renderTable === 'function') renderTable();
-                if(typeof renderCharts === 'function') renderCharts();
-
-                alert(`✅ IMPORTAÇÃO CONCLUÍDA E CURADA!\n\n🎓 ${adicionados} alunos totalmente novos.\n🛠️ ${corrigidos} "fantasmas" curados/atualizados.\n\nOs dados já estão visíveis na tela.`); 
-                
-            } catch(e) { 
-                console.error(e); 
-                alert("Erro ao importar planilha: " + e.message); 
-            } finally { 
-                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                input.value = ''; 
-            }
-        };
         // =========================================================================
         // 4. SUBSTITUIR BASE (Apaga tudo e coloca os novos)
         // =========================================================================
@@ -2892,9 +2774,11 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         }
         
         function downloadBackup() { try { const jsonStr = JSON.stringify(DB); const blob = new Blob([jsonStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; const date = new Date().toISOString().slice(0,10); a.download = `backup_senac_${date}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showToast("Arquivo de backup gerado!"); } catch(e) { alert("Erro ao gerar backup: " + e.message); } }
-        
         // =========================================================================
-        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (BLINDADA E DIRETO NA MEMÓRIA)
+        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (PUXA TUDO: ALUNOS + PLANEJAMENTOS)
+        // =========================================================================
+        // =========================================================================
+        // 🚑 RESTAURAÇÃO DE EMERGÊNCIA (INJEÇÃO ABSOLUTA DE DADOS)
         // =========================================================================
         window.restoreBackup = function(input) {
             const file = input.files[0];
@@ -2902,48 +2786,41 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
+            const loadMsg = document.getElementById('loadingMsg');
+            if(loadMsg) loadMsg.innerText = "FORÇANDO RESTAURAÇÃO ABSOLUTA..."; 
 
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const parsed = JSON.parse(e.target.result);
 
-                    // 1. Substitui TUDO direto na variável central
+                    // 1. IGNORA QUALQUER FILTRO E SUBSTITUI O BANCO INTEIRO PELO BACKUP!
+                    // Isso injeta de volta o 'planning' (Alunos) e o 'planning_admin' (Deslocamentos)
                     window.DB = parsed;
-                    if (typeof DB !== 'undefined') {
-                        DB = parsed;
-                    }
 
-                    // 2. Trava na memória profunda do navegador (ignora a tela temporária)
-                    localStorage.setItem('senac_data', JSON.stringify(parsed));
-                    localStorage.setItem('senac_db', JSON.stringify(parsed));
-                    localStorage.setItem('DB', JSON.stringify(parsed));
-
-                    // 3. Salva na nuvem silenciosamente
+                    // 2. Salva na Nuvem / Memória do navegador imediatamente
                     if(typeof saveToStorage === 'function') {
-                        try {
-                            await saveToStorage();
-                        } catch(err) {
-                            console.warn("Salvou localmente com sucesso. (Aviso da nuvem ignorado)", err);
-                        }
+                        await saveToStorage();
+                    } else {
+                        // Plano B de segurança: Força a gravação no LocalStorage
+                        localStorage.setItem('senac_data', JSON.stringify(parsed));
+                        localStorage.setItem('senac_db', JSON.stringify(parsed));
+                        localStorage.setItem('DB', JSON.stringify(parsed));
                     }
                     
-                    alert("✅ RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os seus alunos, rotas, deslocamentos e rateios foram resgatados com sucesso.\n\nA página será recarregada agora.");
+                    alert("✅ UFA! RESTAURAÇÃO ABSOLUTA CONCLUÍDA!\n\nTodos os alunos, deslocamentos e roteiros foram injetados perfeitamente.\nA página será recarregada para mostrar os dados.");
                     location.reload();
                     
                 } catch (err) {
+                    console.error(err);
                     alert("Erro ao ler o arquivo de backup: " + err.message);
-                } finally {
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                } finally {
                     input.value = ''; 
                 }
             };
             reader.readAsText(file);
         };
-        
-        // Garante que o botão 'Restaurar Manual' acione a mesma trava de força bruta
-        window.restaurarManual = window.restoreBackup;
-        window.restaurarManual = window.restoreBackup;
         function autoFillCC() { const t = document.getElementById('finTurma').value; document.getElementById('finCC').value = DB.cc_map[t] || "Não encontrado"; }
         function saveFinanceLog() { const t = document.getElementById('finTurma').value, c = document.getElementById('finCC').value, m = document.getElementById('finMotivo').value, d = document.getElementById('finData').value, v = document.getElementById('finValor').value, s = document.getElementById('finSupervisor').value; if(!t || !d || !v) return alert("Preencha todos os campos."); DB.finance_logs.unshift({ id: Date.now(), turma: t, cc: c, motivo: m, supervisor: s, data: d, valor: parseFloat(v) }); saveToStorage(); renderFinanceLogs(); showToast("Lançamento salvo!"); document.getElementById('finTurma').value = ''; }
         function renderFinanceLogs() { const tbody = document.getElementById('finLogsBody'); const budget = parseFloat(document.getElementById('finBudget') ? document.getElementById('finBudget').value : 0) || 0; const total = DB.finance_logs.reduce((acc, l) => acc + l.valor, 0); if(tbody) tbody.innerHTML = DB.finance_logs.map(l => `<tr class="border-b hover:bg-slate-50"><td class="p-3">${new Date(l.data).toLocaleDateString('pt-BR')}</td><td class="p-3 font-bold">${l.turma}</td><td class="p-3 text-xs italic text-slate-500">${l.motivo || '-'}</td><td class="p-3 text-xs">${l.supervisor||'-'}</td><td class="p-3 text-xs text-slate-400">${l.cc}</td><td class="p-3 text-right font-mono text-emerald-600">R$ ${l.valor.toFixed(2)}</td><td class="p-3 text-center"><button onclick="deleteLog(${l.id})" class="text-red-300 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join(""); lucide.createIcons(); const countEl = document.getElementById('finCount'); if(countEl) countEl.innerText = DB.finance_logs.length; const gastoEl = document.getElementById('finTotalGasto'); if(gastoEl) gastoEl.innerText = "R$ " + total.toLocaleString('pt-BR', {minimumFractionDigits: 2}); const balance = budget - total; const balEl = document.getElementById('finBalance'); if(balEl) { balEl.innerText = "R$ " + balance.toLocaleString('pt-BR', {minimumFractionDigits: 2}); balEl.className = `text-3xl font-black ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`; } const uniqueSup = [...new Set(DB.finance_logs.map(l => l.supervisor).filter(s => s))].sort(); const supEl = document.getElementById('listSupervisors'); if(supEl) supEl.innerHTML = uniqueSup.map(s => `<option value="${s}">`).join(""); }
@@ -6925,57 +6802,38 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // ⏪ MÁQUINA DO TEMPO (DESFAZER SISTÊMICO - SOBREVIVE A F5 E ATUALIZAÇÕES)
+        // ⏪ MÁQUINA DO TEMPO (SISTEMA DE DESFAZER / CTRL+Z DO PLANEJAMENTO)
         // =========================================================================
-        
-        // Função que tira a "foto" ANTES de fazer qualquer alteração no planejamento
+        window.PLANNING_HISTORY = [];
+
+        // Esta função tira uma "foto" do planejamento milissegundos antes de qualquer ação
         window.salvarEstadoParaDesfazer = function() {
             try {
                 if (window.DB && window.DB.planning) {
-                    // Puxa o histórico da memória profunda do navegador
-                    let history = JSON.parse(localStorage.getItem('PLANNING_HISTORY') || '[]');
-                    
-                    // Salva os alunos e os deslocamentos (planning_admin)
-                    const estadoAtual = {
-                        planning: JSON.parse(JSON.stringify(window.DB.planning)),
-                        planning_admin: window.DB.planning_admin ? JSON.parse(JSON.stringify(window.DB.planning_admin)) : {}
-                    };
-                    
-                    history.push(estadoAtual);
-                    
-                    // Guarda as últimas 5 ações que você fez na memória
-                    if(history.length > 5) history.shift(); 
-                    
-                    localStorage.setItem('PLANNING_HISTORY', JSON.stringify(history));
+                    window.PLANNING_HISTORY.push(JSON.stringify(window.DB.planning));
+                    // Guarda na memória os últimos 10 cliques/alterações
+                    if(window.PLANNING_HISTORY.length > 10) window.PLANNING_HISTORY.shift(); 
                 }
             } catch(e) { console.error("Erro ao salvar histórico", e); }
         };
 
-        // Função do Botão de Desfazer
+        // Esta função restaura a última foto tirada
         window.desfazerUltimaAcao = function() {
-            try {
-                let history = JSON.parse(localStorage.getItem('PLANNING_HISTORY') || '[]');
-                if (history.length === 0) {
-                    return alert("⚠️ Não há nenhuma ação salva na memória para desfazer.");
-                }
-                
-                const confirmacao = confirm("⏪ DESFAZER AÇÃO (CTRL+Z)\n\nDeseja anular a última alteração e voltar o planejamento para como estava antes?");
-                if (!confirmacao) return;
+            if (!window.PLANNING_HISTORY || window.PLANNING_HISTORY.length === 0) {
+                return alert("⚠️ Não há nenhuma ação recente na memória para desfazer.");
+            }
+            
+            const confirmacao = confirm("⏪ DESFAZER AÇÃO (CTRL+Z)\n\nDeseja anular o último botão que você apertou (Organizar, Faxina, etc.) e voltar o planejamento exatamente para como estava antes?");
+            if (!confirmacao) return;
 
-                // Puxa a última foto tirada
-                const estadoAnterior = history.pop();
+            try {
+                const estadoAnterior = window.PLANNING_HISTORY.pop();
+                window.DB.planning = JSON.parse(estadoAnterior);
                 
-                window.DB.planning = estadoAnterior.planning;
-                window.DB.planning_admin = estadoAnterior.planning_admin;
-                
-                // Atualiza a memória apagando a ação que foi desfeita
-                localStorage.setItem('PLANNING_HISTORY', JSON.stringify(history));
-                
-                // Salva na nuvem e atualiza a tela
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
-                alert("✅ Ufa! Ação desfeita com sucesso. O planejamento voltou exatamente como era.");
+                alert("✅ Ufa! Ação desfeita com sucesso. O planejamento voltou ao normal.");
             } catch(e) {
                 alert("Erro ao tentar desfazer: " + e.message);
             }
