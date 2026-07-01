@@ -1203,7 +1203,7 @@
         }
 
         // =========================================================================
-        // 📥 ADICIONAR NOVOS E ATUALIZAR (INTEGRAÇÃO FIREBASE AO VIVO)
+        // 📥 ADICIONAR NOVOS E ATUALIZAR (CORREÇÃO PROFUNDA - USANDO XLSX NATIVO)
         // =========================================================================
         window.runMergeImport = async function(input) { 
             const file = input.files[0]; 
@@ -1214,13 +1214,16 @@
             const loadMsg = document.getElementById('loadingMsg');
             if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO DO SENAC (MODO SEGURO)..."; 
             
+            // O setTimeout garante que o ícone de carregamento apareça antes de travar o navegador
             setTimeout(async () => {
                 try {
+                    // 1. Voltamos a usar a biblioteca XLSX (Que entende o formato do Senac perfeitamente)
                     const dataBuffer = await file.arrayBuffer();
                     const workbook = XLSX.read(dataBuffer, { type: 'array' });
                     const firstSheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[firstSheetName];
                     
+                    // Converte a planilha para um array de objetos JSON fáceis de ler
                     const linhas = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
                     
                     if(linhas.length === 0) throw new Error("A planilha está vazia ou o formato não foi reconhecido.");
@@ -1238,6 +1241,7 @@
                     const bancoQuali = new Map(DB.quali.map(a => [getAssinatura(a), a])); 
                     const bancoTec = new Map(DB.tec.map(a => [getAssinatura(a), a])); 
 
+                    // 🧠 Motor de Regiões baseado na base existente
                     const mapaRegioes = {};
                     [...DB.quali, ...DB.tec].forEach(a => {
                         if (a.cidade && a.regiao && !a.regiao.includes("NOVO") && !a.regiao.includes("NOVAS")) {
@@ -1245,12 +1249,14 @@
                         }
                     });
 
+                    // 2. Processa as linhas da planilha
                     linhas.forEach(coluna => {
+                        // Como usamos o XLSX, os nomes puxados são exatos aos da planilha do Senac
                         const turmaStr = safeStr(coluna["Turma"]);
                         const nomeStr = safeStr(coluna["Apr. Nome"] || coluna["Nome"]);
                         const cursoStr = safeStr(coluna["Curso"]);
                         
-                        if(!nomeStr || !turmaStr) return; 
+                        if(!nomeStr || !turmaStr) return; // Pula linhas em branco
 
                         const tIni = safeStr(coluna["Teoria Hr Ini"]);
                         const tFim = safeStr(coluna["Teoria Hr Fim"]);
@@ -1282,16 +1288,20 @@
                         const dbRef = isTecnico ? DB.tec : DB.quali;
                         
                         if (!bancoRef.has(ass)) { 
+                            // 3. INSERE ALUNO NOVO NO SISTEMA
                             novoAluno.id = "ID_" + Math.random().toString(36).substring(2, 12);
                             dbRef.unshift(novoAluno); 
                             bancoRef.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // 4. ATUALIZA ALUNO ANTIGO COM CNPJ, EMPRESA E CIDADE
                             const alunoAntigo = bancoRef.get(ass);
                             let alterou = false;
                             
+                            // Conserta estrutura de quem entrou quebrado
                             if (!alunoAntigo.id) { alunoAntigo.id = "ID_" + Math.random().toString(36).substring(2, 12); alterou = true; }
                             
+                            // Mapeia cidade/região caso não tenha
                             if (!alunoAntigo.regiao || alunoAntigo.regiao.includes("NOVO") || alunoAntigo.regiao.includes("NOVAS")) { 
                                 alunoAntigo.cidade = cidadeStr || "N/D";
                                 alunoAntigo.regiao = regiaoMapeada; 
@@ -1318,39 +1328,20 @@
                         }
                     });
 
+                    // 5. Salva na Memória/Nuvem e recarrega a tela com os novos números
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
+                    if(typeof saveToStorage === 'function') await saveToStorage(); 
                     
-                    // SEGURA A TELA E MOSTRA QUE ESTÁ ENVIANDO PRO FIREBASE
-                    if(loadMsg) loadMsg.innerText = "ENVIANDO DADOS PARA A NUVEM (FIREBASE)..."; 
-                    
-                    if(typeof saveToStorage === 'function') {
-                        try {
-                            await saveToStorage();
-                        } catch(err) {
-                            console.error("Erro no Firebase:", err);
-                        }
-                    } 
-                    
-                    // Dá 2 segundos pro Firebase respirar antes de concluir
-                    setTimeout(() => {
-                        if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                        
-                        // ATUALIZA O VISUAL AO VIVO (SEM SAIR DO SISTEMA)
-                        if(typeof setupFilters === 'function') setupFilters();
-                        if(typeof runFilter === 'function') runFilter(); 
-                        if(typeof renderTable === 'function') renderTable();
-                        if(typeof renderCharts === 'function') renderCharts();
-
-                        alert(`✅ DADOS SALVOS NA NUVEM COM SUCESSO!\n\n🎓 ${adicionados} novos alunos adicionados.\n🔄 ${corrigidos} alunos atualizados.\n\nSua tela foi atualizada ao vivo.`); 
-                        input.value = ''; 
-                    }, 2000);
+                    alert(`✅ IMPORTAÇÃO CONCLUÍDA!\n\n🎓 ${adicionados} novos alunos adicionados.\n🔄 ${corrigidos} alunos atualizados (CNPJ e Cidades).\n\nA página será recarregada.`); 
+                    location.reload();
 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro ao importar planilha: " + e.message); 
+                } finally { 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                    input.value = '';
-                } 
+                    input.value = ''; 
+                }
             }, 100);
         };
         // =========================================================================
