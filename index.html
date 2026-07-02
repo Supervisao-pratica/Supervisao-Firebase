@@ -286,120 +286,86 @@
     </div>
 
     <!-- MODAL RELATÓRIO GLOBAL -->
-
-    <div id="globalReportModal" class="hidden modal-overlay z-[90]">
-
+<div id="globalReportModal" class="hidden modal-overlay z-[90]">
         <div class="glass-panel w-full max-w-2xl p-6 m-4 shadow-2xl">
-
+            
             <div class="flex justify-between items-center mb-6 border-b pb-4">
-
                 <div>
-
-                    <h3 class="text-xl font-bold text-purple-700 flex items-center gap-2"><i data-lucide="bar-chart-big" class="w-5 h-5"></i> Relatório Global de Atendimentos</h3>
-
-                    <p class="text-xs text-slate-500 mt-1">Soma de todas as visitas já realizadas, independentemente de status atual.</p>
-
+                    <h3 class="text-xl font-bold text-purple-700 flex items-center gap-2">
+                        <i data-lucide="bar-chart-big" class="w-5 h-5"></i> 
+                        Relatório Global de Atendimentos
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-1">
+                        Soma de todas as visitas já realizadas, independentemente de status atual.
+                    </p>
                 </div>
-
-                <button onclick="closeGlobalReportModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-6 h-6"></i></button>
-
+                <button onclick="closeGlobalReportModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
             </div>
-
             
-
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                <!-- ANO 2025 -->
-
-                <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 relative overflow-hidden">
-
-                    <div class="absolute -right-4 -bottom-4 opacity-5"><i data-lucide="calendar" class="w-32 h-32"></i></div>
-
-                    <div class="flex items-center gap-2 mb-4 relative z-10">
-
-                        <div class="bg-slate-200 text-slate-600 p-1.5 rounded"><i data-lucide="archive" class="w-4 h-4"></i></div>
-
-                        <h4 class="font-black text-slate-700 text-lg">Histórico 2025</h4>
-
-                    </div>
-
-                    <h2 class="text-4xl font-black text-slate-800 mb-4 relative z-10" id="grTotal25">0 <span class="text-sm font-bold text-slate-500">Visitas</span></h2>
-
-                    <div class="space-y-2 relative z-10">
-
-                        <div class="flex justify-between items-center p-2 bg-white border border-slate-100 rounded shadow-sm">
-
-                            <span class="text-xs font-bold text-slate-500 uppercase">Qualificação</span>
-
-                            <span class="text-sm font-black text-senac-blue" id="grQuali25">0</span>
-
-                        </div>
-
-                        <div class="flex justify-between items-center p-2 bg-white border border-slate-100 rounded shadow-sm">
-
-                            <span class="text-xs font-bold text-slate-500 uppercase">Técnica</span>
-
-                            <span class="text-sm font-black text-senac-orange" id="grTec25">0</span>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
                 
-
-                <!-- ANO 2026 -->
-
-                <div class="bg-purple-50 border border-purple-200 rounded-xl p-5 shadow-sm relative overflow-hidden">
-
-                    <div class="absolute -right-4 -bottom-4 opacity-5"><i data-lucide="calendar-days" class="w-32 h-32 text-purple-900"></i></div>
-
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-5 relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 opacity-5">
+                        <i data-lucide="calendar" class="w-32 h-32"></i>
+                    </div>
                     <div class="flex items-center gap-2 mb-4 relative z-10">
-
-                        <div class="bg-purple-200 text-purple-700 p-1.5 rounded"><i data-lucide="rocket" class="w-4 h-4"></i></div>
-
-                        <h4 class="font-black text-purple-800 text-lg">Em Curso 2026</h4>
-
+                        <div class="bg-slate-200 text-slate-600 p-1.5 rounded">
+                            <i data-lucide="archive" class="w-4 h-4"></i>
+                        </div>
+                        <h4 class="font-black text-slate-700 text-lg">Histórico 2025</h4>
                     </div>
-
-                    <h2 class="text-4xl font-black text-purple-900 mb-4 relative z-10" id="grTotal26">0 <span class="text-sm font-bold text-purple-500">Visitas</span></h2>
-
+                    <h2 class="text-4xl font-black text-slate-800 mb-4 relative z-10" id="grTotal25">
+                        0 <span class="text-sm font-bold text-slate-500">Visitas</span>
+                    </h2>
                     <div class="space-y-2 relative z-10">
-
-                        <div class="flex justify-between items-center p-2 bg-white border border-purple-100 rounded shadow-sm">
-
-                            <span class="text-xs font-bold text-purple-600 uppercase">Qualificação</span>
-
-                            <span class="text-sm font-black text-senac-blue" id="grQuali26">0</span>
-
+                        <div class="flex justify-between items-center p-2 bg-white border border-slate-100 rounded shadow-sm">
+                            <span class="text-xs font-bold text-slate-500 uppercase">Qualificação</span>
+                            <span class="text-sm font-black text-senac-blue" id="grQuali25">0</span>
                         </div>
-
-                        <div class="flex justify-between items-center p-2 bg-white border border-purple-100 rounded shadow-sm">
-
-                            <span class="text-xs font-bold text-purple-600 uppercase">Técnica</span>
-
-                            <span class="text-sm font-black text-senac-orange" id="grTec26">0</span>
-
+                        <div class="flex justify-between items-center p-2 bg-white border border-slate-100 rounded shadow-sm">
+                            <span class="text-xs font-bold text-slate-500 uppercase">Técnica</span>
+                            <span class="text-sm font-black text-senac-orange" id="grTec25">0</span>
                         </div>
-
                     </div>
-
                 </div>
-
+                
+                <div class="bg-purple-50 border border-purple-200 rounded-xl p-5 shadow-sm relative overflow-hidden">
+                    <div class="absolute -right-4 -bottom-4 opacity-5">
+                        <i data-lucide="calendar-days" class="w-32 h-32 text-purple-900"></i>
+                    </div>
+                    <div class="flex items-center gap-2 mb-4 relative z-10">
+                        <div class="bg-purple-200 text-purple-700 p-1.5 rounded">
+                            <i data-lucide="rocket" class="w-4 h-4"></i>
+                        </div>
+                        <h4 class="font-black text-purple-800 text-lg">Em Curso 2026</h4>
+                    </div>
+                    <h2 class="text-4xl font-black text-purple-900 mb-4 relative z-10" id="grTotal26">
+                        0 <span class="text-sm font-bold text-purple-500">Visitas</span>
+                    </h2>
+                    <div class="space-y-2 relative z-10">
+                        <div class="flex justify-between items-center p-2 bg-white border border-purple-100 rounded shadow-sm">
+                            <span class="text-xs font-bold text-purple-600 uppercase">Qualificação</span>
+                            <span class="text-sm font-black text-senac-blue" id="grQuali26">0</span>
+                        </div>
+                        <div class="flex justify-between items-center p-2 bg-white border border-purple-100 rounded shadow-sm">
+                            <span class="text-xs font-bold text-purple-600 uppercase">Técnica</span>
+                            <span class="text-sm font-black text-senac-orange" id="grTec26">0</span>
+                        </div>
+                    </div>
+                </div>
+                
             </div>
-
             
-
             <div class="mt-6 flex justify-end">
-
-                <button onclick="closeGlobalReportModal()" class="px-6 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-all">Fechar</button>
-
+                <button onclick="closeGlobalReportModal()" class="px-6 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-all">
+                    Fechar
+                </button>
             </div>
-
+            
         </div>
-
-    </div> 
+    </div>
 
     <!-- MODAL ALUNO -->
     <div id="studentModal" class="hidden modal-overlay z-[70]">
