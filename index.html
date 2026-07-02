@@ -6627,7 +6627,7 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================================
-        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO DE FREQUÊNCIA E CONTRATURNO
+        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (COM SENSOR DE RISCO)
         // =========================================================================
         window.processarFrequenciaPedagogica = async function(event) {
             try {
@@ -6708,6 +6708,7 @@ window.atualizarAutocompleteGlobal = function() {
                 const roteiro = dbObj.planning[ctx];
 
                 let alunosAtualizados = 0;
+                let alunosComRisco = 0; // Novo contador de alertas
 
                 roteiro.forEach(item => {
                     if (!item.student || !item.student.nome) return;
@@ -6720,6 +6721,21 @@ window.atualizarAutocompleteGlobal = function() {
                         const linhaCompleta = row.map(c => norm(c)).join(" "); 
                         
                         if (linhaCompleta.includes(nomeAlunoRoteiro)) {
+                            
+                            // ================================================================
+                            // 🚨 SENSOR DE RISCO E DESLIGAMENTO ATIVADO
+                            // ================================================================
+                            let textoAlertaCritico = "";
+                            if (linhaCompleta.includes("DESLIGADO")) {
+                                textoAlertaCritico = "🚨 DESLIGADO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("EVADIDO")) {
+                                textoAlertaCritico = "🚨 EVADIDO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("LARANJA")) {
+                                textoAlertaCritico = "🟠 ALERTA LARANJA - AVALIAR VISITA";
+                            }
+                            if (textoAlertaCritico !== "") alunosComRisco++;
+                            // ================================================================
+
                             let ucsStatus = [];
                             let ucsAvaliadas = 0; 
 
@@ -6799,14 +6815,17 @@ window.atualizarAutocompleteGlobal = function() {
                                 if (ucsStatus.length > 0) {
                                     textoPedagogico = "Atenção: " + ucsStatus.join(" | ") + ".";
                                 } else {
-                                    textoPedagogico = "✅ Sem pendências nas UCs avaliadas.";
+                                    textoPedagogico = "✅ Sem pendências nas UCs.";
                                 }
                             }
 
-                            if (textoPedagogico !== "" || textoContraturno !== "") {
+                            // Monta o Bloco de Observação
+                            if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "") {
                                 let relatorio = "[PEDAGÓGICO] ";
                                 let blocos = [];
                                 
+                                // O alerta de risco entra PRIMEIRO para chamar muita atenção
+                                if (textoAlertaCritico) blocos.push(textoAlertaCritico);
                                 if (textoPedagogico) blocos.push(textoPedagogico);
                                 if (textoContraturno) blocos.push(textoContraturno);
                                 
@@ -6830,7 +6849,12 @@ window.atualizarAutocompleteGlobal = function() {
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
-                alert(`✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório e o cadastro de contraturno atualizados.`);
+                let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório atualizado.`;
+                if (alunosComRisco > 0) {
+                    mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Olhe a coluna de Observação no roteiro para não perder a viagem!`;
+                }
+                
+                alert(mensagemFinal);
 
             } catch (e) {
                 console.error(e); 
