@@ -3615,9 +3615,10 @@ window.updateVisitCC = function(idx, val) {
                 }
                 // =========================================================
                 
-                if(field === 'status' && val === 'Realizada') { 
+               // Agora o robô escuta QUALQUER mudança de status e ajusta a data
+                if(field === 'status') { 
                     if(typeof syncVisitStatus === 'function') syncVisitStatus(item); 
-                } 
+                }
                 
                 if (field === 'obs') {
                     const studentId = item.student.id;
@@ -3638,7 +3639,39 @@ window.updateVisitCC = function(idx, val) {
         function updatePlanStudent(idx, field, val) { if(STATE.planContext && DB.planning[STATE.planContext][idx]) { DB.planning[STATE.planContext][idx].student[field] = val; saveToStorage(); } }
         function updatePlanCompany(idx, field, val) { if(STATE.planContext && DB.planning[STATE.planContext][idx]) { DB.planning[STATE.planContext][idx].student.empresa[field] = val; saveToStorage(); } }
         function updatePlanSupervisor(idx, field, val) { if(STATE.planContext && DB.planning[STATE.planContext][idx]) { DB.planning[STATE.planContext][idx].student.supervisor[field] = val; saveToStorage(); } }
-        function syncVisitStatus(planItem) { const studentId = planItem.student.id; let student = DB.quali.find(s => s.id === studentId); if (!student) student = DB.tec.find(s => s.id === studentId); if (student) { let vIdx = 0; if (planItem.visitaTipo === '2ª Visita') vIdx = 1; if (planItem.visitaTipo === '3ª Visita') vIdx = 2; let syncDate = new Date(); if (planItem.date) { const parts = planItem.date.split('-'); syncDate = new Date(parts[0], parts[1] - 1, parts[2]); } else { planItem.date = syncDate.toISOString().split('T')[0]; } student.visits[vIdx].ok = true; student.visits[vIdx].date = syncDate; showToast(`Sincronizado!`); } }
+        function syncVisitStatus(planItem) { 
+            const studentId = planItem.student.id; 
+            let student = DB.quali.find(s => s.id === studentId); 
+            if (!student) student = DB.tec.find(s => s.id === studentId); 
+            
+            if (student) { 
+                let vIdx = 0; 
+                if (planItem.visitaTipo === '2ª Visita') vIdx = 1; 
+                if (planItem.visitaTipo === '3ª Visita') vIdx = 2; 
+                
+                // Garante que o aluno tenha o array de visitas para não dar erro
+                if (!student.visits) {
+                    student.visits = [ {ok:false, date:null}, {ok:false, date:null}, {ok:false, date:null} ];
+                }
+                
+                if (planItem.status === 'Realizada') {
+                    let syncDate = new Date(); 
+                    if (planItem.date) { 
+                        const parts = planItem.date.split('-'); 
+                        syncDate = new Date(parts[0], parts[1] - 1, parts[2]); 
+                    } else { 
+                        planItem.date = syncDate.toISOString().split('T')[0]; 
+                    } 
+                    student.visits[vIdx].ok = true; 
+                    student.visits[vIdx].date = syncDate; 
+                    if(typeof showToast === 'function') showToast(`Sincronizado!`);
+                } else {
+                    // A MÁGICA AQUI: Se mudar para "Realizar" ou "Não realizada", ele desmarca a visita
+                    student.visits[vIdx].ok = false;
+                    student.visits[vIdx].date = null;
+                }
+            } 
+        }
         
         function removeFromPlan(idx) { 
             if(!confirm("Remover este aluno do roteiro atual?")) return; 
@@ -6300,6 +6333,8 @@ window.atualizarAutocompleteGlobal = function() {
 
             DB.planning[STATE.planContext].forEach(item => {
                 item.status = novoStatus;
+                // A MÁGICA ENTRA AQUI: Avisa o perfil do aluno sobre a mudança!
+                if(typeof syncVisitStatus === 'function') syncVisitStatus(item);
             });
             
             saveToStorage();
