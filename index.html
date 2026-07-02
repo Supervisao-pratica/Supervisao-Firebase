@@ -7301,66 +7301,57 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // 📊 GERADOR DE RELATÓRIO COMPLETO EM EXCEL (TODOS OS DADOS)
+        // 📊 EXPORTAR DADOS COMPLETOS PARA EXCEL (BOTÃO DA LISTAGEM)
         // =========================================================================
-        window.baixarRelatorioCompleto = function() {
-            if (!window.DB || (!window.DB.quali && !window.DB.tec)) {
-                return alert("Não há dados cadastrados no sistema para gerar o relatório.");
+        window.exportData = function() {
+            const dbBase = typeof DB !== 'undefined' ? DB : (window.DB || {});
+            const estadoAtual = typeof STATE !== 'undefined' ? STATE : (window.STATE || { view: 'quali' });
+            
+            let dadosParaExportar = [];
+            let nomeArquivo = "Relatorio";
+
+            // Descobre em qual aba você está clicando e puxa os alunos certos
+            if (estadoAtual.view === 'quali' && dbBase.quali) {
+                dadosParaExportar = dbBase.quali.map(a => ({ ...a, tipoCurso: 'Qualificação' }));
+                nomeArquivo = "Relatorio_Qualificacao";
+            } else if (estadoAtual.view === 'tec' && dbBase.tec) {
+                dadosParaExportar = dbBase.tec.map(a => ({ ...a, tipoCurso: 'Técnica' }));
+                nomeArquivo = "Relatorio_Tecnico";
+            }
+
+            if (dadosParaExportar.length === 0) {
+                return alert("Não há alunos cadastrados nesta aba para gerar o relatório.");
             }
 
             const loader = document.getElementById('globalLoader');
             const loadMsg = document.getElementById('loadingMsg');
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
-            if(loadMsg) loadMsg.innerText = "GERANDO RELATÓRIO COMPLETO...";
+            if(loadMsg) loadMsg.innerText = "GERANDO RELATÓRIO COMPLETO EM EXCEL...";
 
             setTimeout(() => {
                 try {
-                    // Junta todos os alunos (Quali e Tec) em uma lista só
-                    let todosAlunos = [];
-                    if (window.DB.quali) {
-                        todosAlunos = todosAlunos.concat(window.DB.quali.map(a => ({ ...a, tipoCurso: 'Qualificação' })));
-                    }
-                    if (window.DB.tec) {
-                        todosAlunos = todosAlunos.concat(window.DB.tec.map(a => ({ ...a, tipoCurso: 'Técnico' })));
-                    }
-
-                    if (todosAlunos.length === 0) {
-                        throw new Error("O banco de dados está vazio.");
-                    }
-
-                    // Prepara as linhas do Excel
                     const linhasExcel = [];
 
-                    todosAlunos.forEach(aluno => {
-                        // Garante que os objetos internos existem para não dar erro
+                    dadosParaExportar.forEach(aluno => {
                         const emp = aluno.empresa || {};
                         const sup = aluno.supervisor || {};
                         const ct = aluno.contraTurno || {};
 
-                        // Formata as datas de contrato
                         const formatarData = (dStr) => {
                             if (!dStr) return "";
-                            try { return new Date(dStr).toLocaleDateString('pt-BR'); } 
-                            catch(e) { return dStr; }
+                            try { 
+                                const p = dStr.split('T')[0].split('-');
+                                if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+                                return dStr;
+                            } catch(e) { return dStr; }
                         };
 
-                        // Puxa o status de desligado
                         const status = aluno.isDesligado ? "DESLIGADO" : "ATIVO";
 
-                        // Formata as visitas
-                        let visitasInfo = "";
-                        if (aluno.visits && aluno.visits.length > 0) {
-                            visitasInfo = aluno.visits.map((v, i) => {
-                                if (v.ok && v.date) return `V${i+1}: Realizada (${formatarData(v.date)})`;
-                                if (v.ok) return `V${i+1}: Realizada (S/ Data)`;
-                                return `V${i+1}: Pendente`;
-                            }).join(" | ");
-                        }
-
-                        // Formata o contra-turno
                         let contraturnoStr = "";
-                        if (aluno.contraturno) contraturnoStr = aluno.contraturno; // Se veio pelo pedagógico
-                        else {
+                        if (aluno.contraturno) {
+                            contraturnoStr = aluno.contraturno; 
+                        } else {
                             const dias = [];
                             if(ct.seg) dias.push("Seg");
                             if(ct.ter) dias.push("Ter");
@@ -7369,60 +7360,70 @@ window.atualizarAutocompleteGlobal = function() {
                             if(ct.sex) dias.push("Sex");
                             contraturnoStr = dias.join(", ");
                         }
+                        
+                        const v = aluno.visits || [];
+                        const getVisita = (idx) => {
+                            if (!v[idx]) return "Pendente";
+                            if (v[idx].ok) return v[idx].date ? `Realizada (${formatarData(v[idx].date)})` : "Realizada (S/ Data)";
+                            return "Pendente";
+                        };
 
-                        // Constrói a linha perfeita
                         linhasExcel.push({
                             "Status": status,
                             "Modalidade": aluno.tipoCurso,
+                            "Curso Específico": aluno.curso || "Não Informado",
                             "Nome do Aluno": aluno.nome || "",
                             "CPF": aluno.cpf || "",
                             "Turma": aluno.turma || "",
-                            "Curso": aluno.curso || "",
                             "Região": aluno.regiao || "",
                             "Cidade": aluno.cidade || "",
                             "CNPJ": aluno.cnpj || "",
-                            "Empresa": emp.razao || "",
+                            "Razão Social (Empresa)": emp.razao || "",
                             "Endereço da Empresa": emp.endereco || "",
                             "Link do Mapa": emp.link || "",
-                            "Nome do Supervisor": sup.display || "",
-                            "Celular/Telefone": sup.tel || "",
+                            "Supervisor": sup.display || "",
+                            "Telefone/Celular": sup.tel || "",
                             "E-mail do Supervisor": sup.email || "",
-                            "Horário Teoria": aluno.teoria || "",
-                            "Horário Prática": aluno.pratica || "",
-                            "Dias na Prática (Contra-Turno)": contraturnoStr,
+                            "Dias/Hr Teórica": aluno.teoria || "",
+                            "Dias/Hr Prática": aluno.pratica || "",
+                            "Contra-Turno na Prática": contraturnoStr,
                             "Início do Contrato": formatarData(aluno.ini),
                             "Fim do Contrato": formatarData(aluno.fim),
-                            "Resumo de Visitas": visitasInfo,
-                            "Observações": aluno.obs_origem || ""
+                            "Visita 1": getVisita(0),
+                            "Visita 2": getVisita(1),
+                            "Visita 3": getVisita(2),
+                            "Visita 4": getVisita(3),
+                            "Visita 5": getVisita(4),
+                            "Visita 6": getVisita(5),
+                            "Observações / Histórico": aluno.obs_origem || aluno.obs || ""
                         });
                     });
 
-                    // Usa o XLSX para criar e baixar a planilha
                     const worksheet = XLSX.utils.json_to_sheet(linhasExcel);
                     const workbook = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(workbook, worksheet, "Relatório Geral");
+                    XLSX.utils.book_append_sheet(workbook, worksheet, "Dados");
                     
-                    // Ajusta a largura das colunas automaticamente
                     const colWidths = [
-                        {wch: 10}, {wch: 15}, {wch: 35}, {wch: 15}, {wch: 15}, 
-                        {wch: 30}, {wch: 20}, {wch: 20}, {wch: 20}, {wch: 35}, 
-                        {wch: 40}, {wch: 30}, {wch: 30}, {wch: 18}, {wch: 35},
-                        {wch: 20}, {wch: 20}, {wch: 30}, {wch: 15}, {wch: 15},
-                        {wch: 60}, {wch: 50}
+                        {wch: 12}, {wch: 15}, {wch: 45}, {wch: 40}, {wch: 15}, 
+                        {wch: 15}, {wch: 25}, {wch: 25}, {wch: 20}, {wch: 45}, 
+                        {wch: 50}, {wch: 35}, {wch: 30}, {wch: 20}, {wch: 35},
+                        {wch: 20}, {wch: 20}, {wch: 25}, {wch: 15}, {wch: 15},
+                        {wch: 22}, {wch: 22}, {wch: 22}, {wch: 22}, {wch: 22}, {wch: 22},
+                        {wch: 60}
                     ];
                     worksheet['!cols'] = colWidths;
 
                     const dataHoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-                    XLSX.writeFile(workbook, `Relatorio_Completo_Senac_${dataHoje}.xlsx`);
+                    XLSX.writeFile(workbook, `${nomeArquivo}_Senac_${dataHoje}.xlsx`);
 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-
+                    
                 } catch (e) {
                     console.error(e);
                     alert("Erro ao gerar relatório: " + e.message);
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 }
-            }, 100);
+            }, 200);
         };
         // =========================================================================
         // 🚗 MOTOR DE LOGÍSTICA: GERADOR DE ROTA NO GOOGLE MAPS
