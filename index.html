@@ -5587,27 +5587,16 @@ window.atualizarAutocompleteGlobal = function() {
             }
         });
 // =========================================================
-        // 🚀 MOTOR DE BUSCA E PREENCHIMENTO DE ENDEREÇOS (BLINDADO)
+        // 🚀 MOTOR DE BUSCA E PREENCHIMENTO DE ENDEREÇOS (BLINDADO - V2)
         // =========================================================
         
-        // Limpador Universal: Tira acentos, pontos, traços e espaços para comparar a "essência" da palavra
+        // Limpador Universal
         window.limparTextoBusca = function(texto) {
             return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
         };
 
+        // 📍 BUSCA INDIVIDUAL: Usa APENAS o CNPJ na Receita Federal para não misturar filiais
         window.buscarEnderecoInterno = async function(btnElement) {
-            const razaoRaw = document.getElementById('editEmpresa')?.value || "";
-            const cidadeRaw = document.getElementById('editCidade')?.value || "";
-            const cnpjRaw = document.getElementById('editCNPJ')?.value || ""; 
-
-            if (!razaoRaw.trim()) {
-                return alert("Por favor, preencha a 'Razão Social' para buscar a empresa.");
-            }
-
-            const razaoTela = window.limparTextoBusca(razaoRaw);
-            const cidadeTela = window.limparTextoBusca(cidadeRaw);
-            let cnpjLimpo = cnpjRaw.replace(/\D/g, ''); 
-
             let btn = btnElement || (window.event ? window.event.currentTarget : null);
             let textoOriginal = "";
             if (btn && btn.innerHTML) {
@@ -5617,119 +5606,70 @@ window.atualizarAutocompleteGlobal = function() {
             }
 
             try {
-                let endEncontrado = "";
-                let linkEncontrado = "";
-                let achouEmpresaSemEndereco = false;
-                let erroAPI = ""; // 🎯 NOVO: Vai armazenar o motivo exato de qualquer falha
+                const editingId = window.STATE ? window.STATE.editingId : null;
+                if (!editingId) return alert("Erro: Não foi possível identificar o aluno em edição.");
 
                 const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
+                const aluno = todosAlunos.find(a => a.id === editingId);
+                
+                if (!aluno) return alert("Erro: Aluno não encontrado no banco de dados.");
 
-                // 1. Busca Interna (Memória do Sistema)
-                for (let a of todosAlunos) {
-                    if (window.STATE && a.id === window.STATE.editingId) continue; 
+                // Puxa e limpa o CNPJ (Apenas ele importa agora)
+                let cnpjCru = document.getElementById('editCNPJ')?.value || aluno.empresa?.cnpj || aluno.cnpj || "";
+                let cnpjLimpo = String(cnpjCru).replace(/\D/g, '');
 
-                    const razaoColega = window.limparTextoBusca((a.empresa && a.empresa.razao) || (typeof a.empresa === 'string' ? a.empresa : (a.razao_social || "")));
-                    const cidadeColega = window.limparTextoBusca(a.cidade || (a.empresa && a.empresa.cidade) || a.municipio || "");
-                    const enderecoColega = String((a.empresa && a.empresa.endereco) || a.endereco || a.endereco_empresa || "").trim();
-                    const linkColega = String((a.empresa && a.empresa.link) || a.link || a.link_mapa || "").trim();
+                if (cnpjLimpo.length > 0 && cnpjLimpo.length < 14) cnpjLimpo = cnpjLimpo.padStart(14, '0');
 
-                    if (razaoTela.length > 3 && (razaoColega === razaoTela || razaoColega.includes(razaoTela) || razaoTela.includes(razaoColega))) {
-                        if (enderecoColega.length > 5 && !enderecoColega.toLowerCase().includes('informado')) {
-                            if (cidadeTela && cidadeColega && cidadeColega !== cidadeTela && !cidadeColega.includes(cidadeTela) && !cidadeTela.includes(cidadeColega)) {
-                                continue; 
-                            }
-                            endEncontrado = enderecoColega;
-                            linkEncontrado = linkColega;
-                            break; 
-                        } else {
-                            achouEmpresaSemEndereco = true;
-                        }
-                    }
+                if (cnpjLimpo.length !== 14) {
+                    return alert(`❌ Operação Cancelada!\n\nO aluno não possui um CNPJ válido cadastrado.\nSem o CNPJ de 14 dígitos, o sistema não tem como buscar o endereço exato na Receita Federal.`);
                 }
 
-                // 2. Tenta a Receita Federal via CNPJ (MOTOR DUPLO)
-                if (!endEncontrado) {
-                    if (!cnpjLimpo && window.STATE && window.STATE.editingId) {
-                        const alunoAtual = todosAlunos.find(x => x.id === window.STATE.editingId);
-                        if (alunoAtual) cnpjLimpo = String(alunoAtual.cnpj_empresa || (alunoAtual.empresa && alunoAtual.empresa.cnpj) || alunoAtual.cnpj || "").replace(/\D/g, '');
-                    }
-                    
-                    if (cnpjLimpo.length > 0 && cnpjLimpo.length < 14) cnpjLimpo = cnpjLimpo.padStart(14, '0');
-                    
-                    if (cnpjLimpo.length === 14) {
-                        try {
-                            let logradouro, numero, complemento, bairro, municipio, uf;
-                            let successAPI = false;
+                // Busca na API (Com Motor Duplo de Segurança)
+                let logradouro, numero, complemento, bairro, municipio, uf;
+                let successAPI = false;
 
-                            // Tentativa 1: BrasilAPI
-                            const res1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
-                            if (res1.ok) {
-                                const json1 = await res1.json();
-                                logradouro = json1.logradouro;
-                                numero = json1.numero;
-                                complemento = json1.complemento;
-                                bairro = json1.bairro;
-                                municipio = json1.municipio;
-                                uf = json1.uf;
-                                successAPI = true;
-                            } else {
-                                // Tentativa 2: API Reserva (CNPJ.ws)
-                                const res2 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjLimpo}`);
-                                if (res2.ok) {
-                                    const json2 = await res2.json();
-                                    logradouro = json2.estabelecimento.tipo_logradouro + " " + json2.estabelecimento.logradouro;
-                                    numero = json2.estabelecimento.numero;
-                                    complemento = json2.estabelecimento.complemento;
-                                    bairro = json2.estabelecimento.bairro;
-                                    municipio = json2.estabelecimento.cidade.nome;
-                                    uf = json2.estabelecimento.estado.sigla;
-                                    successAPI = true;
-                                }
-                            }
-
-                            if (successAPI) {
-                                const cidadeReceita = window.limparTextoBusca(municipio || "");
-                                
-                                if (cidadeTela && cidadeReceita && !cidadeReceita.includes(cidadeTela) && !cidadeTela.includes(cidadeReceita)) {
-                                    erroAPI = `MATRIZ DETECTADA:\nO CNPJ retornou o endereço de ${municipio}, mas o aluno atua em ${cidadeRaw}. Ignoramos por segurança!`;
-                                } else {
-                                    endEncontrado = `${logradouro}, ${numero}${complemento ? ' - ' + complemento : ''} - ${bairro}, ${municipio} - ${uf}`;
-                                    linkEncontrado = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endEncontrado)}`;
-                                }
-                            } else {
-                                erroAPI = `A Receita Federal não encontrou o CNPJ ${cnpjLimpo} ou o serviço está instável.`;
-                            }
-                        } catch (e) { 
-                            erroAPI = "Erro de conexão ao tentar buscar o CNPJ na internet.";
-                        }
-                    } else if (cnpjLimpo.length > 0) {
-                        erroAPI = `O CNPJ está incompleto (${cnpjLimpo}). É obrigatório ter 14 dígitos.`;
-                    } else {
-                        erroAPI = "O aluno não possui CNPJ salvo. Sem o CNPJ, é impossível fazer a busca na Receita Federal.";
-                    }
-                }
-
-                // 3. Aplica os resultados na tela ou exibe o Relatório de Falhas
-                if (endEncontrado) {
-                    if (document.getElementById('editEndereco')) document.getElementById('editEndereco').value = endEncontrado;
-                    if (document.getElementById('editLink')) document.getElementById('editLink').value = linkEncontrado;
-                    if(typeof showToast === 'function') showToast("Endereço puxado com sucesso!");
+                const res1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+                if (res1.ok) {
+                    const json1 = await res1.json();
+                    logradouro = json1.logradouro;
+                    numero = json1.numero;
+                    complemento = json1.complemento;
+                    bairro = json1.bairro;
+                    municipio = json1.municipio;
+                    uf = json1.uf;
+                    successAPI = true;
                 } else {
-                    let msgFinal = "";
-                    if (erroAPI) msgFinal += `❌ ${erroAPI}\n\n`;
-                    
-                    if (achouEmpresaSemEndereco) {
-                        msgFinal += "⚠️ Achamos colegas dessa empresa no sistema, mas os endereços deles também estão em branco!";
-                    } else {
-                        msgFinal += "⚠️ Não achamos o endereço da empresa na memória do sistema.";
+                    const res2 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjLimpo}`);
+                    if (res2.ok) {
+                        const json2 = await res2.json();
+                        logradouro = json2.estabelecimento.tipo_logradouro + " " + json2.estabelecimento.logradouro;
+                        numero = json2.estabelecimento.numero;
+                        complemento = json2.estabelecimento.complemento;
+                        bairro = json2.estabelecimento.bairro;
+                        municipio = json2.estabelecimento.cidade.nome;
+                        uf = json2.estabelecimento.estado.sigla;
+                        successAPI = true;
                     }
-                    
-                    alert(msgFinal);
                 }
 
-            } catch(erroGeral) {
-                console.error("Falha geral:", erroGeral);
-                alert("Ocorreu um erro inesperado ao tentar buscar o endereço.");
+                if (successAPI) {
+                    let enderecoCompleto = `${logradouro}, ${numero}`;
+                    if (complemento) enderecoCompleto += ` - ${complemento}`;
+                    enderecoCompleto += ` - ${bairro}, ${municipio} - ${uf}`;
+                    
+                    const linkGoogle = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(enderecoCompleto)}`;
+                    
+                    if (document.getElementById('editEndereco')) document.getElementById('editEndereco').value = enderecoCompleto;
+                    if (document.getElementById('editLink')) document.getElementById('editLink').value = linkGoogle;
+                    
+                    if(typeof showToast === 'function') showToast("Endereço puxado e corrigido pela Receita Federal!");
+                } else {
+                    alert(`❌ Falha na Busca!\n\nA Receita Federal não encontrou o CNPJ ${cnpjLimpo} ou o serviço está instável.`);
+                }
+
+            } catch(e) {
+                console.error(e);
+                alert("Ocorreu um erro de conexão ao tentar buscar o endereço na internet.");
             } finally {
                 if (btn && textoOriginal) {
                     btn.innerHTML = textoOriginal;
@@ -5738,75 +5678,91 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
 
-        window.sincronizarEnderecosEmpresas = function(silencioso = false) {
+        // 📍 SINCRONIZAÇÃO EM MASSA: Corrige endereços errados em lote usando APENAS o CNPJ exato
+        window.sincronizarEnderecosEmpresas = async function(silencioso = false) {
             const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
             let alunosAtualizados = 0;
-            let planejamentosAtualizados = 0;
+            let falhas = 0;
 
-            const acharEnderecoBom = (cnpjAlvo, razaoAlvo) => {
-                const razaoLimpa = window.limparTextoBusca(razaoAlvo);
-                const cnpjLimpo = String(cnpjAlvo).replace(/\D/g, '');
-
-                for (let a of todosAlunos) {
-                    const end = String((a.empresa && a.empresa.endereco) || a.endereco || a.endereco_empresa || "").trim();
-                    const link = String((a.empresa && a.empresa.link) || a.link || a.link_mapa || "").trim();
-                    
-                    if (end.length > 5 && !end.toLowerCase().includes('informado')) {
-                        const cnpjC = String(a.cnpj_empresa || (a.empresa && a.empresa.cnpj) || a.cnpj || "").replace(/\D/g, '');
-                        const razaoC = window.limparTextoBusca((a.empresa && a.empresa.razao) || a.razao_social || "");
-                        
-                        if (cnpjLimpo && cnpjLimpo.length >= 11 && cnpjC === cnpjLimpo) return { endereco: end, link: link };
-                        if (razaoLimpa.length > 3 && razaoC.length > 3 && (razaoC === razaoLimpa || razaoC.includes(razaoLimpa) || razaoLimpa.includes(razaoC))) {
-                            return { endereco: end, link: link };
-                        }
-                    }
-                }
-                return null;
-            };
-
-            const preencherFaltante = (student) => {
+            const preencherViaCNPJ = async (student) => {
                 if (!student) return false;
                 const endAtual = String((student.empresa && student.empresa.endereco) || "").trim();
-                const linkAtual = String((student.empresa && student.empresa.link) || "").trim();
+                const cnpjCru = String(student.cnpj_empresa || (student.empresa && student.empresa.cnpj) || student.cnpj || "");
+                let cnpjLimpo = cnpjCru.replace(/\D/g, '');
+                
+                if (cnpjLimpo.length > 0 && cnpjLimpo.length < 14) cnpjLimpo = cnpjLimpo.padStart(14, '0');
 
-                if (endAtual.length < 5 || endAtual.toLowerCase().includes('informado') || (!linkAtual)) {
-                    const cnpj = String(student.cnpj_empresa || (student.empresa && student.empresa.cnpj) || student.cnpj || "");
-                    const razao = String((student.empresa && student.empresa.razao) || student.razao_social || "");
-                    
-                    const ref = acharEnderecoBom(cnpj, razao);
-                    if (ref) {
-                        if (!student.empresa) student.empresa = {};
-                        if (endAtual.length < 5 || endAtual.toLowerCase().includes('informado')) student.empresa.endereco = ref.endereco;
-                        if (!linkAtual && ref.link) student.empresa.link = ref.link;
-                        return true;
+                // Só pesquisa se não tem endereço e tem um CNPJ válido de 14 dígitos
+                if ((endAtual.length < 5 || endAtual.toLowerCase().includes('informado') || endAtual === "") && cnpjLimpo.length === 14) {
+                    try {
+                        let logradouro, numero, complemento, bairro, municipio, uf;
+                        let successAPI = false;
+
+                        const res1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+                        if (res1.ok) {
+                            const json1 = await res1.json();
+                            logradouro = json1.logradouro; numero = json1.numero; complemento = json1.complemento;
+                            bairro = json1.bairro; municipio = json1.municipio; uf = json1.uf;
+                            successAPI = true;
+                        } else {
+                            const res2 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjLimpo}`);
+                            if (res2.ok) {
+                                const json2 = await res2.json();
+                                logradouro = json2.estabelecimento.tipo_logradouro + " " + json2.estabelecimento.logradouro;
+                                numero = json2.estabelecimento.numero; complemento = json2.estabelecimento.complemento;
+                                bairro = json2.estabelecimento.bairro; municipio = json2.estabelecimento.cidade.nome; uf = json2.estabelecimento.estado.sigla;
+                                successAPI = true;
+                            }
+                        }
+
+                        if (successAPI) {
+                            if (!student.empresa) student.empresa = {};
+                            let endCompleto = `${logradouro}, ${numero}${complemento ? ' - ' + complemento : ''} - ${bairro}, ${municipio} - ${uf}`;
+                            student.empresa.endereco = endCompleto;
+                            student.empresa.link = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(endCompleto)}`;
+                            return true;
+                        }
+                    } catch(e) {
+                        return false;
                     }
+                    // Atraso intencional para não dar problema na Receita Federal
+                    await new Promise(r => setTimeout(r, 400));
                 }
                 return false;
             };
 
-            todosAlunos.forEach(a => { if (preencherFaltante(a)) alunosAtualizados++; });
+            for (let i = 0; i < todosAlunos.length; i++) {
+                if (await preencherViaCNPJ(todosAlunos[i])) alunosAtualizados++;
+            }
 
-            if (window.DB.planning) {
+            // Sincroniza a atualização de endereço no Planejamento também
+            if (alunosAtualizados > 0 && window.DB.planning) {
                 Object.keys(window.DB.planning).forEach(ctx => {
                     if (Array.isArray(window.DB.planning[ctx])) {
                         window.DB.planning[ctx].forEach(item => {
-                            if (preencherFaltante(item.student)) planejamentosAtualizados++;
+                            const alunoBase = todosAlunos.find(a => a.id === item.student.id);
+                            if (alunoBase && alunoBase.empresa && alunoBase.empresa.endereco) {
+                                if(!item.student.empresa) item.student.empresa = {};
+                                item.student.empresa.endereco = alunoBase.empresa.endereco;
+                                item.student.empresa.link = alunoBase.empresa.link;
+                            }
                         });
                     }
                 });
             }
 
-            if (alunosAtualizados > 0 || planejamentosAtualizados > 0) {
-                if (typeof saveToStorage === 'function') saveToStorage();
+            if (alunosAtualizados > 0) {
+                if (typeof saveToStorage === 'function') await saveToStorage();
                 if (typeof runFilter === 'function') runFilter();
                 if (typeof renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) renderPlanningTable();
                 
                 if (!silencioso) {
-                    alert(`✅ Autopreenchimento Concluído!\n\n- ${alunosAtualizados} alunos receberam o endereço da empresa.\n- ${planejamentosAtualizados} registros de roteiros foram atualizados.`);
+                    alert(`✅ Correção Automática Concluída!\n\n- ${alunosAtualizados} alunos que estavam com endereço vazio ou errado foram consertados via CNPJ.`);
                 }
+            } else if (!silencioso) {
+                alert("Nenhum aluno precisava de correção de endereço ou os CNPJs em branco impossibilitaram a busca.");
             }
         };
-
         // =========================================================
         // 🔑 SINCRONIZADOR DE CÓDIGOS (RASTREADOR ABSOLUTO E CLONES)
         // =========================================================
