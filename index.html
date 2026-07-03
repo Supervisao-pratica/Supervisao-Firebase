@@ -6894,7 +6894,7 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // 🔄 MOTOR DE INTELIGÊNCIA: ATUALIZAÇÃO EM MASSA DE SUPERVISORES
+        // 🔄 MOTOR DE INTELIGÊNCIA: ATUALIZAÇÃO EM MASSA DE SUPERVISORES (CORRIGIDO)
         // =========================================================================
         window.processarAtualizacaoSupervisor = async function(event) {
             try {
@@ -6909,10 +6909,9 @@ window.atualizarAutocompleteGlobal = function() {
                 const data = await file.arrayBuffer();
                 const workbook = XLSX.read(data, { type: 'array' });
                 
-                // Normaliza o texto para ignorar acentos e letras maiúsculas/minúsculas
-                const norm = str => (str || "").toString().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").toUpperCase().trim();
+                // Função ninja para remover acentos, espaços extras e deixar tudo maiúsculo
+                const norm = str => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").toUpperCase().trim();
                 
-                // Encontra a aba correta
                 let nomeAbaCorreta = null;
                 workbook.SheetNames.forEach(sheetName => {
                     if (norm(sheetName).includes("PRATICA PROFISSIONAL")) {
@@ -6922,25 +6921,23 @@ window.atualizarAutocompleteGlobal = function() {
 
                 if (!nomeAbaCorreta) {
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                    return alert("❌ Não encontrei a aba 'PRÁTICA PROFISSIONAL' nesta planilha. Verifique se é o arquivo correto.");
+                    return alert("❌ Não encontrei a aba 'PRÁTICA PROFISSIONAL' nesta planilha.");
                 }
 
                 const sheet = workbook.Sheets[nomeAbaCorreta];
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-                // Mapeadores das colunas
-                let idxNome = -1, idxSup = -1, idxCel = -1, idxTel = -1, idxEmail = -1;
+                let idxNome = -1, idxSup = -1, idxCel = -1, idxEmail = -1;
                 let linhaCabecalho = -1;
 
-                // Varre as primeiras linhas para achar o cabeçalho dinamicamente
+                // Busca as colunas EXATAS pedidas
                 for (let r = 0; r < Math.min(20, rows.length); r++) {
                     for (let c = 0; c < rows[r].length; c++) {
                         let val = norm(rows[r][c]);
-                        if (val.includes("NOME DO APRENDIZ")) idxNome = c;
+                        if (val === "NOME DO APRENDIZ") idxNome = c;
                         else if (val === "SUPERVISOR") idxSup = c;
-                        else if (val.includes("CELULAR")) idxCel = c;
-                        else if (val.includes("TELEFONE")) idxTel = c;
-                        else if (val.includes("E-MAIL") || val.includes("EMAIL")) idxEmail = c;
+                        else if (val === "CELULAR") idxCel = c;
+                        else if (val === "E-MAIL DO SUPERVISOR" || val === "EMAIL DO SUPERVISOR") idxEmail = c;
                     }
                     if (idxNome !== -1 && idxSup !== -1) {
                         linhaCabecalho = r;
@@ -6950,70 +6947,81 @@ window.atualizarAutocompleteGlobal = function() {
 
                 if (idxNome === -1 || idxSup === -1) {
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                    return alert("❌ Não foi possível encontrar as colunas 'Nome do Aprendiz' e 'Supervisor' na aba 'Prática Profissional'.");
+                    return alert("❌ Não encontrei as colunas 'Nome do Aprendiz' e 'Supervisor' na planilha.");
                 }
 
-                const safeStr = (str) => String(str || '').trim();
-                let atualizados = 0;
+                const dbBase = typeof DB !== 'undefined' ? DB : (window.DB || {});
+                let alunosAtualizados = 0;
+                let alunosNaoEncontrados = 0;
 
-                // Lê os dados aluno por aluno
                 for (let i = linhaCabecalho + 1; i < rows.length; i++) {
                     const row = rows[i];
                     if (!row) continue;
 
-                    const nomePlanilha = norm(row[idxNome]);
-                    if (!nomePlanilha) continue; 
+                    const nomePlanilhaRaw = row[idxNome];
+                    const nomePlanilha = norm(nomePlanilhaRaw);
+                    if (!nomePlanilha) continue; // Pula linha em branco
 
-                    const supNome = safeStr(row[idxSup]);
-                    if (!supNome) continue; 
-                    
-                    const supCel = idxCel !== -1 ? safeStr(row[idxCel]) : "";
-                    const supTel = idxTel !== -1 ? safeStr(row[idxTel]) : "";
-                    const supEmail = idxEmail !== -1 ? safeStr(row[idxEmail]) : "";
-                    
-                    // Prioriza o celular. Se não tiver, usa o telefone fixo
-                    const telFinal = supCel ? supCel : supTel; 
+                    // Preserva o nome do supervisor como foi digitado na planilha (apenas deixa maiúsculo e limpa espaços)
+                    const supNomeOriginal = String(row[idxSup] || "").trim().toUpperCase();
+                    if (!supNomeOriginal) continue;
 
-                    // Função que entra no banco e atualiza tudo
-                    const atualizarAluno = (lista) => {
-                        let alterou = false;
-                        const aluno = lista.find(a => norm(a.nome) === nomePlanilha);
+                    // O Celular e Email da planilha vão direto para o Telefone e Email do sistema
+                    const supCel = idxCel !== -1 ? String(row[idxCel] || "").trim() : "";
+                    const supEmail = idxEmail !== -1 ? String(row[idxEmail] || "").trim() : "";
+
+                    // Motor de busca flexível (Ignora erros de digitação leves e espaços)
+                    const buscarEAtualizar = (lista) => {
+                        if (!lista) return false;
                         
+                        const aluno = lista.find(a => {
+                            const nomeSistema = norm(a.nome);
+                            if (nomeSistema === nomePlanilha) return true;
+                            // Se a planilha cortou o último sobrenome, o Includes salva!
+                            if (nomeSistema.length > 5 && nomePlanilha.length > 5) {
+                                if (nomeSistema.includes(nomePlanilha) || nomePlanilha.includes(nomeSistema)) return true;
+                            }
+                            return false;
+                        });
+
                         if (aluno) {
                             if (!aluno.supervisor) aluno.supervisor = { display: "", tel: "", email: "" };
                             
-                            // Checa se mudou algo
-                            if (aluno.supervisor.display !== supNome || aluno.supervisor.tel !== telFinal || aluno.supervisor.email !== supEmail) {
-                                aluno.supervisor.display = supNome;
-                                aluno.supervisor.tel = telFinal;
-                                aluno.supervisor.email = supEmail;
-                                alterou = true;
-                            }
+                            let mudou = false;
                             
-                            // Vasculha todos os roteiros de planejamento e atualiza lá também!
-                            if (window.DB.planning) {
-                                for (let ctx in window.DB.planning) {
-                                    window.DB.planning[ctx].forEach(item => {
-                                        if (item.student && item.student.id === aluno.id) {
-                                            if (!item.student.supervisor) item.student.supervisor = {};
-                                            item.student.supervisor.display = supNome;
-                                            item.student.supervisor.tel = telFinal;
-                                            item.student.supervisor.email = supEmail;
-                                        }
-                                    });
+                            if (aluno.supervisor.display !== supNomeOriginal) { aluno.supervisor.display = supNomeOriginal; mudou = true; }
+                            if (aluno.supervisor.tel !== supCel) { aluno.supervisor.tel = supCel; mudou = true; }
+                            if (aluno.supervisor.email !== supEmail) { aluno.supervisor.email = supEmail; mudou = true; }
+                            
+                            if (mudou) {
+                                // Atualiza simultaneamente no módulo de Planejamento!
+                                if (dbBase.planning) {
+                                    for (let ctx in dbBase.planning) {
+                                        dbBase.planning[ctx].forEach(item => {
+                                            if (item.student && item.student.id === aluno.id) {
+                                                if (!item.student.supervisor) item.student.supervisor = {};
+                                                item.student.supervisor.display = supNomeOriginal;
+                                                item.student.supervisor.tel = supCel;
+                                                item.student.supervisor.email = supEmail;
+                                            }
+                                        });
+                                    }
                                 }
+                                return true;
                             }
                         }
-                        return alterou;
+                        return false;
                     };
 
-                    let mudouQuali = false;
-                    let mudouTec = false;
-                    
-                    if (window.DB.quali) mudouQuali = atualizarAluno(window.DB.quali);
-                    if (window.DB.tec) mudouTec = atualizarAluno(window.DB.tec);
-                    
-                    if (mudouQuali || mudouTec) atualizados++;
+                    let atualizouQuali = buscarEAtualizar(dbBase.quali);
+                    let atualizouTec = buscarEAtualizar(dbBase.tec);
+
+                    if (atualizouQuali || atualizouTec) {
+                        alunosAtualizados++;
+                    } else {
+                        // O aluno não estava no sistema ou os dados já eram exatamente os mesmos
+                        alunosNaoEncontrados++;
+                    }
                 }
 
                 // Salva na nuvem e atualiza a tela
@@ -7022,11 +7030,11 @@ window.atualizarAutocompleteGlobal = function() {
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
-                alert(`✅ Atualização de Supervisores concluída!\n\n${atualizados} aluno(s) tiveram os dados de supervisor (nome, telefone ou e-mail) atualizados no sistema e em todos os roteiros.`);
+                alert(`✅ Leitura da Planilha Concluída!\n\n🔄 ${alunosAtualizados} aluno(s) tiveram o Supervisor atualizado com sucesso.\n⚠️ ${alunosNaoEncontrados} aluno(s) ignorados (já estavam 100% iguais ou o nome não existe no sistema).`);
 
             } catch (e) {
                 console.error(e); 
-                alert("Erro ao ler planilha de supervisores:\n" + e.message);
+                alert("Erro ao processar atualização:\n" + e.message);
                 const loader = document.getElementById('globalLoader');
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
             } finally {
