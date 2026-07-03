@@ -707,11 +707,6 @@
     <i data-lucide="user-check" class="w-3 h-3"></i> Atualizar Supervisores
 </button>
 
-                            <input type="file" id="fileRestore" accept=".xlsx, .xls" class="hidden" onchange="restaurarEnderecosBackup(event)">
-<button onclick="document.getElementById('fileRestore').click()" class="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[9px] font-bold shadow-sm flex items-center gap-1 transition-all no-print" title="Restaurar Endereços via Excel">
-    <i data-lucide="history" class="w-3 h-3"></i> Restaurar Backup
-</button>
-                            
                             <button onclick="prepararProximaVisita()" class="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded text-xs font-bold transition-colors flex items-center gap-1 shadow-sm" title="Avançar alunos Realizados para a próxima visita">
                                 <i data-lucide="calendar-clock" class="w-3 h-3"></i> Próxima Visita
                             </button>
@@ -4736,84 +4731,6 @@ window.updateVisitCC = function(idx, val) {
                 alert("Erro ao copiar. Use a versão Desktop Chrome/Edge.");
             }
         }
-        // =========================================================================
-        // 🛟 RESTAURADOR DE ENDEREÇOS VIA BACKUP (EXCEL)
-        // =========================================================================
-        window.restaurarEnderecosBackup = async function(event) {
-            try {
-                const file = event.target.files[0];
-                if(!file) return;
-
-                const loader = document.getElementById('globalLoader');
-                const loadMsg = document.getElementById('loadingMsg');
-                if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
-                if(loadMsg) loadMsg.innerText = "LENDO BACKUP E RESTAURANDO ENDEREÇOS...";
-
-                const data = await file.arrayBuffer();
-                const workbook = XLSX.read(data, { type: 'array' });
-                
-                // Pega a primeira aba da planilha de backup
-                const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-                const dbBase = typeof DB !== 'undefined' ? DB : (window.DB || {});
-                const todosAlunos = [...(dbBase.quali || []), ...(dbBase.tec || [])];
-                let restaurados = 0;
-
-                // Percorre a planilha do Excel e devolve os endereços antigos para o sistema
-                rows.forEach(row => {
-                    const cpfPlanilha = String(row["CPF do Aluno"] || row["CPF"] || "").replace(/\D/g, '');
-                    const enderecoPlanilha = row["Endereço da Empresa"] || row["Endereço"] || "";
-                    const linkPlanilha = row["Link do Mapa"] || `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(enderecoPlanilha)}`;
-                    
-                    if (cpfPlanilha && enderecoPlanilha) {
-                        // Acha o aluno no sistema pelo CPF (que é único e à prova de falhas)
-                        const aluno = todosAlunos.find(a => String(a.cpf || "").replace(/\D/g, '') === cpfPlanilha);
-                        
-                        if (aluno) {
-                            if (!aluno.empresa) aluno.empresa = {};
-                            
-                            // Se o endereço for diferente do que está no sistema hoje, ele sobrescreve
-                            if (aluno.empresa.endereco !== enderecoPlanilha) {
-                                aluno.empresa.endereco = enderecoPlanilha;
-                                aluno.empresa.link = linkPlanilha;
-                                restaurados++;
-
-                                // Atualiza no Planejamento para o roteiro ficar perfeito
-                                if (dbBase.planning) {
-                                    for (let ctx in dbBase.planning) {
-                                        dbBase.planning[ctx].forEach(item => {
-                                            if (item.student && item.student.id === aluno.id) {
-                                                if (!item.student.empresa) item.student.empresa = {};
-                                                item.student.empresa.endereco = enderecoPlanilha;
-                                                item.student.empresa.link = linkPlanilha;
-                                            }
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-
-                // Salva a restauração na memória
-                if(typeof window.saveToStorage === 'function') await window.saveToStorage();
-                if(typeof window.renderTable === 'function') window.renderTable();
-                if(typeof window.renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) window.renderPlanningTable();
-                
-                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                
-                alert(`✅ RESTAURAÇÃO DE BACKUP CONCLUÍDA!\n\n${restaurados} alunos voltaram a ter o endereço exato que estava salvo na sua planilha do Excel.`);
-
-            } catch (e) {
-                console.error(e); 
-                alert("Erro ao tentar restaurar o backup:\n" + e.message);
-                const loader = document.getElementById('globalLoader');
-                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-            } finally {
-                event.target.value = ''; 
-            }
-        };
 // =========================================================================
         // MOTOR SUPREMO V5.1: HISTÓRICO RESTAURADO, PDF SENAC E CC APRIMORADO
         // =========================================================================
@@ -6107,129 +6024,108 @@ window.atualizarAutocompleteGlobal = function() {
             }, 500);
         };
 // =========================================================================
-        // 📍 CORREÇÃO E ATUALIZAÇÃO EM LOTE DOS ENDEREÇOS (NOVO MOTOR DUPLO)
+        // MOTOR DE BUSCA DE ENDEREÇOS (SISTEMA INTERNO + INTERNET)
         // =========================================================================
-        window.buscarEnderecosLote = async function() {
+        async function buscarEnderecosLote() {
             const loader = document.getElementById('globalLoader');
             const loadMsg = document.getElementById('loadingMsg');
-
-            // Pergunta Mágica que permite consertar erros antigos de filiais
-            const forcarTodos = confirm("⚙️ MODO DE CORREÇÃO:\n\nDeseja FORÇAR a correção de TODOS os endereços da aba atual (sobrescrevendo os que estão errados com dados da Receita Federal)?\n\n- Clique em 'OK' para FORÇAR a correção de todos os alunos.\n- Clique em 'Cancelar' para preencher APENAS os que estão em branco.");
             
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
-            
+            if(loadMsg) loadMsg.innerText = "CRUZANDO DADOS E BUSCANDO ENDEREÇOS...";
+
             try {
-                let corrigidos = 0;
-                let falhas = 0;
+                let preenchidosInterno = 0;
+                let preenchidosInternet = 0;
 
-                const scope = window.STATE ? window.STATE.scope : 'qualificacao';
-                const listaAlunos = scope === 'tecnico' ? window.DB.tec : window.DB.quali;
+                // 1. Criar dicionário de empresas que já possuem endereço no sistema
+                const bancoEmpresas = {};
+                const todosAlunos = [...DB.quali, ...DB.tec];
                 
-                if (!listaAlunos || listaAlunos.length === 0) {
-                    throw new Error("Não há alunos nesta aba para atualizar.");
-                }
+                todosAlunos.forEach(aluno => {
+                    if (aluno.empresa && aluno.empresa.razao && aluno.empresa.razao !== "Não Inf.") {
+                        const nomeLimpo = aluno.empresa.razao.toUpperCase().trim();
+                        // Se esse aluno tem endereço, salva no dicionário para ajudar os outros
+                        if (aluno.empresa.endereco && aluno.empresa.endereco.length > 3) {
+                            if (!bancoEmpresas[nomeLimpo]) {
+                                bancoEmpresas[nomeLimpo] = {
+                                    endereco: aluno.empresa.endereco,
+                                    cnpj: aluno.empresa.cnpj || aluno.cnpj || "",
+                                    link: aluno.empresa.link || ""
+                                };
+                            }
+                        }
+                    }
+                });
 
-                for (let i = 0; i < listaAlunos.length; i++) {
-                    let aluno = listaAlunos[i];
-                    if (!aluno.empresa) aluno.empresa = {};
+                // 2. Percorrer alunos sem endereço e tentar preencher
+                for (let i = 0; i < todosAlunos.length; i++) {
+                    let aluno = todosAlunos[i];
+                    if (!aluno.empresa) continue;
 
+                    let razao = (aluno.empresa.razao || "").toUpperCase().trim();
                     let temEndereco = aluno.empresa.endereco && aluno.empresa.endereco.length > 3;
+
+                    // A) TENTA PELO BANCO INTERNO (Cruza a Razão Social)
+                    if (!temEndereco && razao && razao !== "NÃO INF." && bancoEmpresas[razao]) {
+                        aluno.empresa.endereco = bancoEmpresas[razao].endereco;
+                        if (!aluno.empresa.cnpj && bancoEmpresas[razao].cnpj) {
+                            aluno.empresa.cnpj = bancoEmpresas[razao].cnpj;
+                            aluno.cnpj = bancoEmpresas[razao].cnpj; // Atualiza o CNPJ raiz também
+                        }
+                        if (!aluno.empresa.link && bancoEmpresas[razao].link) {
+                            aluno.empresa.link = bancoEmpresas[razao].link;
+                        }
+                        preenchidosInterno++;
+                        temEndereco = true;
+                    }
+
+                    // B) TENTA PELA INTERNET SE AINDA NÃO TIVER ENDEREÇO (Usa a BrasilAPI)
                     let cnpjAluno = aluno.empresa.cnpj || aluno.cnpj;
-
-                    // Se não é para forçar a correção e o aluno já tem endereço, o robô pula ele
-                    if (!forcarTodos && temEndereco) continue;
-
-                    // Se o aluno tem CNPJ, o robô ignora os colegas e vai direto na Receita Federal
-                    if (cnpjAluno) {
-                        let cnpjLimpo = String(cnpjAluno).replace(/\D/g, '');
-                        if (cnpjLimpo.length > 0 && cnpjLimpo.length < 14) cnpjLimpo = cnpjLimpo.padStart(14, '0');
+                    if (!temEndereco && cnpjAluno) {
+                        let cnpjLimpo = cnpjAluno.replace(/\D/g, ''); // Tira pontos e traços
                         
-                        if (cnpjLimpo.length === 14) {
-                            if(loadMsg) loadMsg.innerText = `CORRIGINDO ENDEREÇOS...\nConsultando CNPJ: ${cnpjLimpo}`;
-                            
-                            let logradouro, numero, complemento, bairro, municipio, uf, razaoReceita;
-                            let sucessoAPI = false;
-
+                        if (cnpjLimpo.length === 14) { // Se for um CNPJ válido
+                            if(loadMsg) loadMsg.innerText = `CONSULTANDO RECEITA FEDERAL...\n${razao}`;
                             try {
-                                const res1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
-                                if (res1.ok) {
-                                    const json1 = await res1.json();
-                                    logradouro = json1.logradouro;
-                                    numero = json1.numero;
-                                    complemento = json1.complemento;
-                                    bairro = json1.bairro;
-                                    municipio = json1.municipio;
-                                    uf = json1.uf;
-                                    razaoReceita = json1.razao_social;
-                                    sucessoAPI = true;
-                                } else {
-                                    const res2 = await fetch(`https://publica.cnpj.ws/cnpj/${cnpjLimpo}`);
-                                    if (res2.ok) {
-                                        const json2 = await res2.json();
-                                        logradouro = json2.estabelecimento.tipo_logradouro + " " + json2.estabelecimento.logradouro;
-                                        numero = json2.estabelecimento.numero;
-                                        complemento = json2.estabelecimento.complemento;
-                                        bairro = json2.estabelecimento.bairro;
-                                        municipio = json2.estabelecimento.cidade.nome;
-                                        uf = json2.estabelecimento.estado.sigla;
-                                        razaoReceita = json2.razao_social;
-                                        sucessoAPI = true;
-                                    }
-                                }
-
-                                if (sucessoAPI) {
-                                    let enderecoCompleto = `${logradouro}, ${numero}`;
-                                    if (complemento) enderecoCompleto += ` - ${complemento}`;
-                                    enderecoCompleto += ` - ${bairro}, ${municipio} - ${uf}`;
+                                const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+                                if (res.ok) {
+                                    const dados = await res.json();
+                                    
+                                    // Monta o endereço bonitinho: Rua, Numero - Complemento - Bairro, Cidade - UF
+                                    let enderecoCompleto = `${dados.logradouro}, ${dados.numero}`;
+                                    if (dados.complemento) enderecoCompleto += ` - ${dados.complemento}`;
+                                    enderecoCompleto += ` - ${dados.bairro}, ${dados.municipio} - ${dados.uf}`;
                                     
                                     aluno.empresa.endereco = enderecoCompleto;
                                     
-                                    if (!aluno.empresa.razao || aluno.empresa.razao === "Não Inf.") {
-                                        aluno.empresa.razao = razaoReceita;
+                                    // Se o aluno nem Razão Social tinha, puxamos da internet também!
+                                    if(razao === "" || razao === "NÃO INF.") {
+                                        aluno.empresa.razao = dados.razao_social;
                                     }
-                                    
-                                    aluno.empresa.link = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(enderecoCompleto)}`;
-                                    corrigidos++;
-                                } else {
-                                    falhas++;
+                                    preenchidosInternet++;
                                 }
                             } catch(err) {
-                                falhas++;
+                                console.log("Não foi possível buscar na internet o CNPJ: ", cnpjLimpo);
                             }
-                            // Pausa para a Receita Federal não bloquear o seu IP por excesso de velocidade
-                            await new Promise(r => setTimeout(r, 400));
+                            // Pausa de 300 milissegundos para a Receita Federal não bloquear o nosso sistema por "excesso de velocidade"
+                            await new Promise(r => setTimeout(r, 300));
                         }
                     }
                 }
 
-                // Atualizar também na aba de planejamento (para sincronizar o sistema todo)
-                if (corrigidos > 0 && window.DB.planning) {
-                    for (let ctx in window.DB.planning) {
-                        window.DB.planning[ctx].forEach(item => {
-                            if (item.student) {
-                                const alunoBase = listaAlunos.find(a => a.id === item.student.id);
-                                if (alunoBase && alunoBase.empresa && alunoBase.empresa.endereco) {
-                                    if(!item.student.empresa) item.student.empresa = {};
-                                    item.student.empresa.endereco = alunoBase.empresa.endereco;
-                                    item.student.empresa.link = alunoBase.empresa.link;
-                                }
-                            }
-                        });
-                    }
-                }
-
-                if(typeof window.saveToStorage === 'function') await window.saveToStorage();
-                if(typeof window.renderTable === 'function') window.renderTable();
+                // 3. Salvar e Atualizar Tela
+                if(typeof saveToStorage === 'function') await saveToStorage();
+                if(typeof runFilter === 'function') runFilter();
                 
-                alert(`✅ CORREÇÃO DE ENDEREÇOS FINALIZADA!\n\n🏢 Endereços atualizados/corrigidos: ${corrigidos}\n⚠️ Ignorados (Sem CNPJ ou Receita instável): ${falhas}`);
+                alert(`✅ BUSCA FINALIZADA COM SUCESSO!\n\n🏢 Endereços reaproveitados do sistema: ${preenchidosInterno}\n🌐 Endereços novos baixados da internet: ${preenchidosInternet}`);
 
             } catch(e) {
                 console.error(e);
-                alert("Erro durante a correção de endereços: " + e.message);
+                alert("Erro durante a busca de endereços: " + e.message);
             } finally {
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
             }
-        };
+        }
 // =========================================================================
         // MOTOR DE IMPORTAÇÃO E AUDITORIA DE ROTEIROS (EXCEL) - VERSÃO SIMPLIFICADA
         // =========================================================================
