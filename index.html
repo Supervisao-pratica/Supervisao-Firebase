@@ -7351,26 +7351,31 @@ window.atualizarAutocompleteGlobal = function() {
             }
         };
         // =========================================================================
-        // 📊 EXPORTAR DADOS COMPLETOS PARA EXCEL (BOTÃO DA LISTAGEM)
+        // 📊 EXPORTAR DADOS COMPLETOS PARA EXCEL (BOTÃO DA LISTAGEM) - CORRIGIDO
         // =========================================================================
         window.exportData = function() {
             const dbBase = typeof DB !== 'undefined' ? DB : (window.DB || {});
-            const estadoAtual = typeof STATE !== 'undefined' ? STATE : (window.STATE || { view: 'quali' });
+            const estadoAtual = typeof STATE !== 'undefined' ? STATE : (window.STATE || { scope: 'qualificacao' });
             
             let dadosParaExportar = [];
             let nomeArquivo = "Relatorio";
 
-            // Descobre em qual aba você está clicando e puxa os alunos certos
-            if (estadoAtual.view === 'quali' && dbBase.quali) {
+            // CORREÇÃO 1: Usa as palavras exatas do seu sistema original
+            if (estadoAtual.scope === 'qualificacao' && dbBase.quali && dbBase.quali.length > 0) {
                 dadosParaExportar = dbBase.quali.map(a => ({ ...a, tipoCurso: 'Qualificação' }));
                 nomeArquivo = "Relatorio_Qualificacao";
-            } else if (estadoAtual.view === 'tec' && dbBase.tec) {
+            } else if (estadoAtual.scope === 'tecnico' && dbBase.tec && dbBase.tec.length > 0) {
                 dadosParaExportar = dbBase.tec.map(a => ({ ...a, tipoCurso: 'Técnica' }));
                 nomeArquivo = "Relatorio_Tecnico";
+            } else {
+                // TRAVA DE SEGURANÇA: Se a aba bugar, junta tudo e exporta em vez de dar erro!
+                if (dbBase.quali) dadosParaExportar = dadosParaExportar.concat(dbBase.quali.map(a => ({ ...a, tipoCurso: 'Qualificação' })));
+                if (dbBase.tec) dadosParaExportar = dadosParaExportar.concat(dbBase.tec.map(a => ({ ...a, tipoCurso: 'Técnica' })));
+                nomeArquivo = "Relatorio_Completo_Senac";
             }
 
             if (dadosParaExportar.length === 0) {
-                return alert("Não há alunos cadastrados nesta aba para gerar o relatório.");
+                return alert("Não há alunos ou turmas registradas no sistema para gerar o relatório.");
             }
 
             const loader = document.getElementById('globalLoader');
@@ -7383,6 +7388,7 @@ window.atualizarAutocompleteGlobal = function() {
                     const linhasExcel = [];
 
                     dadosParaExportar.forEach(aluno => {
+                        // CORREÇÃO 2: Garante a extração de TODOS os dados da Empresa e Supervisor
                         const emp = aluno.empresa || {};
                         const sup = aluno.supervisor || {};
                         const ct = aluno.contraTurno || {};
@@ -7418,21 +7424,22 @@ window.atualizarAutocompleteGlobal = function() {
                             return "Pendente";
                         };
 
+                        // MONTA AS COLUNAS NO EXCEL
                         linhasExcel.push({
-                            "Status": status,
+                            "Status do Aluno": status,
                             "Modalidade": aluno.tipoCurso,
                             "Curso Específico": aluno.curso || "Não Informado",
                             "Nome do Aluno": aluno.nome || "",
-                            "CPF": aluno.cpf || "",
-                            "Turma": aluno.turma || "",
+                            "CPF do Aluno": aluno.cpf || "",
+                            "Nome da Turma": aluno.turma || "",
                             "Região": aluno.regiao || "",
                             "Cidade": aluno.cidade || "",
-                            "CNPJ": aluno.cnpj || "",
+                            "CNPJ da Empresa": aluno.cnpj || "",
                             "Razão Social (Empresa)": emp.razao || "",
                             "Endereço da Empresa": emp.endereco || "",
                             "Link do Mapa": emp.link || "",
-                            "Supervisor": sup.display || "",
-                            "Telefone/Celular": sup.tel || "",
+                            "Nome do Supervisor": sup.display || "",
+                            "Telefone/Celular do Supervisor": sup.tel || "",
                             "E-mail do Supervisor": sup.email || "",
                             "Dias/Hr Teórica": aluno.teoria || "",
                             "Dias/Hr Prática": aluno.pratica || "",
@@ -7454,7 +7461,7 @@ window.atualizarAutocompleteGlobal = function() {
                     XLSX.utils.book_append_sheet(workbook, worksheet, "Dados");
                     
                     const colWidths = [
-                        {wch: 12}, {wch: 15}, {wch: 45}, {wch: 40}, {wch: 15}, 
+                        {wch: 15}, {wch: 15}, {wch: 45}, {wch: 40}, {wch: 15}, 
                         {wch: 15}, {wch: 25}, {wch: 25}, {wch: 20}, {wch: 45}, 
                         {wch: 50}, {wch: 35}, {wch: 30}, {wch: 20}, {wch: 35},
                         {wch: 20}, {wch: 20}, {wch: 25}, {wch: 15}, {wch: 15},
@@ -7464,7 +7471,7 @@ window.atualizarAutocompleteGlobal = function() {
                     worksheet['!cols'] = colWidths;
 
                     const dataHoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-                    XLSX.writeFile(workbook, `${nomeArquivo}_Senac_${dataHoje}.xlsx`);
+                    XLSX.writeFile(workbook, `${nomeArquivo}_${dataHoje}.xlsx`);
 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     
