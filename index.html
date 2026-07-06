@@ -6611,7 +6611,7 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================================
-        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (TURMA COMPLETA + INSTRUTORES COLUNA C)
+        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (COM SENSOR DE RISCO)
         // =========================================================================
         window.processarFrequenciaPedagogica = async function(event) {
             try {
@@ -6621,7 +6621,7 @@ window.atualizarAutocompleteGlobal = function() {
                 const loader = document.getElementById('globalLoader');
                 const loadMsg = document.getElementById('loadingMsg');
                 if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
-                if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO PEDAGÓGICO DA TURMA...";
+                if(loadMsg) loadMsg.innerText = "LENDO RELATÓRIO PEDAGÓGICO...";
 
                 const data = await file.arrayBuffer();
                 const workbook = XLSX.read(data, { type: 'array' });
@@ -6643,48 +6643,14 @@ window.atualizarAutocompleteGlobal = function() {
                 const sheet = workbook.Sheets[nomeAbaCorreta];
                 const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-                // ================================================================
-                // 👨‍🏫 CAPTURA DOS INSTRUTORES (ESTRITAMENTE COLUNAS A, B e C nas primeiras linhas)
-                // ================================================================
-                let tutoresEncontradosRaw = [];
-                
-                for (let r = 0; r < 12; r++) { 
-                    if (!rows[r]) continue;
-                    
-                    let valA = norm(String(rows[r][0] || "")); // Coluna A
-                    let valB = norm(String(rows[r][1] || "")); // Coluna B
-                    let valC = String(rows[r][2] || "").trim(); // Coluna C (Onde está a lista suspensa)
-                    
-                    // Se na Coluna A ou B estiver escrito Tutor/Instrutor, capturamos a Coluna C
-                    if (valA.includes("TUTOR") || valA.includes("INSTRUTOR") || valB.includes("TUTOR") || valB.includes("INSTRUTOR")) {
-                        if (valC && valC.length > 3 && valC.toUpperCase() !== "NÃO INF.") {
-                            tutoresEncontradosRaw.push(valC);
-                        }
-                    }
-                }
-
-                let textoInstrutorGlobal = "";
-                if (tutoresEncontradosRaw.length > 0) {
-                    let tutoresUnicos = [...new Set(tutoresEncontradosRaw)]; // Remove duplicatas se for o mesmo nome
-                    if (tutoresUnicos.length >= 2) {
-                        textoInstrutorGlobal = `👨‍🏫 Instrutores: ${tutoresUnicos[0]} e ${tutoresUnicos[1]}`;
-                    } else if (tutoresUnicos.length === 1) {
-                        textoInstrutorGlobal = `👨‍🏫 Instrutor(a): ${tutoresUnicos[0]}`;
-                    }
-                }
-                // ================================================================
-
                 let indexCabecalho = -1;
                 let indexContraturno = -1; 
-                let mapeamentoUCs = [];
+                let mapeamentoUCs = []; 
 
-                // PROCURANDO A LINHA DE CABEÇALHO DAS NOTAS E UCs
-                for (let r = 0; r < Math.min(15, rows.length); r++) {
+                for (let r = 0; r < Math.min(10, rows.length); r++) {
                     let achouUC = false;
-                    let headerAtual = rows[r];
-
-                    for (let c = 0; c < headerAtual.length; c++) {
-                        let valorCelula = norm(String(headerAtual[c] || ""));
+                    for (let c = 0; c < rows[r].length; c++) {
+                        let valorCelula = norm(rows[r][c]);
                         
                         if (valorCelula.includes("ENSINO MEDIO") || valorCelula.includes("CONTRATURNO")) {
                             indexContraturno = c;
@@ -6692,6 +6658,7 @@ window.atualizarAutocompleteGlobal = function() {
 
                         if (valorCelula.includes("FREQUENCIA") && valorCelula.includes("UC")) {
                             achouUC = true;
+                            indexCabecalho = r;
                             
                             let partesUC = valorCelula.split("UC");
                             let numUC = partesUC.length > 1 ? partesUC[1].trim().split(" ")[0] : "?";
@@ -6707,207 +6674,168 @@ window.atualizarAutocompleteGlobal = function() {
                             });
                         }
                     }
-                    
-                    if (achouUC) {
-                        indexCabecalho = r;
-                        break; 
-                    }
+                    if (achouUC) break; 
                 }
 
                 if (mapeamentoUCs.length === 0) {
                     throw new Error("O sistema não encontrou o cabeçalho com os nomes das UCs na planilha.");
                 }
 
-                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || {});
-                const todosAlunos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
+                const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+
+                const ctx = stateObj ? stateObj.planContext : null;
+                
+                if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
+                    throw new Error("Nenhum roteiro aberto para preencher. Por favor, selecione um roteiro na tela.");
+                }
+                const roteiro = dbObj.planning[ctx];
 
                 let alunosAtualizados = 0;
-                let alunosComRisco = 0; 
+                let alunosComRisco = 0; // Novo contador de alertas
 
-                // Função ninja para garantir que o sistema ache o aluno mesmo com abreviações
-                const verificarMatchDeNome = (nomeSistema, linhaRow) => {
-                    const nSis = norm(nomeSistema);
-                    if (!nSis) return false;
+                roteiro.forEach(item => {
+                    if (!item.student || !item.student.nome) return;
+                    const nomeAlunoRoteiro = norm(item.student.nome);
                     
-                    const celulasNome = [norm(linhaRow[0]), norm(linhaRow[1]), norm(linhaRow[2]), norm(linhaRow[3])];
-                    for (let celula of celulasNome) {
-                        if (celula && celula.length > 5) {
-                            if (celula.includes(nSis) || nSis.includes(celula)) return true;
-                            
-                            // Se bater o primeiro e último nome, consideramos match!
-                            let pSis = nSis.split(" ");
-                            let pCel = celula.split(" ");
-                            if (pSis.length > 1 && pCel.length > 1) {
-                                if (pSis[0] === pCel[0] && pSis[pSis.length-1] === pCel[pCel.length-1]) return true;
-                            }
-                        }
-                    }
-                    const linhaToda = linhaRow.map(c => norm(c)).join(" ");
-                    if (linhaToda.includes(nSis)) return true;
-                    return false;
-                };
-
-                // ================================================================
-                // 🔄 LEITURA PELA PLANILHA (Atualiza a Turma Toda, independente de roteiro)
-                // ================================================================
-                for (let i = indexCabecalho + 1; i < rows.length; i++) {
-                    const row = rows[i];
-                    if (!row) continue;
-                    
-                    const linhaCompleta = row.map(c => norm(c)).join(" "); 
-                    if (linhaCompleta.trim().length < 10) continue; // Pula linhas vazias
-
-                    // Busca quem é esse aluno no banco de dados geral
-                    let alunoEncontrado = todosAlunos.find(a => verificarMatchDeNome(a.nome, row));
-
-                    if (alunoEncontrado) {
+                    for (let i = indexCabecalho + 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (!row) continue;
                         
-                        // 🚨 SENSOR DE RISCO E DESLIGAMENTO
-                        let textoAlertaCritico = "";
-                        if (linhaCompleta.includes("DESLIGADO")) {
-                            textoAlertaCritico = "🚨 DESLIGADO - NÃO VISITAR";
-                        } else if (linhaCompleta.includes("EVADIDO")) {
-                            textoAlertaCritico = "🚨 EVADIDO - NÃO VISITAR";
-                        } else if (linhaCompleta.includes("LARANJA")) {
-                            textoAlertaCritico = "🟠 ALERTA LARANJA - AVALIAR VISITA";
-                        }
-                        if (textoAlertaCritico !== "") alunosComRisco++;
-
-                        // 📊 CAPTURA DAS UCs E CONSELHO DE CLASSE
-                        let ucsStatus = [];
-                        let ucsAvaliadas = 0; 
-
-                        mapeamentoUCs.forEach(uc => {
-                            let freqVal = row[uc.indexFreq];
-                            let avaVal = uc.indexAva !== -1 ? norm(row[uc.indexAva]) : "";
+                        const linhaCompleta = row.map(c => norm(c)).join(" "); 
+                        
+                        if (linhaCompleta.includes(nomeAlunoRoteiro)) {
                             
-                            let freqStr = "";
-                            let freqNumber = null;
-
-                            if (typeof freqVal === 'number') {
-                                freqNumber = freqVal * 100;
-                                freqStr = Math.round(freqNumber) + "%";
-                            } else {
-                                freqStr = String(freqVal || "").trim();
-                                let parseado = parseFloat(freqStr.replace(',', '.').replace('%', ''));
-                                if (!isNaN(parseado)) {
-                                    freqNumber = parseado;
-                                }
+                            // ================================================================
+                            // 🚨 SENSOR DE RISCO E DESLIGAMENTO ATIVADO
+                            // ================================================================
+                            let textoAlertaCritico = "";
+                            if (linhaCompleta.includes("DESLIGADO")) {
+                                textoAlertaCritico = "🚨 DESLIGADO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("EVADIDO")) {
+                                textoAlertaCritico = "🚨 EVADIDO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("LARANJA")) {
+                                textoAlertaCritico = "🟠 ALERTA LARANJA - AVALIAR VISITA";
                             }
+                            if (textoAlertaCritico !== "") alunosComRisco++;
+                            // ================================================================
 
-                            if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
-                                ucsAvaliadas++; 
-                                
-                                let icon = ""; 
-                                let registrarFalha = false; 
-                                
-                                if (freqNumber !== null && freqNumber < 75) {
-                                    icon = "🔴 Conselho de Classe";
-                                    registrarFalha = true;
-                                } else if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
-                                    icon = "🔴 Recuperação";
-                                    registrarFalha = true;
-                                } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
-                                    icon = "🟢 OK";
-                                    registrarFalha = false;                                     
-                                }
+                            let ucsStatus = [];
+                            let ucsAvaliadas = 0; 
 
-                                if (registrarFalha) {
-                                    ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
-                                }
-                            }
-                        });
-
-                        // 🕒 CAPTURA DO CONTRATURNO
-                        let textoContraturno = "";
-                        if (indexContraturno !== -1) {
-                            let valOriginal = row[indexContraturno];
-                            let valString = String(valOriginal || "").trim();
-                            let valNorm = norm(valString);
-                            
-                            if (valNorm !== "" && valNorm !== "0" && valNorm !== "-" && valNorm !== "FALSO") {
-                                let diaTraduzido = valString; 
+                            mapeamentoUCs.forEach(uc => {
+                                let freqVal = row[uc.indexFreq];
+                                let avaVal = uc.indexAva !== -1 ? norm(row[uc.indexAva]) : "";
                                 
-                                if (valNorm.includes("SEGUNDA") || valNorm.includes("2A") || valNorm.includes("2ª")) diaTraduzido = "Segunda";
-                                else if (valNorm.includes("TERCA") || valNorm.includes("3A") || valNorm.includes("3ª")) diaTraduzido = "Terça";
-                                else if (valNorm.includes("QUARTA") || valNorm.includes("4A") || valNorm.includes("4ª")) diaTraduzido = "Quarta";
-                                else if (valNorm.includes("QUINTA") || valNorm.includes("5A") || valNorm.includes("5ª")) diaTraduzido = "Quinta";
-                                else if (valNorm.includes("SEXTA") || valNorm.includes("6A") || valNorm.includes("6ª")) diaTraduzido = "Sexta";
+                                let freqStr = "";
+                                let freqNumber = null;
 
-                                textoContraturno = `🕒 Contraturno: ${diaTraduzido}`;
-                                alunoEncontrado.contraturno = diaTraduzido;
-                            }
-                        }
-
-                        let textoPedagogico = "";
-                        if (ucsAvaliadas > 0) {
-                            if (ucsStatus.length > 0) {
-                                textoPedagogico = "Atenção: " + ucsStatus.join(" | ") + ".";
-                            } else {
-                                textoPedagogico = "✅ Sem pendências nas UCs.";
-                            }
-                        }
-
-                        // 🚀 MONTAGEM FINAL E SINCRONIZAÇÃO EM MASSA
-                        if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "" || textoInstrutorGlobal !== "") {
-                            let blocos = [];
-                            
-                            if (textoAlertaCritico) blocos.push(textoAlertaCritico);
-                            if (textoInstrutorGlobal) blocos.push(textoInstrutorGlobal);
-                            if (textoPedagogico) blocos.push(textoPedagogico);
-                            if (textoContraturno) blocos.push(textoContraturno);
-                            
-                            let conteudoRelatorio = blocos.join(" | ");
-                            let obsAtual = alunoEncontrado.obs ? String(alunoEncontrado.obs).trim() : "";
-                            
-                            // Anti-Duplicação
-                            if (!obsAtual.includes(conteudoRelatorio)) {
-                                let numVisita = 1;
-                                
-                                if (obsAtual !== "") {
-                                    let matches = obsAtual.match(/\[PEDAGÓGICO/g);
-                                    if (matches) {
-                                        numVisita = matches.length + 1;
-                                    }
-                                }
-                                
-                                let dataHoje = new Date().toLocaleDateString('pt-BR');
-                                let cabecalho = `[PEDAGÓGICO - ${numVisita}ª Visita em ${dataHoje}]`;
-                                let novoRegistro = `${cabecalho} ${conteudoRelatorio}`;
-                                
-                                if (obsAtual === "") {
-                                    alunoEncontrado.obs = novoRegistro;
+                                if (typeof freqVal === 'number') {
+                                    freqNumber = freqVal * 100;
+                                    freqStr = Math.round(freqNumber) + "%";
                                 } else {
-                                    alunoEncontrado.obs = obsAtual + "\n\n" + novoRegistro;
-                                }
-                                
-                                // Propaga a atualização para TODOS os roteiros de planejamento existentes
-                                if (dbObj.planning) {
-                                    for (let ctxName in dbObj.planning) {
-                                        dbObj.planning[ctxName].forEach(planItem => {
-                                            if (planItem.student && planItem.student.id === alunoEncontrado.id) {
-                                                planItem.obs = alunoEncontrado.obs;
-                                                planItem.student.obs = alunoEncontrado.obs;
-                                                planItem.student.contraturno = alunoEncontrado.contraturno;
-                                            }
-                                        });
+                                    freqStr = String(freqVal || "").trim();
+                                    let parseado = parseFloat(freqStr.replace(',', '.').replace('%', ''));
+                                    if (!isNaN(parseado)) {
+                                        freqNumber = parseado;
                                     }
                                 }
+
+                                if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
+                                    ucsAvaliadas++; 
+                                    
+                                    let icon = ""; 
+                                    let registrarFalha = false; 
+                                    
+                                    if (freqNumber !== null && freqNumber < 75) {
+                                        icon = "🔴 Conselho de Classe";
+                                        registrarFalha = true;
+                                    } else if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
+                                        icon = "🔴 Recuperação";
+                                        registrarFalha = true;
+                                    } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
+                                        icon = "🟢 OK";
+                                        registrarFalha = false;                                     
+                                    }
+
+                                    if (registrarFalha) {
+                                        ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
+                                    }
+                                }
+                            });
+
+                            let textoContraturno = "";
+                            if (indexContraturno !== -1) {
+                                let valOriginal = row[indexContraturno];
+                                let valString = String(valOriginal || "").trim();
+                                let valNorm = norm(valString);
                                 
+                                if (valNorm !== "" && valNorm !== "0" && valNorm !== "-" && valNorm !== "FALSO") {
+                                    let diaTraduzido = valString; 
+                                    
+                                    if (valNorm.includes("SEGUNDA") || valNorm.includes("2A") || valNorm.includes("2ª")) diaTraduzido = "Segunda";
+                                    else if (valNorm.includes("TERCA") || valNorm.includes("3A") || valNorm.includes("3ª")) diaTraduzido = "Terça";
+                                    else if (valNorm.includes("QUARTA") || valNorm.includes("4A") || valNorm.includes("4ª")) diaTraduzido = "Quarta";
+                                    else if (valNorm.includes("QUINTA") || valNorm.includes("5A") || valNorm.includes("5ª")) diaTraduzido = "Quinta";
+                                    else if (valNorm.includes("SEXTA") || valNorm.includes("6A") || valNorm.includes("6ª")) diaTraduzido = "Sexta";
+
+                                    textoContraturno = `🕒 Contraturno: ${diaTraduzido}`;
+                                    
+                                    item.student.contraturno = diaTraduzido;
+                                    
+                                    if (dbObj.quali) {
+                                        let alunoQuali = dbObj.quali.find(a => a.id === item.student.id);
+                                        if (alunoQuali) alunoQuali.contraturno = diaTraduzido;
+                                    }
+                                    if (dbObj.tec) {
+                                        let alunoTec = dbObj.tec.find(a => a.id === item.student.id);
+                                        if (alunoTec) alunoTec.contraturno = diaTraduzido;
+                                    }
+                                }
+                            }
+
+                            let textoPedagogico = "";
+                            if (ucsAvaliadas > 0) {
+                                if (ucsStatus.length > 0) {
+                                    textoPedagogico = "Atenção: " + ucsStatus.join(" | ") + ".";
+                                } else {
+                                    textoPedagogico = "✅ Sem pendências nas UCs.";
+                                }
+                            }
+
+                            // Monta o Bloco de Observação
+                            if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "") {
+                                let relatorio = "[PEDAGÓGICO] ";
+                                let blocos = [];
+                                
+                                // O alerta de risco entra PRIMEIRO para chamar muita atenção
+                                if (textoAlertaCritico) blocos.push(textoAlertaCritico);
+                                if (textoPedagogico) blocos.push(textoPedagogico);
+                                if (textoContraturno) blocos.push(textoContraturno);
+                                
+                                relatorio += blocos.join(" | ");
+                                
+                                if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
+                                    item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
+                                } else {
+                                    const obsAtual = item.obs ? item.obs + "\n" : "";
+                                    item.obs = obsAtual + relatorio;
+                                }
                                 alunosAtualizados++;
                             }
+                            break; 
                         }
                     }
-                }
+                });
 
                 if(typeof saveToStorage === 'function') saveToStorage();
-                if(typeof renderPlanningTable === 'function' && window.STATE && window.STATE.planContext) renderPlanningTable();
+                if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
-                let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) desta turma tiveram o histórico atualizado em todo o sistema.`;
+                let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório atualizado.`;
                 if (alunosComRisco > 0) {
-                    mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de Risco (Laranja/Desligado).`;
+                    mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Olhe a coluna de Observação no roteiro para não perder a viagem!`;
                 }
                 
                 alert(mensagemFinal);
