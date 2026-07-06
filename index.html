@@ -5468,7 +5468,7 @@ window.atualizarAutocompleteGlobal = function() {
             return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
         };
 
-        // 📍 1. BUSCA INDIVIDUAL (Botão dentro do perfil do aluno)
+        // 📍 1. BUSCA INDIVIDUAL (Lê direto da tela para evitar erro de ID)
         window.buscarEnderecoInterno = async function(btnElement) {
             let btn = btnElement || (window.event ? window.event.currentTarget : null);
             let textoOriginal = "";
@@ -5478,31 +5478,34 @@ window.atualizarAutocompleteGlobal = function() {
             }
 
             try {
-                const editingId = window.STATE ? window.STATE.editingId : null;
-                if (!editingId) return alert("Erro: Não foi possível identificar o aluno em edição.");
-
-                const todosAlunos = [...(window.DB.quali || []), ...(window.DB.tec || [])];
-                const aluno = todosAlunos.find(a => a.id === editingId);
-                
-                if (!aluno) return alert("Erro: Aluno não encontrado no banco de dados.");
-
-                // Captura o CNPJ de forma blindada (lê da tela ou da memória do aluno)
+                // 1. Tenta pegar o CNPJ direto da caixinha da tela de edição
                 let inputCnpj = document.getElementById('editCNPJ');
                 let cnpjCru = inputCnpj ? inputCnpj.value : "";
-                if (!cnpjCru) {
-                    cnpjCru = (aluno.empresa && aluno.empresa.cnpj) ? aluno.empresa.cnpj : (aluno.cnpj || "");
-                }
                 
+                // 2. Se a tela não tiver o CNPJ, aí sim ele tenta achar na memória como plano B
+                const editingId = window.STATE ? window.STATE.editingId : null;
+                const todosAlunos = (window.DB) ? [...(window.DB.quali || []), ...(window.DB.tec || [])] : [];
+                let aluno = null;
+
+                if (editingId) {
+                    aluno = todosAlunos.find(a => String(a.id) === String(editingId));
+                    if (!cnpjCru && aluno) {
+                        cnpjCru = (aluno.empresa && aluno.empresa.cnpj) ? aluno.empresa.cnpj : (aluno.cnpj || "");
+                    }
+                }
+
+                // 3. Limpa o CNPJ e verifica se é válido
                 let cnpjLimpo = String(cnpjCru).replace(/\D/g, '');
                 if (cnpjLimpo.length > 0 && cnpjLimpo.length < 14) cnpjLimpo = cnpjLimpo.padStart(14, '0');
 
                 if (cnpjLimpo.length !== 14) {
-                    return alert(`❌ Operação Cancelada!\n\nO aluno não possui um CNPJ válido cadastrado (14 dígitos).`);
+                    return alert(`❌ Operação Cancelada!\n\nNão foi possível encontrar um CNPJ válido (14 dígitos) digitado na tela.`);
                 }
 
                 let logradouro, numero, complemento, bairro, municipio, uf;
                 let successAPI = false;
 
+                // 4. Consulta a Receita Federal
                 const res1 = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
                 if (res1.ok) {
                     const json1 = await res1.json();
@@ -5526,17 +5529,19 @@ window.atualizarAutocompleteGlobal = function() {
                     enderecoCompleto += ` - ${bairro}, ${municipio} - ${uf}`;
                     const linkGoogle = `http://googleusercontent.com/maps.google.com/?q=${encodeURIComponent(enderecoCompleto)}`;
                     
-                    // Atualiza os campos visíveis na tela de edição
+                    // 5. Preenche os campos na tela imediatamente!
                     if (document.getElementById('editEndereco')) document.getElementById('editEndereco').value = enderecoCompleto;
                     if (document.getElementById('editLink')) document.getElementById('editLink').value = linkGoogle;
                     
-                    // Salva na memória
-                    if (!aluno.empresa) aluno.empresa = {};
-                    aluno.empresa.endereco = enderecoCompleto;
-                    aluno.empresa.link = linkGoogle;
+                    // Atualiza a memória de fundo (se o aluno tiver sido encontrado)
+                    if (aluno) {
+                        if (!aluno.empresa) aluno.empresa = {};
+                        aluno.empresa.endereco = enderecoCompleto;
+                        aluno.empresa.link = linkGoogle;
+                    }
                     
-                    if(typeof showToast === 'function') showToast("Endereço corrigido!");
-                    else alert("✅ Endereço preenchido com sucesso!");
+                    if(typeof showToast === 'function') showToast("Endereço corrigido na tela!");
+                    else alert("✅ Endereço preenchido com sucesso na tela!");
                 } else {
                     alert(`❌ Falha na Busca!\nA Receita Federal não encontrou o CNPJ ${cnpjLimpo} ou o serviço está fora do ar.`);
                 }
