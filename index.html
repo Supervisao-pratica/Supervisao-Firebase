@@ -6472,6 +6472,10 @@ window.atualizarAutocompleteGlobal = function() {
             const roteiro = window.DB.planning[ctx];
             let encontrouNovoAlerta = false;
 
+            // Arrays para guardar os nomes dos alunos com problemas
+            let nomesChoqueContraturno = [];
+            let nomesFimContrato = [];
+
             roteiro.forEach(item => {
                 if (!item.student || !item.date) return;
                 
@@ -6483,7 +6487,7 @@ window.atualizarAutocompleteGlobal = function() {
                 // 1. ANÁLISE DE CONTRATURNO
                 const diasExtenso = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
                 const diaVisita = diasExtenso[dataVisitaObj.getDay()];
-                const msgContraturno = "🚨 ALERTA: Visita agendada no dia do Contraturno!";
+                const msgContraturno = `🚨 ALERTA: CHOQUE DE AGENDA (Contraturno na ${diaVisita})!`;
                 
                 let temChoqueContraturno = (item.student.contraturno && diaVisita === item.student.contraturno);
 
@@ -6515,28 +6519,50 @@ window.atualizarAutocompleteGlobal = function() {
 
                 const msgContrato = `🚨 ALERTA: Visita agendada APÓS o fim do contrato (${dataFimStr})!`;
 
+                // Guarda os nomes para exibir no alerta final
+                if (temChoqueContraturno) nomesChoqueContraturno.push(item.student.nome);
+                if (temFimContrato) nomesFimContrato.push(item.student.nome);
+
                 // 3. ATUALIZA A OBSERVAÇÃO
                 let obsAtual = item.obs || "";
                 
-                // Limpa alertas antigos para não duplicar se você ficar mudando a data
-                obsAtual = obsAtual.replace(msgContraturno, "").replace(/🚨 ALERTA: Visita agendada APÓS o fim do contrato.*?(\n|$)/g, "").trim();
+                // Limpa alertas antigos para não duplicar e para limpar avisos velhos
+                obsAtual = obsAtual.replace(/🚨 ALERTA: CHOQUE DE AGENDA.*?(\n|$)/g, "")
+                                   .replace(/🚨 ALERTA: Visita agendada no dia do Contraturno.*?(\n|$)/g, "")
+                                   .replace(/🚨 ALERTA: Visita agendada APÓS o fim do contrato.*?(\n|$)/g, "")
+                                   .trim();
                 
                 let novosAlertas = [];
                 if (temChoqueContraturno) novosAlertas.push(msgContraturno);
                 if (temFimContrato) novosAlertas.push(msgContrato);
 
                 if (novosAlertas.length > 0) {
-                    item.obs = (obsAtual + "\n\n" + novosAlertas.join("\n")).trim();
+                    // Coloca o alerta no TOPO da observação, para dar evidência máxima
+                    item.obs = (novosAlertas.join("\n") + "\n\n" + obsAtual).trim();
                     encontrouNovoAlerta = true;
                 } else {
                     item.obs = obsAtual.replace(/\n\n/g, "\n").trim();
                 }
             });
             
-            // Avisa o usuário na tela
+            // Avisa o usuário na tela listando os nomes
             if (encontrouNovoAlerta) {
                 setTimeout(() => {
-                    alert("⚠️ ATENÇÃO: Conflitos de agenda detectados!\n\nVerifique os alertas vermelhos nas observações. Há alunos agendados no dia do Contraturno ou com contrato já Encerrado nessa data.");
+                    let msgAlerta = "⚠️ ATENÇÃO: CONFLITOS DE AGENDA DETECTADOS!\n";
+                    
+                    if (nomesChoqueContraturno.length > 0) {
+                        msgAlerta += `\n❌ ALUNOS COM CONTRATURNO NO DIA DA VISITA:\n`;
+                        nomesChoqueContraturno.forEach(nome => msgAlerta += `- ${nome}\n`);
+                    }
+
+                    if (nomesFimContrato.length > 0) {
+                        msgAlerta += `\n❌ ALUNOS COM CONTRATO JÁ ENCERRADO NA DATA:\n`;
+                        nomesFimContrato.forEach(nome => msgAlerta += `- ${nome}\n`);
+                    }
+
+                    msgAlerta += `\nEstes alunos foram marcados com um alerta vermelho no topo da observação para você não perder a viagem.`;
+
+                    alert(msgAlerta);
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 }, 100); 
             }
@@ -6611,7 +6637,7 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================================
-        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (COM SENSOR DE RISCO)
+        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (COM SENSOR DE RISCO E CHOQUE DE AGENDA)
         // =========================================================================
         window.processarFrequenciaPedagogica = async function(event) {
             try {
@@ -6692,7 +6718,7 @@ window.atualizarAutocompleteGlobal = function() {
                 const roteiro = dbObj.planning[ctx];
 
                 let alunosAtualizados = 0;
-                let alunosComRisco = 0; // Novo contador de alertas
+                let alunosComRisco = 0; 
 
                 roteiro.forEach(item => {
                     if (!item.student || !item.student.nome) return;
@@ -6706,9 +6732,6 @@ window.atualizarAutocompleteGlobal = function() {
                         
                         if (linhaCompleta.includes(nomeAlunoRoteiro)) {
                             
-                            // ================================================================
-                            // 🚨 SENSOR DE RISCO E DESLIGAMENTO ATIVADO
-                            // ================================================================
                             let textoAlertaCritico = "";
                             if (linhaCompleta.includes("DESLIGADO")) {
                                 textoAlertaCritico = "🚨 DESLIGADO - NÃO VISITAR";
@@ -6718,7 +6741,6 @@ window.atualizarAutocompleteGlobal = function() {
                                 textoAlertaCritico = "🟠 ALERTA LARANJA - AVALIAR VISITA";
                             }
                             if (textoAlertaCritico !== "") alunosComRisco++;
-                            // ================================================================
 
                             let ucsStatus = [];
                             let ucsAvaliadas = 0; 
@@ -6803,12 +6825,11 @@ window.atualizarAutocompleteGlobal = function() {
                                 }
                             }
 
-                            // Monta o Bloco de Observação
+                            // Monta o Bloco de Observação Original
                             if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "") {
                                 let relatorio = "[PEDAGÓGICO] ";
                                 let blocos = [];
                                 
-                                // O alerta de risco entra PRIMEIRO para chamar muita atenção
                                 if (textoAlertaCritico) blocos.push(textoAlertaCritico);
                                 if (textoPedagogico) blocos.push(textoPedagogico);
                                 if (textoContraturno) blocos.push(textoContraturno);
@@ -6828,6 +6849,43 @@ window.atualizarAutocompleteGlobal = function() {
                     }
                 });
 
+                // ================================================================
+                // 🛑 MOTOR DE CHOQUE DE AGENDA COM A DATA DA VISITA
+                // ================================================================
+                let nomesComChoque = [];
+                let avisoExtraChoque = "";
+                
+                // Tenta puxar a data que está digitada no calendário de planejamento (input date)
+                let inputDataRoteiro = document.querySelector('input[type="date"]');
+                if (inputDataRoteiro && inputDataRoteiro.value) {
+                    const partes = inputDataRoteiro.value.split('-');
+                    const dataObj = new Date(partes[0], partes[1] - 1, partes[2]);
+                    const diasExtenso = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+                    const diaDaVisita = diasExtenso[dataObj.getDay()];
+
+                    roteiro.forEach(item => {
+                        if (item.student && item.student.contraturno === diaDaVisita) {
+                            nomesComChoque.push(item.student.nome);
+                            
+                            // Aplica a marcação vermelha direto na observação para saltar aos olhos
+                            let marcadorEvidencia = `🔴 ATENÇÃO: CHOQUE DE AGENDA (Contraturno na ${diaDaVisita})`;
+                            if (!item.obs) item.obs = "";
+                            if (!item.obs.includes("CHOQUE DE AGENDA")) {
+                                item.obs = `${marcadorEvidencia}\n` + item.obs;
+                            }
+                        }
+                    });
+
+                    if (nomesComChoque.length > 0) {
+                        avisoExtraChoque = `\n\n🚨 ALERTA: CONFLITO DE CONTRATURNO!\nA data do roteiro está para uma ${diaDaVisita}. Os seguintes alunos estarão na sala de aula do Senac e precisam ter a data da visita alterada:\n\n`;
+                        nomesComChoque.forEach(nomeAluno => {
+                            avisoExtraChoque += `❌ ${nomeAluno}\n`;
+                        });
+                        avisoExtraChoque += `\n(Estes alunos foram marcados com 🔴 na coluna de Observações).`;
+                    }
+                }
+                // ================================================================
+
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
@@ -6838,7 +6896,13 @@ window.atualizarAutocompleteGlobal = function() {
                     mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Olhe a coluna de Observação no roteiro para não perder a viagem!`;
                 }
                 
-                alert(mensagemFinal);
+                // Anexa o aviso com os nomes se houver choque
+                if (avisoExtraChoque !== "") {
+                    mensagemFinal += avisoExtraChoque;
+                }
+                
+                // O Timeout garante que o Loader suma antes do texto gigante aparecer
+                setTimeout(() => alert(mensagemFinal), 200);
 
             } catch (e) {
                 console.error(e); 
