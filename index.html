@@ -6611,7 +6611,7 @@ window.atualizarAutocompleteGlobal = function() {
         };
 
         // =========================================================================
-        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (COM SENSOR DE RISCO)
+        // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (COM SENSOR DE RISCO E HISTÓRICO)
         // =========================================================================
         window.processarFrequenciaPedagogica = async function(event) {
             try {
@@ -6645,12 +6645,16 @@ window.atualizarAutocompleteGlobal = function() {
 
                 let indexCabecalho = -1;
                 let indexContraturno = -1; 
-                let mapeamentoUCs = []; 
+                let mapeamentoUCs = [];
+                let colunasTutor = []; // Array para capturar múltiplos instrutores
 
+                // PROCURANDO A LINHA DE CABEÇALHO E MAPEANDO COLUNAS
                 for (let r = 0; r < Math.min(10, rows.length); r++) {
                     let achouUC = false;
-                    for (let c = 0; c < rows[r].length; c++) {
-                        let valorCelula = norm(rows[r][c]);
+                    let headerAtual = rows[r];
+
+                    for (let c = 0; c < headerAtual.length; c++) {
+                        let valorCelula = norm(String(headerAtual[c] || ""));
                         
                         if (valorCelula.includes("ENSINO MEDIO") || valorCelula.includes("CONTRATURNO")) {
                             indexContraturno = c;
@@ -6658,7 +6662,6 @@ window.atualizarAutocompleteGlobal = function() {
 
                         if (valorCelula.includes("FREQUENCIA") && valorCelula.includes("UC")) {
                             achouUC = true;
-                            indexCabecalho = r;
                             
                             let partesUC = valorCelula.split("UC");
                             let numUC = partesUC.length > 1 ? partesUC[1].trim().split(" ")[0] : "?";
@@ -6674,7 +6677,18 @@ window.atualizarAutocompleteGlobal = function() {
                             });
                         }
                     }
-                    if (achouUC) break; 
+                    
+                    // Se descobrimos que esta linha é o cabeçalho, agora podemos mapear onde ficam os tutores
+                    if (achouUC) {
+                        indexCabecalho = r;
+                        headerAtual.forEach((col, idx) => {
+                            let nomeCol = norm(String(col || ""));
+                            if (nomeCol.includes("TUTOR") || nomeCol.includes("INSTRUTOR")) {
+                                colunasTutor.push(idx);
+                            }
+                        });
+                        break; 
+                    }
                 }
 
                 if (mapeamentoUCs.length === 0) {
@@ -6692,8 +6706,9 @@ window.atualizarAutocompleteGlobal = function() {
                 const roteiro = dbObj.planning[ctx];
 
                 let alunosAtualizados = 0;
-                let alunosComRisco = 0; // Novo contador de alertas
+                let alunosComRisco = 0; 
 
+                // INICIANDO A LEITURA ALUNO POR ALUNO
                 roteiro.forEach(item => {
                     if (!item.student || !item.student.nome) return;
                     const nomeAlunoRoteiro = norm(item.student.nome);
@@ -6705,6 +6720,393 @@ window.atualizarAutocompleteGlobal = function() {
                         const linhaCompleta = row.map(c => norm(c)).join(" "); 
                         
                         if (linhaCompleta.includes(nomeAlunoRoteiro)) {
+                            
+                            // ================================================================
+                            // 🚨 SENSOR DE RISCO E DESLIGAMENTO
+                            // ================================================================
+                            let textoAlertaCritico = "";
+                            if (linhaCompleta.includes("DESLIGADO")) {
+                                textoAlertaCritico = "🚨 DESLIGADO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("EVADIDO")) {
+                                textoAlertaCritico = "🚨 EVADIDO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("LARANJA")) {
+                                textoAlertaCritico = "🟠 ALERTA LARANJA - AVALIAR VISITA";
+                            }
+                            if (textoAlertaCritico !== "") alunosComRisco++;
+
+                            // ================================================================
+                            // 👨‍🏫 CAPTURA DOS INSTRUTORES (MULTIREVISÃO)
+                            // ================================================================
+                            let textoInstrutor = "";
+                            if (colunasTutor.length > 0) {
+                                let listaTutoresRaw = [];
+                                colunasTutor.forEach(idx => {
+                                    let nomeTutor = String(row[idx] || "").trim();
+                                    if (nomeTutor && nomeTutor.toUpperCase() !== "NÃO INF." && nomeTutor !== "-") {
+                                        listaTutoresRaw.push(nomeTutor);
+                                    }
+                                });
+
+                                if (listaTutoresRaw.length > 0) {
+                                    let tutoresJuntos = listaTutoresRaw.join(" / ");
+                                    let listaTutores = tutoresJuntos.split(/[\/,;]|\be\b/i).map(t => t.trim()).filter(t => t.length > 2);
+                                    let tutoresUnicos = [...new Set(listaTutores)];
+                                    
+                                    if (tutoresUnicos.length >= 2) {
+                                        textoInstrutor = `👨‍🏫 Instrutores: ${tutoresUnicos[0]} e ${tutoresUnicos[1]}`;
+                                    } else if (tutoresUnicos.length === 1) {
+                                        textoInstrutor = `👨‍🏫 Instrutor(a): ${tutoresUnicos[0]}`;
+                                    }
+                                }
+                            }
+
+                            // ================================================================
+                            // 📊 CAPTURA DAS UCs E CONSELHO DE CLASSE
+                            // ================================================================
+                            let ucsStatus = [];
+                            let ucsAvaliadas = 0; 
+
+                            mapeamentoUCs.forEach(uc => {
+                                let freqVal = row[uc.indexFreq];
+                                let avaVal = uc.indexAva !== -1 ? norm(row[uc.indexAva]) : "";
+                                
+                                let freqStr = "";
+                                let freqNumber = null;
+
+                                if (typeof freqVal === 'number') {
+                                    freqNumber = freqVal * 100;
+                                    freqStr = Math.round(freqNumber) + "%";
+                                } else {
+                                    freqStr = String(freqVal || "").trim();
+                                    let parseado = parseFloat(freqStr.replace(',', '.').replace('%', ''));
+                                    if (!isNaN(parseado)) {
+                                        freqNumber = parseado;
+                                    }
+                                }
+
+                                if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
+                                    ucsAvaliadas++; 
+                                    
+                                    let icon = ""; 
+                                    let registrarFalha = false; 
+                                    
+                                    if (freqNumber !== null && freqNumber < 75) {
+                                        icon = "🔴 Conselho de Classe";
+                                        registrarFalha = true;
+                                    } else if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
+                                        icon = "🔴 Recuperação";
+                                        registrarFalha = true;
+                                    } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
+                                        icon = "🟢 OK";
+                                        registrarFalha = false;                                     
+                                    }
+
+                                    if (registrarFalha) {
+                                        ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
+                                    }
+                                }
+                            });
+
+                            // ================================================================
+                            // 🕒 CAPTURA DO CONTRATURNO
+                            // ================================================================
+                            let textoContraturno = "";
+                            if (indexContraturno !== -1) {
+                                let valOriginal = row[indexContraturno];
+                                let valString = String(valOriginal || "").trim();
+                                let valNorm = norm(valString);
+                                
+                                if (valNorm !== "" && valNorm !== "0" && valNorm !== "-" && valNorm !== "FALSO") {
+                                    let diaTraduzido = valString; 
+                                    
+                                    if (valNorm.includes("SEGUNDA") || valNorm.includes("2A") || valNorm.includes("2ª")) diaTraduzido = "Segunda";
+                                    else if (valNorm.includes("TERCA") || valNorm.includes("3A") || valNorm.includes("3ª")) diaTraduzido = "Terça";
+                                    else if (valNorm.includes("QUARTA") || valNorm.includes("4A") || valNorm.includes("4ª")) diaTraduzido = "Quarta";
+                                    else if (valNorm.includes("QUINTA") || valNorm.includes("5A") || valNorm.includes("5ª")) diaTraduzido = "Quinta";
+                                    else if (valNorm.includes("SEXTA") || valNorm.includes("6A") || valNorm.includes("6ª")) diaTraduzido = "Sexta";
+
+                                    textoContraturno = `🕒 Contraturno: ${diaTraduzido}`;
+                                    item.student.contraturno = diaTraduzido;
+                                    
+                                    if (dbObj.quali) {
+                                        let alunoQuali = dbObj.quali.find(a => a.id === item.student.id);
+                                        if (alunoQuali) alunoQuali.contraturno = diaTraduzido;
+                                    }
+                                    if (dbObj.tec) {
+                                        let alunoTec = dbObj.tec.find(a => a.id === item.student.id);
+                                        if (alunoTec) alunoTec.contraturno = diaTraduzido;
+                                    }
+                                }
+                            }
+
+                            let textoPedagogico = "";
+                            if (ucsAvaliadas > 0) {
+                                if (ucsStatus.length > 0) {
+                                    textoPedagogico = "Atenção: " + ucsStatus.join(" | ") + ".";
+                                } else {
+                                    textoPedagogico = "✅ Sem pendências nas UCs.";
+                                }
+                            }
+
+                            // ================================================================
+                            // 🚀 MONTAGEM FINAL: HISTÓRICO CRONOLÓGICO BLINDADO
+                            // ================================================================
+                            if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "" || textoInstrutor !== "") {
+                                let blocos = [];
+                                
+                                if (textoAlertaCritico) blocos.push(textoAlertaCritico);
+                                if (textoInstrutor) blocos.push(textoInstrutor);
+                                if (textoPedagogico) blocos.push(textoPedagogico);
+                                if (textoContraturno) blocos.push(textoContraturno);
+                                
+                                let conteudoRelatorio = blocos.join(" | ");
+                                let obsAtual = item.obs ? String(item.obs).trim() : "";
+                                
+                                // Não adiciona se a informação for idêntica à que já está lá
+                                if (!obsAtual.includes(conteudoRelatorio)) {
+                                    let numVisita = 1;
+                                    
+                                    if (obsAtual !== "") {
+                                        let matches = obsAtual.match(/\[PEDAGÓGICO/g);
+                                        if (matches) {
+                                            numVisita = matches.length + 1;
+                                        }
+                                    }
+                                    
+                                    let dataHoje = new Date().toLocaleDateString('pt-BR');
+                                    let cabecalho = `[PEDAGÓGICO - ${numVisita}ª Visita em ${dataHoje}]`;
+                                    let novoRegistro = `${cabecalho} ${conteudoRelatorio}`;
+                                    
+                                    if (obsAtual === "") {
+                                        item.obs = novoRegistro;
+                                    } else {
+                                        item.obs = obsAtual + "\n\n" + novoRegistro;
+                                    }
+                                    
+                                    alunosAtualizados++;
+                                }
+                            }
+                            
+                            break; 
+                        }
+                    }
+                });
+
+                if(typeof saveToStorage === 'function') saveToStorage();
+                if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                
+                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                
+                let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório atualizado e formatado cronologicamente.`;
+                if (alunosComRisco > 0) {
+                    mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Olhe a coluna de Observação no roteiro para não perder a viagem!`;
+                }
+                
+                alert(mensagemFinal);
+
+            } catch (e) {
+                console.error(e); 
+                alert("Erro ao ler pedagógico:\n" + e.message);
+                const loader = document.getElementById('globalLoader');
+                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+            } finally {
+                event.target.value = ''; 
+            }
+        };
+                            
+                            // ================================================================
+                            // 🚨 SENSOR DE RISCO E DESLIGAMENTO
+                            // ================================================================
+                            let textoAlertaCritico = "";
+                            if (linhaCompleta.includes("DESLIGADO")) {
+                                textoAlertaCritico = "🚨 DESLIGADO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("EVADIDO")) {
+                                textoAlertaCritico = "🚨 EVADIDO - NÃO VISITAR";
+                            } else if (linhaCompleta.includes("LARANJA")) {
+                                textoAlertaCritico = "🟠 ALERTA LARANJA - AVALIAR VISITA";
+                            }
+                            if (textoAlertaCritico !== "") alunosComRisco++;
+                            // ================================================================
+
+                            // ================================================================
+                            // 👨‍🏫 CAPTURA DOS INSTRUTORES (MULTIREVISÃO)
+                            // ================================================================
+                            let textoInstrutor = "";
+                            if (colunasTutor.length > 0) {
+                                let listaTutoresRaw = [];
+                                colunasTutor.forEach(idx => {
+                                    let nomeTutor = String(row[idx] || "").trim();
+                                    if (nomeTutor && nomeTutor.toUpperCase() !== "NÃO INF." && nomeTutor !== "-") {
+                                        listaTutoresRaw.push(nomeTutor);
+                                    }
+                                });
+
+                                if (listaTutoresRaw.length > 0) {
+                                    let tutoresJuntos = listaTutoresRaw.join(" / ");
+                                    let listaTutores = tutoresJuntos.split(/[\/,;]|\be\b/i).map(t => t.trim()).filter(t => t.length > 2);
+                                    let tutoresUnicos = [...new Set(listaTutores)];
+                                    
+                                    if (tutoresUnicos.length >= 2) {
+                                        textoInstrutor = `👨‍🏫 Instrutores: ${tutoresUnicos[0]} e ${tutoresUnicos[1]}`;
+                                    } else if (tutoresUnicos.length === 1) {
+                                        textoInstrutor = `👨‍🏫 Instrutor(a): ${tutoresUnicos[0]}`;
+                                    }
+                                }
+                            }
+
+                            // ================================================================
+                            // 📊 CAPTURA DAS UCs E CONSELHO DE CLASSE
+                            // ================================================================
+                            let ucsStatus = [];
+                            let ucsAvaliadas = 0; 
+
+                            mapeamentoUCs.forEach(uc => {
+                                let freqVal = row[uc.indexFreq];
+                                let avaVal = uc.indexAva !== -1 ? norm(row[uc.indexAva]) : "";
+                                
+                                let freqStr = "";
+                                let freqNumber = null;
+
+                                if (typeof freqVal === 'number') {
+                                    freqNumber = freqVal * 100;
+                                    freqStr = Math.round(freqNumber) + "%";
+                                } else {
+                                    freqStr = String(freqVal || "").trim();
+                                    let parseado = parseFloat(freqStr.replace(',', '.').replace('%', ''));
+                                    if (!isNaN(parseado)) {
+                                        freqNumber = parseado;
+                                    }
+                                }
+
+                                if (freqStr && freqStr !== "0%" && freqStr !== "0" && freqStr.toLowerCase() !== "falso") {
+                                    ucsAvaliadas++; 
+                                    
+                                    let icon = ""; 
+                                    let registrarFalha = false; 
+                                    
+                                    if (freqNumber !== null && freqNumber < 75) {
+                                        icon = "🔴 Conselho de Classe";
+                                        registrarFalha = true;
+                                    } else if (avaVal.includes("NAO DESENVOLVEU") || avaVal.includes("N DESENV")) {
+                                        icon = "🔴 Recuperação";
+                                        registrarFalha = true;
+                                    } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
+                                        icon = "🟢 OK";
+                                        registrarFalha = false;                                     
+                                    }
+
+                                    if (registrarFalha) {
+                                        ucsStatus.push(`${uc.nome}: ${freqStr} (${icon})`);
+                                    }
+                                }
+                            });
+
+                            // ================================================================
+                            // 🕒 CAPTURA DO CONTRATURNO
+                            // ================================================================
+                            let textoContraturno = "";
+                            if (indexContraturno !== -1) {
+                                let valOriginal = row[indexContraturno];
+                                let valString = String(valOriginal || "").trim();
+                                let valNorm = norm(valString);
+                                
+                                if (valNorm !== "" && valNorm !== "0" && valNorm !== "-" && valNorm !== "FALSO") {
+                                    let diaTraduzido = valString; 
+                                    
+                                    if (valNorm.includes("SEGUNDA") || valNorm.includes("2A") || valNorm.includes("2ª")) diaTraduzido = "Segunda";
+                                    else if (valNorm.includes("TERCA") || valNorm.includes("3A") || valNorm.includes("3ª")) diaTraduzido = "Terça";
+                                    else if (valNorm.includes("QUARTA") || valNorm.includes("4A") || valNorm.includes("4ª")) diaTraduzido = "Quarta";
+                                    else if (valNorm.includes("QUINTA") || valNorm.includes("5A") || valNorm.includes("5ª")) diaTraduzido = "Quinta";
+                                    else if (valNorm.includes("SEXTA") || valNorm.includes("6A") || valNorm.includes("6ª")) diaTraduzido = "Sexta";
+
+                                    textoContraturno = `🕒 Contraturno: ${diaTraduzido}`;
+                                    item.student.contraturno = diaTraduzido;
+                                    
+                                    if (dbObj.quali) {
+                                        let alunoQuali = dbObj.quali.find(a => a.id === item.student.id);
+                                        if (alunoQuali) alunoQuali.contraturno = diaTraduzido;
+                                    }
+                                    if (dbObj.tec) {
+                                        let alunoTec = dbObj.tec.find(a => a.id === item.student.id);
+                                        if (alunoTec) alunoTec.contraturno = diaTraduzido;
+                                    }
+                                }
+                            }
+
+                            let textoPedagogico = "";
+                            if (ucsAvaliadas > 0) {
+                                if (ucsStatus.length > 0) {
+                                    textoPedagogico = "Atenção: " + ucsStatus.join(" | ") + ".";
+                                } else {
+                                    textoPedagogico = "✅ Sem pendências nas UCs.";
+                                }
+                            }
+
+                            // ================================================================
+                            // 🚀 MONTAGEM FINAL: HISTÓRICO CRONOLÓGICO BLINDADO
+                            // ================================================================
+                            if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "" || textoInstrutor !== "") {
+                                let blocos = [];
+                                
+                                if (textoAlertaCritico) blocos.push(textoAlertaCritico);
+                                if (textoInstrutor) blocos.push(textoInstrutor);
+                                if (textoPedagogico) blocos.push(textoPedagogico);
+                                if (textoContraturno) blocos.push(textoContraturno);
+                                
+                                let conteudoRelatorio = blocos.join(" | ");
+                                let obsAtual = item.obs ? String(item.obs).trim() : "";
+                                
+                                // Não adiciona se a informação for idêntica à que já está lá
+                                if (!obsAtual.includes(conteudoRelatorio)) {
+                                    let numVisita = 1;
+                                    
+                                    if (obsAtual !== "") {
+                                        let matches = obsAtual.match(/\[PEDAGÓGICO/g);
+                                        if (matches) {
+                                            numVisita = matches.length + 1;
+                                        }
+                                    }
+                                    
+                                    let dataHoje = new Date().toLocaleDateString('pt-BR');
+                                    let cabecalho = `[PEDAGÓGICO - ${numVisita}ª Visita em ${dataHoje}]`;
+                                    let novoRegistro = `${cabecalho} ${conteudoRelatorio}`;
+                                    
+                                    if (obsAtual === "") {
+                                        item.obs = novoRegistro;
+                                    } else {
+                                        item.obs = obsAtual + "\n\n" + novoRegistro;
+                                    }
+                                    
+                                    alunosAtualizados++;
+                                }
+                            }
+                            
+                            break; 
+                        }
+                    }
+                });
+
+                if(typeof saveToStorage === 'function') saveToStorage();
+                if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                
+                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                
+                let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório atualizado e formatado cronologicamente.`;
+                if (alunosComRisco > 0) {
+                    mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Olhe a coluna de Observação no roteiro para não perder a viagem!`;
+                }
+                
+                alert(mensagemFinal);
+
+            } catch (e) {
+                console.error(e); 
+                alert("Erro ao ler pedagógico:\n" + e.message);
+                const loader = document.getElementById('globalLoader');
+                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+            } finally {
+                event.target.value = ''; 
+            }
+        };
                             
                             // ================================================================
                             // 🚨 SENSOR DE RISCO E DESLIGAMENTO ATIVADO
@@ -6755,7 +7157,7 @@ window.atualizarAutocompleteGlobal = function() {
                                         registrarFalha = true;
                                     } else if (avaVal.includes("DESENVOLVEU") || avaVal === "D") {
                                         icon = "🟢 OK";
-                                        registrarFalha = false;                                     
+                                        registrarFalha = false;                                       
                                     }
 
                                     if (registrarFalha) {
@@ -6794,6 +7196,46 @@ window.atualizarAutocompleteGlobal = function() {
                                 }
                             }
 
+                            // ================================================================
+                            // 👨‍🏫 EXTRATOR DE MÚLTIPLOS TUTORES (NOVO)
+                            // ================================================================
+                            let textoTutor = "";
+                            let tutoresLista = [];
+                            
+                            // Se mapeamos múltiplas colunas de Tutor via array 'colunasTutor'
+                            if (typeof colunasTutor !== 'undefined' && colunasTutor.length > 0) {
+                                colunasTutor.forEach(idx => {
+                                    let valT = String(row[idx] || "").trim();
+                                    let normT = norm(valT);
+                                    if (valT && normT !== "FALSO" && normT !== "-" && normT !== "0" && normT !== "") {
+                                        tutoresLista.push(valT);
+                                    }
+                                });
+                            } 
+                            // Fallback caso você use uma variável simples indexTutor
+                            else if (typeof indexTutor !== 'undefined' && indexTutor !== -1) {
+                                let valT = String(row[indexTutor] || "").trim();
+                                if (valT && valT.length > 2) tutoresLista.push(valT);
+                            }
+
+                            // Filtra para não repetir nomes (ex: o mesmo professor nas UCs 1 a 15)
+                            let tutoresUnicos = [...new Set(tutoresLista)];
+                            if (tutoresUnicos.length > 0) {
+                                textoTutor = `👨‍🏫 Tutor(a): ${tutoresUnicos.join(" / ")}`;
+                                item.student.tutor = tutoresUnicos.join(" / ");
+                                
+                                // Salva no banco de alunos globalmente
+                                if (dbObj.quali) {
+                                    let alQ = dbObj.quali.find(a => a.id === item.student.id);
+                                    if (alQ) alQ.tutor = item.student.tutor;
+                                }
+                                if (dbObj.tec) {
+                                    let alT = dbObj.tec.find(a => a.id === item.student.id);
+                                    if (alT) alT.tutor = item.student.tutor;
+                                }
+                            }
+                            // ================================================================
+
                             let textoPedagogico = "";
                             if (ucsAvaliadas > 0) {
                                 if (ucsStatus.length > 0) {
@@ -6803,25 +7245,36 @@ window.atualizarAutocompleteGlobal = function() {
                                 }
                             }
 
-                            // Monta o Bloco de Observação
-                            if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "") {
-                                let relatorio = "[PEDAGÓGICO] ";
+                            // ================================================================
+                            // 📝 MONTAGEM DO BLOCO DE OBSERVAÇÃO CRONOLÓGICO (NOVO)
+                            // ================================================================
+                            if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "" || textoTutor !== "") {
+                                // Pega a data atual para criar um histórico
+                                let dataHoje = new Date().toLocaleDateString('pt-BR');
+                                let cabecalhoCronologico = `[PEDAGÓGICO - ${dataHoje}]`;
                                 let blocos = [];
                                 
                                 // O alerta de risco entra PRIMEIRO para chamar muita atenção
                                 if (textoAlertaCritico) blocos.push(textoAlertaCritico);
+                                if (textoTutor) blocos.push(textoTutor); // Instrutor 1 e 2
                                 if (textoPedagogico) blocos.push(textoPedagogico);
                                 if (textoContraturno) blocos.push(textoContraturno);
                                 
-                                relatorio += blocos.join(" | ");
+                                let relatorioNovo = `${cabecalhoCronologico} ${blocos.join(" | ")}`;
                                 
-                                if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
-                                    item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
-                                } else {
-                                    const obsAtual = item.obs ? item.obs + "\n" : "";
-                                    item.obs = obsAtual + relatorio;
+                                const obsAtual = (item.obs || "").trim();
+                                
+                                // Se a informação exata gerada hoje já existir, ele não duplica.
+                                // Se for informação nova ou de um novo dia, ele empilha!
+                                if (!obsAtual.includes(relatorioNovo)) {
+                                    if (obsAtual === "") {
+                                        item.obs = relatorioNovo;
+                                    } else {
+                                        // Empilha colocando a nova informação abaixo da antiga, separada por espaços
+                                        item.obs = obsAtual + "\n\n" + relatorioNovo;
+                                    }
+                                    alunosAtualizados++;
                                 }
-                                alunosAtualizados++;
                             }
                             break; 
                         }
@@ -6833,7 +7286,7 @@ window.atualizarAutocompleteGlobal = function() {
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
-                let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório atualizado.`;
+                let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório atualizado (ou adicionado ao histórico).`;
                 if (alunosComRisco > 0) {
                     mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Olhe a coluna de Observação no roteiro para não perder a viagem!`;
                 }
@@ -6846,7 +7299,7 @@ window.atualizarAutocompleteGlobal = function() {
                 const loader = document.getElementById('globalLoader');
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
             } finally {
-                event.target.value = ''; 
+                if (event && event.target) event.target.value = ''; 
             }
         };
         // =========================================================================
