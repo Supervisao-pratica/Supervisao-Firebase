@@ -1253,50 +1253,35 @@
                     const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
                     const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
-                    // --- INJEÇÃO PARA SALVAR O DASHBOARD ---
-                    const arrumarStatus = (a) => {
-                        if (!a.status) a.status = "Ativo";
-                        let d = String(a.data_fim || a.termino || a.fim_contrato || "");
-                        if (d.includes('/')) {
-                            let p = d.split('/');
-                            if (p.length === 3 && new Date(p[2], p[1]-1, p[0]) < new Date() && !String(a.status).includes("Desl")) a.status = "Encerrado";
-                        } else if (d.includes('-')) {
-                            let p = d.split('-');
-                            if (p.length === 3 && new Date(p[0], p[1]-1, p[2]) < new Date() && !String(a.status).includes("Desl")) a.status = "Encerrado";
-                        }
-                    };
-                    // ----------------------------------------
-
                     data.quali.forEach(novoAluno => { 
-                        arrumarStatus(novoAluno); // Arruma antes de salvar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
+                            // Se não existe, adiciona!
                             DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
                             const alunoAntigo = bancoQuali.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status) alunoAntigo.status = novoAluno.status; // Atualiza status do antigo
                             corrigidos++;
                         }
                     }); 
 
                     data.tec.forEach(novoAluno => { 
-                        arrumarStatus(novoAluno); // Arruma antes de salvar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoTec.has(ass)) { 
                             DB.tec.unshift(novoAluno); 
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // Conserta os antigos da Técnica também
                             const alunoAntigo = bancoTec.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status) alunoAntigo.status = novoAluno.status; // Atualiza status do antigo
                             corrigidos++;
                         }
                     }); 
@@ -1306,7 +1291,7 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos atualizados!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro na importação: " + e); 
@@ -1332,25 +1317,9 @@
             setTimeout(async () => { 
                 try { 
                     const data = await readAndParseFile(file); 
+                    DB.quali = data.quali; 
+                    DB.tec = data.tec; 
                     
-                    // --- INJEÇÃO PARA SALVAR O DASHBOARD ---
-                    const corrigir = (a) => {
-                        if(!a) return a;
-                        if(!a.status) a.status = "Ativo";
-                        let d = String(a.data_fim || a.termino || a.fim_contrato || "");
-                        if(d.includes('/')) {
-                            let p = d.split('/');
-                            if(p.length === 3 && new Date(p[2], p[1]-1, p[0]) < new Date() && !String(a.status).includes("Desl")) a.status = "Encerrado";
-                        } else if(d.includes('-')) {
-                            let p = d.split('-');
-                            if(p.length === 3 && new Date(p[0], p[1]-1, p[2]) < new Date() && !String(a.status).includes("Desl")) a.status = "Encerrado";
-                        }
-                        return a;
-                    };
-                    DB.quali = (data.quali || []).map(corrigir); 
-                    DB.tec = (data.tec || []).map(corrigir); 
-                    // ---------------------------------------
-
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
@@ -1365,7 +1334,59 @@
                     input.value = ''; 
                 } 
             }, 100); 
-        } 
+        }
+        function initLogin() { 
+            const sel = document.getElementById('loginRegion'); 
+            let html = '<option value="">👑 Gestão Central / Admin (Requer Senha)</option>'; 
+            html += '<option value="VISITANTE">👁️ Visitante / Coordenação (Apenas Leitura)</option>';
+            sel.innerHTML = html; 
+            checkLoginType();
+        }
+
+        function checkLoginType() { 
+            const val = document.getElementById('loginRegion').value; 
+            const passField = document.getElementById('passField'); 
+            if(val === "") { 
+                passField.classList.remove('hidden'); 
+            } else { 
+                passField.classList.add('hidden'); 
+            } 
+        }
+
+        function performLogin() { 
+            const val = document.getElementById('loginRegion').value; 
+            const inputPass = document.getElementById('loginPass').value; 
+            
+            if(val === "") { 
+                if(inputPass === PASS_ADMIN) startApp('admin', 'Todas'); 
+                else alert("Senha de Administrador incorreta."); 
+            } else if (val === "VISITANTE") {
+                startApp('espectador', 'Todas');
+            }
+        }
+
+        function startApp(type, region) { 
+            STATE.userType = type; 
+            STATE.userRegion = region; 
+            
+            document.getElementById('loginPage').classList.add('hidden'); 
+            document.getElementById('appContainer').classList.remove('hidden'); 
+            document.getElementById('appContainer').classList.add('flex'); 
+            
+            document.getElementById('roleDisplay').innerText = type === 'admin' ? "Administrador" : "Modo Leitura"; 
+            document.getElementById('userDisplay').innerText = type === 'admin' ? "Gestão Geral" : "VISITANTE"; 
+            
+            const btnFin = document.getElementById('btnFin'); 
+            const filterReg = document.getElementById('filterRegiao'); 
+            
+            // Ambos podem usar o filtro de regiões para gerar relatórios
+            filterReg.disabled = false; 
+            
+            if(type === 'admin') { 
+                if(btnFin) btnFin.classList.remove('hidden'); 
+            } else { 
+                if(btnFin) btnFin.classList.add('hidden'); 
+            } 
 
             // =========================================================================
             // BLINDAGEM MÁXIMA PARA ESPECTADOR (Desativa edição no Planejamento)
