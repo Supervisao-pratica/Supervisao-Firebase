@@ -1247,34 +1247,6 @@
                     const data = await readAndParseFile(file); 
                     let adicionados = 0;
                     let corrigidos = 0;
-
-                    // --- INÍCIO DA BLINDAGEM DE STATUS ---
-                    const blindarStatusAluno = (aluno) => {
-                        if (!aluno) return;
-                        let dataFim = String(aluno.data_fim || aluno.termino || aluno.fim_contrato || "").trim();
-                        let hoje = new Date();
-                        hoje.setHours(0,0,0,0);
-                        
-                        let dataFimObj = null;
-                        if (dataFim.length >= 8) {
-                            if (dataFim.includes('/')) {
-                                const p = dataFim.split('/');
-                                if (p.length === 3) dataFimObj = new Date(p[2], p[1]-1, p[0]);
-                            } else if (dataFim.includes('-')) {
-                                const p = dataFim.split('-');
-                                if (p.length === 3) dataFimObj = new Date(p[0], p[1]-1, p[2]);
-                            }
-                        }
-
-                        if (!aluno.status || String(aluno.status).trim() === "") {
-                            aluno.status = "Ativo";
-                        }
-                        
-                        if (dataFimObj && dataFimObj < hoje && !String(aluno.status).toLowerCase().includes("desligado")) {
-                            aluno.status = "Encerrado";
-                        }
-                    };
-                    // --- FIM DA BLINDAGEM DE STATUS ---
                     
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
                     
@@ -1282,7 +1254,6 @@
                     const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
                     data.quali.forEach(novoAluno => { 
-                        blindarStatusAluno(novoAluno); // Força a regra antes de analisar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
                             // Se não existe, adiciona!
@@ -1295,13 +1266,11 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status && String(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
 
                     data.tec.forEach(novoAluno => { 
-                        blindarStatusAluno(novoAluno); // Força a regra antes de analisar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoTec.has(ass)) { 
                             DB.tec.unshift(novoAluno); 
@@ -1313,7 +1282,6 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status && String(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
@@ -1323,7 +1291,7 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os dados/horários corrigidos!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro na importação: " + e); 
@@ -1349,37 +1317,8 @@
             setTimeout(async () => { 
                 try { 
                     const data = await readAndParseFile(file); 
-                    
-                    // --- INÍCIO DA BLINDAGEM DE STATUS ---
-                    const blindarBase = (aluno) => {
-                        if (!aluno) return aluno;
-                        let dataFim = String(aluno.data_fim || aluno.termino || aluno.fim_contrato || "").trim();
-                        let hoje = new Date();
-                        hoje.setHours(0,0,0,0);
-                        
-                        let dataFimObj = null;
-                        if (dataFim.length >= 8) {
-                            if (dataFim.includes('/')) {
-                                const p = dataFim.split('/');
-                                if (p.length === 3) dataFimObj = new Date(p[2], p[1]-1, p[0]);
-                            } else if (dataFim.includes('-')) {
-                                const p = dataFim.split('-');
-                                if (p.length === 3) dataFimObj = new Date(p[0], p[1]-1, p[2]);
-                            }
-                        }
-
-                        if (!aluno.status || String(aluno.status).trim() === "") {
-                            aluno.status = "Ativo";
-                        }
-                        if (dataFimObj && dataFimObj < hoje && !String(aluno.status).toLowerCase().includes("desligado")) {
-                            aluno.status = "Encerrado";
-                        }
-                        return aluno;
-                    };
-                    // --- FIM DA BLINDAGEM DE STATUS ---
-
-                    DB.quali = data.quali.map(blindarBase); 
-                    DB.tec = data.tec.map(blindarBase); 
+                    DB.quali = data.quali; 
+                    DB.tec = data.tec; 
                     
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
@@ -1396,7 +1335,6 @@
                 } 
             }, 100); 
         }
-        
         function initLogin() { 
             const sel = document.getElementById('loginRegion'); 
             let html = '<option value="">👑 Gestão Central / Admin (Requer Senha)</option>'; 
@@ -1449,7 +1387,6 @@
             } else { 
                 if(btnFin) btnFin.classList.add('hidden'); 
             } 
-        } 
 
             // =========================================================================
             // BLINDAGEM MÁXIMA PARA ESPECTADOR (Desativa edição no Planejamento)
