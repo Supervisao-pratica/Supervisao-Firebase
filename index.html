@@ -1229,7 +1229,7 @@
             return alunosLidos; 
         }
         // =========================================================================
-        // 3. ADICIONAR NOVOS E FORÇAR ATUALIZAÇÃO DO PAINEL (Blindado V2)
+        // 3. ADICIONAR NOVOS (E Corrigir os horários dos antigos!)
         // =========================================================================
         async function runMergeImport(input) { 
             const file = input.files[0]; 
@@ -1246,14 +1246,14 @@
                     let adicionados = 0;
                     let corrigidos = 0;
                     
-                    const safeStr = (s) => String(s || "");
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
                     
-                    const bancoQuali = new Map((window.DB.quali || []).map(a => [getAssinatura(a), a])); 
-                    const bancoTec = new Map((window.DB.tec || []).map(a => [getAssinatura(a), a])); 
+                    const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
+                    const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
-                    // Função para forçar o recálculo do status para não sumir do Dashboard
+                    // --- MOTOR DE BLINDAGEM DE STATUS ---
                     const blindarStatusAluno = (aluno) => {
+                        if (!aluno) return;
                         let dataFim = safeStr(aluno.data_fim || aluno.termino || aluno.fim_contrato).trim();
                         let hoje = new Date();
                         hoje.setHours(0,0,0,0);
@@ -1269,22 +1269,23 @@
                             }
                         }
 
-                        // Se o Excel não mandou um status, ou mandou branco, o robô conserta
-                        if (!aluno.status || aluno.status.trim() === "") {
+                        // Se veio sem status, marca como Ativo
+                        if (!aluno.status || String(aluno.status).trim() === "") {
                             aluno.status = "Ativo";
                         }
                         
-                        // Garante que o status 'Encerrado' acompanhe a data final rigorosamente
-                        if (dataFimObj && dataFimObj < hoje && !aluno.status.toLowerCase().includes("desligado")) {
+                        // Se o contrato venceu, muda para Encerrado automaticamente
+                        if (dataFimObj && dataFimObj < hoje && !String(aluno.status).toLowerCase().includes("desligado")) {
                             aluno.status = "Encerrado";
                         }
                     };
+                    // ------------------------------------
 
                     data.quali.forEach(novoAluno => { 
-                        blindarStatusAluno(novoAluno); // Força a regra antes de colocar no banco
+                        blindarStatusAluno(novoAluno);
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
-                            window.DB.quali.unshift(novoAluno); 
+                            DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
@@ -1292,16 +1293,16 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status && novoAluno.status.toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status; // Importa desligamentos
+                            if (novoAluno.status && String(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
 
                     data.tec.forEach(novoAluno => { 
-                        blindarStatusAluno(novoAluno); // Força a regra
+                        blindarStatusAluno(novoAluno);
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoTec.has(ass)) { 
-                            window.DB.tec.unshift(novoAluno); 
+                            DB.tec.unshift(novoAluno); 
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
@@ -1309,22 +1310,20 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status && novoAluno.status.toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status; // Importa desligamentos
+                            if (novoAluno.status && String(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
 
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
+                    if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    // Força a atualização agressiva da tela (Dashboard)
-                    if(typeof runFilter === 'function') setTimeout(runFilter, 200); 
-                    
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os dados corrigidos!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos atualizados!`); 
                 } catch(e) { 
                     console.error(e); 
-                    alert("Erro na importação: " + e); 
+                    alert("Erro na importação: " + e.message); 
                 } finally { 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     input.value = ''; 
@@ -1333,7 +1332,7 @@
         }
 
         // =========================================================================
-        // 4. SUBSTITUIR BASE E RECALCULAR STATUS GERAL (Blindado V2)
+        // 4. SUBSTITUIR BASE (Apaga tudo e coloca os novos)
         // =========================================================================
         async function runReplaceImport(input) { 
             const file = input.files[0]; 
@@ -1348,8 +1347,9 @@
                 try { 
                     const data = await readAndParseFile(file); 
                     
-                    // Função para forçar o recálculo do status para não sumir do Dashboard
+                    // --- MOTOR DE BLINDAGEM DE STATUS ---
                     const blindarBase = (aluno) => {
+                        if (!aluno) return aluno;
                         let dataFim = String(aluno.data_fim || aluno.termino || aluno.fim_contrato || "").trim();
                         let hoje = new Date();
                         hoje.setHours(0,0,0,0);
@@ -1365,27 +1365,28 @@
                             }
                         }
 
-                        if (!aluno.status || aluno.status.trim() === "") aluno.status = "Ativo";
-                        if (dataFimObj && dataFimObj < hoje && !aluno.status.toLowerCase().includes("desligado")) {
+                        if (!aluno.status || String(aluno.status).trim() === "") {
+                            aluno.status = "Ativo";
+                        }
+                        if (dataFimObj && dataFimObj < hoje && !String(aluno.status).toLowerCase().includes("desligado")) {
                             aluno.status = "Encerrado";
                         }
                         return aluno;
                     };
+                    // ------------------------------------
 
-                    window.DB.quali = data.quali.map(blindarBase); 
-                    window.DB.tec = data.tec.map(blindarBase); 
+                    DB.quali = data.quali.map(blindarBase); 
+                    DB.tec = data.tec.map(blindarBase); 
                     
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
-                    
-                    // Força a atualização agressiva da tela (Dashboard)
-                    if(typeof runFilter === 'function') setTimeout(runFilter, 200); 
+                    if(typeof runFilter === 'function') runFilter(); 
                     
                     alert(`Base substituída com sucesso!\n\nQualificação: ${data.quali.length} alunos\nTécnico: ${data.tec.length} alunos`); 
                 } catch(e) { 
                     console.error(e); 
-                    alert("Erro ao substituir: " + e); 
+                    alert("Erro ao substituir: " + e.message); 
                 } finally { 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     input.value = ''; 
