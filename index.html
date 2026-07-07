@@ -1124,6 +1124,7 @@
                 reader.readAsArrayBuffer(file); 
             }); 
         }
+
         // =========================================================================
         // FUNÇÕES AUXILIARES (Mantidas para não quebrar o sistema)
         // =========================================================================
@@ -1228,7 +1229,7 @@
             }
             return alunosLidos; 
         }
-        
+
         // =========================================================================
         // 3. ADICIONAR NOVOS (E Corrigir os horários dos antigos!)
         // =========================================================================
@@ -1246,16 +1247,11 @@
                     const data = await readAndParseFile(file); 
                     let adicionados = 0;
                     let corrigidos = 0;
-                    
-                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
-                    
-                    const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
-                    const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
-                    // --- MOTOR DE BLINDAGEM DE STATUS ---
+                    // --- INÍCIO DA BLINDAGEM DE STATUS ---
                     const blindarStatusAluno = (aluno) => {
                         if (!aluno) return;
-                        let dataFim = safeStr(aluno.data_fim || aluno.termino || aluno.fim_contrato).trim();
+                        let dataFim = String(aluno.data_fim || aluno.termino || aluno.fim_contrato || "").trim();
                         let hoje = new Date();
                         hoje.setHours(0,0,0,0);
                         
@@ -1270,26 +1266,31 @@
                             }
                         }
 
-                        // Se veio sem status, marca como Ativo
                         if (!aluno.status || String(aluno.status).trim() === "") {
                             aluno.status = "Ativo";
                         }
                         
-                        // Se o contrato venceu, muda para Encerrado automaticamente
                         if (dataFimObj && dataFimObj < hoje && !String(aluno.status).toLowerCase().includes("desligado")) {
                             aluno.status = "Encerrado";
                         }
                     };
-                    // ------------------------------------
+                    // --- FIM DA BLINDAGEM DE STATUS ---
+                    
+                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
+                    
+                    const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
+                    const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
                     data.quali.forEach(novoAluno => { 
-                        blindarStatusAluno(novoAluno);
+                        blindarStatusAluno(novoAluno); // Força a regra antes de analisar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
+                            // Se não existe, adiciona!
                             DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
                             const alunoAntigo = bancoQuali.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
@@ -1300,13 +1301,14 @@
                     }); 
 
                     data.tec.forEach(novoAluno => { 
-                        blindarStatusAluno(novoAluno);
+                        blindarStatusAluno(novoAluno); // Força a regra antes de analisar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoTec.has(ass)) { 
                             DB.tec.unshift(novoAluno); 
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // Conserta os antigos da Técnica também
                             const alunoAntigo = bancoTec.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
@@ -1321,10 +1323,10 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos atualizados!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os dados/horários corrigidos!`); 
                 } catch(e) { 
                     console.error(e); 
-                    alert("Erro na importação: " + e.message); 
+                    alert("Erro na importação: " + e); 
                 } finally { 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     input.value = ''; 
@@ -1348,7 +1350,7 @@
                 try { 
                     const data = await readAndParseFile(file); 
                     
-                    // --- MOTOR DE BLINDAGEM DE STATUS ---
+                    // --- INÍCIO DA BLINDAGEM DE STATUS ---
                     const blindarBase = (aluno) => {
                         if (!aluno) return aluno;
                         let dataFim = String(aluno.data_fim || aluno.termino || aluno.fim_contrato || "").trim();
@@ -1374,7 +1376,7 @@
                         }
                         return aluno;
                     };
-                    // ------------------------------------
+                    // --- FIM DA BLINDAGEM DE STATUS ---
 
                     DB.quali = data.quali.map(blindarBase); 
                     DB.tec = data.tec.map(blindarBase); 
@@ -1387,12 +1389,66 @@
                     alert(`Base substituída com sucesso!\n\nQualificação: ${data.quali.length} alunos\nTécnico: ${data.tec.length} alunos`); 
                 } catch(e) { 
                     console.error(e); 
-                    alert("Erro ao substituir: " + e.message); 
+                    alert("Erro ao substituir: " + e); 
                 } finally { 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     input.value = ''; 
                 } 
             }, 100); 
+        }
+        
+        function initLogin() { 
+            const sel = document.getElementById('loginRegion'); 
+            let html = '<option value="">👑 Gestão Central / Admin (Requer Senha)</option>'; 
+            html += '<option value="VISITANTE">👁️ Visitante / Coordenação (Apenas Leitura)</option>';
+            sel.innerHTML = html; 
+            checkLoginType();
+        }
+
+        function checkLoginType() { 
+            const val = document.getElementById('loginRegion').value; 
+            const passField = document.getElementById('passField'); 
+            if(val === "") { 
+                passField.classList.remove('hidden'); 
+            } else { 
+                passField.classList.add('hidden'); 
+            } 
+        }
+
+        function performLogin() { 
+            const val = document.getElementById('loginRegion').value; 
+            const inputPass = document.getElementById('loginPass').value; 
+            
+            if(val === "") { 
+                if(inputPass === PASS_ADMIN) startApp('admin', 'Todas'); 
+                else alert("Senha de Administrador incorreta."); 
+            } else if (val === "VISITANTE") {
+                startApp('espectador', 'Todas');
+            }
+        }
+
+        function startApp(type, region) { 
+            STATE.userType = type; 
+            STATE.userRegion = region; 
+            
+            document.getElementById('loginPage').classList.add('hidden'); 
+            document.getElementById('appContainer').classList.remove('hidden'); 
+            document.getElementById('appContainer').classList.add('flex'); 
+            
+            document.getElementById('roleDisplay').innerText = type === 'admin' ? "Administrador" : "Modo Leitura"; 
+            document.getElementById('userDisplay').innerText = type === 'admin' ? "Gestão Geral" : "VISITANTE"; 
+            
+            const btnFin = document.getElementById('btnFin'); 
+            const filterReg = document.getElementById('filterRegiao'); 
+            
+            // Ambos podem usar o filtro de regiões para gerar relatórios
+            filterReg.disabled = false; 
+            
+            if(type === 'admin') { 
+                if(btnFin) btnFin.classList.remove('hidden'); 
+            } else { 
+                if(btnFin) btnFin.classList.add('hidden'); 
+            } 
         } 
 
             // =========================================================================
