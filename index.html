@@ -1217,20 +1217,7 @@
                         tel: val(C.tel), 
                         email: val(C.email) 
                     }, 
-                    regiao: String(val(C.regiao)).toUpperCase().trim(), 
-                    cidade: String(val(C.cidade)).toUpperCase().trim(), 
-                    ini: parseDate(val(C.ini)), 
-                    fim: parseDate(val(C.fim)), 
-                    teoria: hrTeoria, 
-                    pratica: hrPratica, 
-                    visits: [], 
-                    isDesligado: false 
-                });
-            }
-            return alunosLidos; 
-        }
-
-        // =========================================================================
+                    // =========================================================================
         // 3. ADICIONAR NOVOS (E Corrigir os horários dos antigos!)
         // =========================================================================
         async function runMergeImport(input) { 
@@ -1248,30 +1235,28 @@
                     let adicionados = 0;
                     let corrigidos = 0;
                     
-                    // --- FUNÇÃO PARA EVITAR ERROS DE TEXTO VAZIO ---
-                    const localSafeStr = (s) => (s === null || s === undefined) ? "" : String(s);
-                    const getAssinatura = (aluno) => `${localSafeStr(aluno.nome).trim().toUpperCase()}|${localSafeStr(aluno.turma).trim().toUpperCase()}`; 
+                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
                     
                     const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
                     const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
-                    // --- INJEÇÃO PARA SALVAR O DASHBOARD (STATUS) ---
+                    // --- INJEÇÃO LEVE PARA SALVAR O DASHBOARD (STATUS) ---
                     const arrumarStatus = (a) => {
-                        if (!a.status) a.status = "Ativo";
-                        let d = localSafeStr(a.data_fim || a.termino || a.fim_contrato).trim();
+                        if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
+                        let dataFim = String(a.data_fim || a.termino || a.fim_contrato || "").trim();
                         let dObj = null;
-                        if (d.includes('/')) {
-                            let p = d.split('/');
+                        if (dataFim.includes('/')) {
+                            let p = dataFim.split('/');
                             if (p.length === 3) dObj = new Date(p[2], p[1]-1, p[0]);
-                        } else if (d.includes('-')) {
-                            let p = d.split('-');
+                        } else if (dataFim.includes('-')) {
+                            let p = dataFim.split('-');
                             if (p.length === 3) dObj = new Date(p[0], p[1]-1, p[2]);
                         }
                         if (dObj) {
                             dObj.setHours(0,0,0,0);
                             let hoje = new Date();
                             hoje.setHours(0,0,0,0);
-                            if (dObj < hoje && !localSafeStr(a.status).toLowerCase().includes("desl") && !localSafeStr(a.status).toLowerCase().includes("enc")) {
+                            if (dObj < hoje && !String(a.status).toLowerCase().includes("desl") && !String(a.status).toLowerCase().includes("enc")) {
                                 a.status = "Encerrado";
                             }
                         }
@@ -1292,7 +1277,7 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status && localSafeStr(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
+                            if (novoAluno.status) alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
@@ -1311,7 +1296,7 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status && localSafeStr(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
+                            if (novoAluno.status) alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
@@ -1321,7 +1306,7 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os dados corrigidos!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro na importação: " + e); 
@@ -1348,35 +1333,33 @@
                 try { 
                     const data = await readAndParseFile(file); 
                     
-                    // --- FUNÇÃO PARA EVITAR ERROS E CORRIGIR STATUS ---
-                    const localSafeStr = (s) => (s === null || s === undefined) ? "" : String(s);
+                    // --- INJEÇÃO LEVE PARA SALVAR O DASHBOARD ---
                     const corrigir = (a) => {
                         if(!a) return a;
-                        if(!a.status) a.status = "Ativo";
-                        let d = localSafeStr(a.data_fim || a.termino || a.fim_contrato).trim();
+                        if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
+                        let dataFim = String(a.data_fim || a.termino || a.fim_contrato || "").trim();
                         let dObj = null;
-                        if(d.includes('/')) {
-                            let p = d.split('/');
-                            if(p.length === 3) dObj = new Date(p[2], p[1]-1, p[0]);
-                        } else if(d.includes('-')) {
-                            let p = d.split('-');
-                            if(p.length === 3) dObj = new Date(p[0], p[1]-1, p[2]);
+                        if (dataFim.includes('/')) {
+                            let p = dataFim.split('/');
+                            if (p.length === 3) dObj = new Date(p[2], p[1]-1, p[0]);
+                        } else if (dataFim.includes('-')) {
+                            let p = dataFim.split('-');
+                            if (p.length === 3) dObj = new Date(p[0], p[1]-1, p[2]);
                         }
                         if (dObj) {
                             dObj.setHours(0,0,0,0);
                             let hoje = new Date();
                             hoje.setHours(0,0,0,0);
-                            if (dObj < hoje && !localSafeStr(a.status).toLowerCase().includes("desl") && !localSafeStr(a.status).toLowerCase().includes("enc")) {
+                            if (dObj < hoje && !String(a.status).toLowerCase().includes("desl") && !String(a.status).toLowerCase().includes("enc")) {
                                 a.status = "Encerrado";
                             }
                         }
                         return a;
                     };
-                    
                     DB.quali = (data.quali || []).map(corrigir); 
                     DB.tec = (data.tec || []).map(corrigir); 
                     // ---------------------------------------
-
+                    
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
@@ -1447,11 +1430,11 @@
             } 
         } 
 
-            // =========================================================================
-            // BLINDAGEM MÁXIMA PARA ESPECTADOR (Desativa edição no Planejamento)
-            // =========================================================================
-            if (type === 'espectador') {
-                let style = document.getElementById('spectatorLocks');
+        // =========================================================================
+        // BLINDAGEM MÁXIMA PARA ESPECTADOR (Desativa edição no Planejamento)
+        // =========================================================================
+        if (STATE.userType === 'espectador') {
+            let style = document.getElementById('spectatorLocks');
                 if (!style) {
                     style = document.createElement('style');
                     style.id = 'spectatorLocks';
