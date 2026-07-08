@@ -1247,6 +1247,7 @@
                     const data = await readAndParseFile(file); 
                     let adicionados = 0;
                     let corrigidos = 0;
+                    
                     // --- INÍCIO DA BLINDAGEM DE STATUS ---
                     try {
                         const blindar = (lista) => {
@@ -1267,7 +1268,7 @@
                         };
                         blindar(data.quali);
                         blindar(data.tec);
-                    } catch(err) { console.warn("Ignorando erro de status"); }
+                    } catch(err) { console.warn("Erro ao blindar status:", err); }
                     // --- FIM DA BLINDAGEM DE STATUS ---
                     
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
@@ -1278,16 +1279,15 @@
                     data.quali.forEach(novoAluno => { 
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
-                            // Se não existe, adiciona!
                             DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
                             const alunoAntigo = bancoQuali.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
+                            if (novoAluno.status) alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
@@ -1299,11 +1299,11 @@
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // Conserta os antigos da Técnica também
                             const alunoAntigo = bancoTec.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
+                            if (novoAluno.status) alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
@@ -1313,6 +1313,9 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
+                    // Atualiza os Banners com os números novos
+                    updateDashboardBanners();
+
                     alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
                 } catch(e) { 
                     console.error(e); 
@@ -1338,7 +1341,8 @@
             
             setTimeout(async () => { 
                 try { 
-                    const data = await readAndParseFile(file);
+                    const data = await readAndParseFile(file); 
+                    
                     // --- INÍCIO DA BLINDAGEM DE STATUS ---
                     try {
                         const blindar = (lista) => {
@@ -1359,8 +1363,9 @@
                         };
                         blindar(data.quali);
                         blindar(data.tec);
-                    } catch(err) { console.warn("Ignorando erro de status"); }
+                    } catch(err) { console.warn("Erro ao blindar status:", err); }
                     // --- FIM DA BLINDAGEM DE STATUS ---
+
                     DB.quali = data.quali; 
                     DB.tec = data.tec; 
                     
@@ -1369,6 +1374,9 @@
                     if(typeof setupFilters === 'function') setupFilters(); 
                     if(typeof runFilter === 'function') runFilter(); 
                     
+                    // Atualiza os Banners com os números novos
+                    updateDashboardBanners();
+
                     alert(`Base substituída com sucesso!\n\nQualificação: ${data.quali.length} alunos\nTécnico: ${data.tec.length} alunos`); 
                 } catch(e) { 
                     console.error(e); 
@@ -1379,6 +1387,7 @@
                 } 
             }, 100); 
         }
+
         function initLogin() { 
             const sel = document.getElementById('loginRegion'); 
             let html = '<option value="">👑 Gestão Central / Admin (Requer Senha)</option>'; 
@@ -1423,7 +1432,6 @@
             const btnFin = document.getElementById('btnFin'); 
             const filterReg = document.getElementById('filterRegiao'); 
             
-            // Ambos podem usar o filtro de regiões para gerar relatórios
             filterReg.disabled = false; 
             
             if(type === 'admin') { 
@@ -1431,7 +1439,32 @@
             } else { 
                 if(btnFin) btnFin.classList.add('hidden'); 
             } 
+        } 
 
+        // =========================================================================
+        // FUNÇÃO INTEGRADA QUE ATUALIZA OS CONTADORES VISUAIS REAIS DO SEU HTML
+        // =========================================================================
+        function updateDashboardBanners() {
+            try {
+                const todosAlunos = [...(DB.quali || []), ...(DB.tec || [])];
+                const total = todosAlunos.length;
+                
+                const ativos = todosAlunos.filter(a => a && String(a.status).trim().toLowerCase() === "ativo").length;
+                const encerrados = todosAlunos.filter(a => a && (String(a.status).toLowerCase().includes("enc") || String(a.status).toLowerCase().includes("concl"))).length;
+                const desligados = todosAlunos.filter(a => a && String(a.status).toLowerCase().includes("desl")).length;
+
+                // Aplicando diretamente nos IDs reais dos seus Banners HTML
+                if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = total;
+                if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = ativos;
+                if(document.getElementById('valDone')) document.getElementById('valDone').innerText = encerrados;
+                if(document.getElementById('valDesligado')) document.getElementById('valDesligado').innerText = desligados + " | 0";
+                if(document.getElementById('dashGrandTotal')) document.getElementById('dashGrandTotal').innerText = total;
+                
+                console.log("Banners do painel atualizados com sucesso!");
+            } catch(err) {
+                console.error("Erro ao renderizar números nos banners:", err);
+            }
+        }
             // =========================================================================
             // BLINDAGEM MÁXIMA PARA ESPECTADOR (Desativa edição no Planejamento)
             // =========================================================================
