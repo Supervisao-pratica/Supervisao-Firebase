@@ -1248,12 +1248,38 @@
                     let adicionados = 0;
                     let corrigidos = 0;
                     
-                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
+                    // --- FUNÇÃO PARA EVITAR ERROS DE TEXTO VAZIO ---
+                    const localSafeStr = (s) => (s === null || s === undefined) ? "" : String(s);
+                    const getAssinatura = (aluno) => `${localSafeStr(aluno.nome).trim().toUpperCase()}|${localSafeStr(aluno.turma).trim().toUpperCase()}`; 
                     
                     const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
                     const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
+                    // --- INJEÇÃO PARA SALVAR O DASHBOARD (STATUS) ---
+                    const arrumarStatus = (a) => {
+                        if (!a.status) a.status = "Ativo";
+                        let d = localSafeStr(a.data_fim || a.termino || a.fim_contrato).trim();
+                        let dObj = null;
+                        if (d.includes('/')) {
+                            let p = d.split('/');
+                            if (p.length === 3) dObj = new Date(p[2], p[1]-1, p[0]);
+                        } else if (d.includes('-')) {
+                            let p = d.split('-');
+                            if (p.length === 3) dObj = new Date(p[0], p[1]-1, p[2]);
+                        }
+                        if (dObj) {
+                            dObj.setHours(0,0,0,0);
+                            let hoje = new Date();
+                            hoje.setHours(0,0,0,0);
+                            if (dObj < hoje && !localSafeStr(a.status).toLowerCase().includes("desl") && !localSafeStr(a.status).toLowerCase().includes("enc")) {
+                                a.status = "Encerrado";
+                            }
+                        }
+                    };
+                    // ----------------------------------------
+
                     data.quali.forEach(novoAluno => { 
+                        arrumarStatus(novoAluno); // Arruma o status antes de salvar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
                             // Se não existe, adiciona!
@@ -1266,13 +1292,16 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
+                            if (novoAluno.status && localSafeStr(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
 
                     data.tec.forEach(novoAluno => { 
+                        arrumarStatus(novoAluno); // Arruma o status antes de salvar
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoTec.has(ass)) { 
+                            // Se não existe, adiciona!
                             DB.tec.unshift(novoAluno); 
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
@@ -1282,6 +1311,7 @@
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
+                            if (novoAluno.status && localSafeStr(novoAluno.status).toLowerCase() !== "ativo") alunoAntigo.status = novoAluno.status;
                             corrigidos++;
                         }
                     }); 
@@ -1291,7 +1321,7 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os dados corrigidos!`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro na importação: " + e); 
@@ -1317,9 +1347,36 @@
             setTimeout(async () => { 
                 try { 
                     const data = await readAndParseFile(file); 
-                    DB.quali = data.quali; 
-                    DB.tec = data.tec; 
                     
+                    // --- FUNÇÃO PARA EVITAR ERROS E CORRIGIR STATUS ---
+                    const localSafeStr = (s) => (s === null || s === undefined) ? "" : String(s);
+                    const corrigir = (a) => {
+                        if(!a) return a;
+                        if(!a.status) a.status = "Ativo";
+                        let d = localSafeStr(a.data_fim || a.termino || a.fim_contrato).trim();
+                        let dObj = null;
+                        if(d.includes('/')) {
+                            let p = d.split('/');
+                            if(p.length === 3) dObj = new Date(p[2], p[1]-1, p[0]);
+                        } else if(d.includes('-')) {
+                            let p = d.split('-');
+                            if(p.length === 3) dObj = new Date(p[0], p[1]-1, p[2]);
+                        }
+                        if (dObj) {
+                            dObj.setHours(0,0,0,0);
+                            let hoje = new Date();
+                            hoje.setHours(0,0,0,0);
+                            if (dObj < hoje && !localSafeStr(a.status).toLowerCase().includes("desl") && !localSafeStr(a.status).toLowerCase().includes("enc")) {
+                                a.status = "Encerrado";
+                            }
+                        }
+                        return a;
+                    };
+                    
+                    DB.quali = (data.quali || []).map(corrigir); 
+                    DB.tec = (data.tec || []).map(corrigir); 
+                    // ---------------------------------------
+
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
@@ -1335,6 +1392,7 @@
                 } 
             }, 100); 
         }
+
         function initLogin() { 
             const sel = document.getElementById('loginRegion'); 
             let html = '<option value="">👑 Gestão Central / Admin (Requer Senha)</option>'; 
@@ -1387,6 +1445,7 @@
             } else { 
                 if(btnFin) btnFin.classList.add('hidden'); 
             } 
+        } 
 
             // =========================================================================
             // BLINDAGEM MÁXIMA PARA ESPECTADOR (Desativa edição no Planejamento)
