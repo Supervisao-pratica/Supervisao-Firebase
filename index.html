@@ -1216,8 +1216,8 @@
                         display: val(C.sup) || "Não Inf.", 
                         tel: val(C.tel), 
                         email: val(C.email) 
-                    }, 
-                    // =========================================================================
+                    } 
+        // =========================================================================
         // 3. ADICIONAR NOVOS (E Corrigir os horários dos antigos!)
         // =========================================================================
         async function runMergeImport(input) { 
@@ -1235,7 +1235,9 @@
                     let adicionados = 0;
                     let corrigidos = 0;
                     
-                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
+                    // --- FUNÇÃO PROTETORA INJETADA AQUI PARA EVITAR LOOPING ---
+                    const textoSeguro = (s) => (s === null || s === undefined) ? "" : String(s);
+                    const getAssinatura = (aluno) => `${textoSeguro(aluno.nome).trim().toUpperCase()}|${textoSeguro(aluno.turma).trim().toUpperCase()}`; 
                     
                     const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
                     const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
