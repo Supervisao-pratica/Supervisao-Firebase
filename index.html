@@ -1247,6 +1247,28 @@
                     const data = await readAndParseFile(file); 
                     let adicionados = 0;
                     let corrigidos = 0;
+                    // --- INÍCIO DA BLINDAGEM DE STATUS ---
+                    try {
+                        const blindar = (lista) => {
+                            if (!lista) return;
+                            lista.forEach(a => {
+                                if (!a) return;
+                                if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
+                                let d = String(a.data_fim || a.termino || a.fim_contrato || "").trim();
+                                let p = d.includes('/') ? d.split('/') : (d.includes('-') ? d.split('-') : []);
+                                if (p.length === 3) {
+                                    let dObj = d.includes('/') ? new Date(p[2], p[1]-1, p[0]) : new Date(p[0], p[1]-1, p[2]);
+                                    let hoje = new Date(); hoje.setHours(0,0,0,0);
+                                    if (dObj < hoje && !String(a.status).toLowerCase().includes("desl") && !String(a.status).toLowerCase().includes("enc")) {
+                                        a.status = "Encerrado";
+                                    }
+                                }
+                            });
+                        };
+                        blindar(data.quali);
+                        blindar(data.tec);
+                    } catch(err) { console.warn("Ignorando erro de status"); }
+                    // --- FIM DA BLINDAGEM DE STATUS ---
                     
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
                     
@@ -1316,7 +1338,29 @@
             
             setTimeout(async () => { 
                 try { 
-                    const data = await readAndParseFile(file); 
+                    const data = await readAndParseFile(file);
+                    // --- INÍCIO DA BLINDAGEM DE STATUS ---
+                    try {
+                        const blindar = (lista) => {
+                            if (!lista) return;
+                            lista.forEach(a => {
+                                if (!a) return;
+                                if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
+                                let d = String(a.data_fim || a.termino || a.fim_contrato || "").trim();
+                                let p = d.includes('/') ? d.split('/') : (d.includes('-') ? d.split('-') : []);
+                                if (p.length === 3) {
+                                    let dObj = d.includes('/') ? new Date(p[2], p[1]-1, p[0]) : new Date(p[0], p[1]-1, p[2]);
+                                    let hoje = new Date(); hoje.setHours(0,0,0,0);
+                                    if (dObj < hoje && !String(a.status).toLowerCase().includes("desl") && !String(a.status).toLowerCase().includes("enc")) {
+                                        a.status = "Encerrado";
+                                    }
+                                }
+                            });
+                        };
+                        blindar(data.quali);
+                        blindar(data.tec);
+                    } catch(err) { console.warn("Ignorando erro de status"); }
+                    // --- FIM DA BLINDAGEM DE STATUS ---
                     DB.quali = data.quali; 
                     DB.tec = data.tec; 
                     
