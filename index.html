@@ -1416,7 +1416,9 @@
             const btnFin = document.getElementById('btnFin'); 
             const filterReg = document.getElementById('filterRegiao'); 
             
-            filterReg.disabled = false; 
+            if (filterReg) {
+                filterReg.disabled = false; 
+            } 
             
             if(type === 'admin') { 
                 if(btnFin) btnFin.classList.remove('hidden'); 
@@ -1975,16 +1977,26 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         }
 
         // =========================================================
-        // FILTRO PRINCIPAL TURBINADO (ANTI-ACENTOS)
+        // FILTRO PRINCIPAL TURBINADO (ANTI-ACENTOS) - BLINDADO
         // =========================================================
         function runFilter() { 
-            const termRaw = document.getElementById('filterSearch').value || "";
+            // 1. Captura as referências dos elementos primeiro
+            const elSearch = document.getElementById('filterSearch');
+            const elRegiao = document.getElementById('filterRegiao');
+            const elCidade = document.getElementById('filterCidade');
+            const elSubStatus = document.getElementById('filterSubStatus');
+
+            // 👑 BLINDAGEM MÁXIMA: Se o usuário estiver no Login, os elementos não existem.
+            // Aborta aqui temporariamente para evitar o erro fatal e a tela branca.
+            if (!elSearch || !elRegiao || !elCidade || !elSubStatus) return;
+
+            const termRaw = elSearch.value || "";
             // Usa o motor para limpar o termo de busca (sem acentos, tudo minúsculo)
             const term = typeof window.removerAcentos === 'function' ? window.removerAcentos(termRaw) : safeStr(termRaw);
             
-            const reg = document.getElementById('filterRegiao').value; 
-            const cid = document.getElementById('filterCidade').value; 
-            const subStatusFilter = document.getElementById('filterSubStatus').value; 
+            const reg = elRegiao.value; 
+            const cid = elCidade.value; 
+            const subStatusFilter = elSubStatus.value; 
             const rawData = STATE.scope === 'tecnico' ? DB.tec : DB.quali; 
             
             // FUNÇÃO AUXILIAR: Limpa o dado do aluno para comparar
@@ -2071,7 +2083,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const avgAtivo = countDelayAtivo > 0 ? Math.round(sumDelayAtivo / countDelayAtivo) : 0;
 
             const formatAvgDelay = (d) => {
-                const numD = parseInt(d) || 0; // Bloqueia propagação do NaN
+                const numD = parseInt(d) || 0; 
                 if (numD === 0) return "0 dias";
                 if (numD < 7) return numD + (numD > 1 ? " dias" : " dia");
                 if (numD < 30) return Math.floor(numD / 7) + " sem";
@@ -2082,6 +2094,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const avgTextAtrasado = `Média: ${formatAvgDelay(avgAtrasado)}`;
             const avgTextAtivo = `Média: ${formatAvgDelay(avgAtivo)}`;
 
+            // Atualização dos elementos com validação de existência
             if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = cTotal; 
             if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = cBaseAtiva; 
             if(document.getElementById('valAtrasado')) document.getElementById('valAtrasado').innerText = cAtrasado; 
@@ -2110,9 +2123,11 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const final2025 = appliedLegacy + dynamic2025;
 
             if(isQuali) { 
-                legDone.classList.remove('hidden'); 
-                legacyContainer.style.opacity = '0.6'; 
-                legacyContainer.classList.remove('hidden'); 
+                if(legDone) legDone.classList.remove('hidden'); 
+                if(legacyContainer) {
+                    legacyContainer.style.opacity = '0.6'; 
+                    legacyContainer.classList.remove('hidden'); 
+                }
                 
                 const val2025El = document.getElementById('valLegacy2025');
                 if(val2025El) {
@@ -2125,22 +2140,24 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                     }
                 }
             } else { 
-                legDone.classList.add('hidden'); 
-                legacyContainer.style.opacity = '0'; 
-                legacyContainer.classList.add('hidden'); 
+                if(legDone) legDone.classList.add('hidden'); 
+                if(legacyContainer) {
+                    legacyContainer.style.opacity = '0'; 
+                    legacyContainer.classList.add('hidden'); 
+                }
             } 
             
-            document.getElementById('valDesligado').innerText = cDesligadoTotal; 
-            document.getElementById('valDesligadoSplit').innerText = `(${cDesligadosManual} | ${cEncerradosContrato})`;
-            document.getElementById('dashGrandTotal').innerText = totalActual; 
+            if(document.getElementById('valDesligado')) document.getElementById('valDesligado').innerText = cDesligadoTotal; 
+            if(document.getElementById('valDesligadoSplit')) document.getElementById('valDesligadoSplit').innerText = `(${cDesligadosManual} | ${cEncerradosContrato})`;
+            if(document.getElementById('dashGrandTotal')) document.getElementById('dashGrandTotal').innerText = totalActual; 
             
             if(document.getElementById('pGrandTotal')) document.getElementById('pGrandTotal').innerText = totalActual + (isQuali ? final2025 : 0); 
             if(document.getElementById('pBaseAtiva')) document.getElementById('pBaseAtiva').innerText = cBaseAtiva; 
 
             STATE.page = 1; 
-            changePage(0); 
-            renderCharts(isQuali ? final2025 : 0); 
-            checkGlobalAlerts();
+            if(typeof changePage === 'function') changePage(0); 
+            if(typeof renderCharts === 'function') renderCharts(isQuali ? final2025 : 0); 
+            if(typeof checkGlobalAlerts === 'function') checkGlobalAlerts();
         }
         function changePage(delta) { const totalPages = Math.ceil(STATE.filter.length / STATE.perPage) || 1; let newPage = parseInt(STATE.page) + delta; if(newPage < 1) newPage = 1; if(newPage > totalPages) newPage = totalPages; STATE.page = newPage; document.getElementById('pageInfo').innerText = `Página ${STATE.page} de ${totalPages}`; document.getElementById('btnPrev').disabled = STATE.page <= 1; document.getElementById('btnNext').disabled = STATE.page >= totalPages; renderTable(); const listContainer = document.querySelector('.overflow-x-auto'); if(listContainer) listContainer.scrollTop = 0; }
 // =========================================================================
