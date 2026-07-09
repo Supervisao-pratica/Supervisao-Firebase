@@ -1977,26 +1977,24 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         }
 
         // =========================================================
-        // FILTRO PRINCIPAL TURBINADO (ANTI-ACENTOS) - BLINDADO
+        // FILTRO PRINCIPAL TURBINADO (ANTI-ACENTOS)
         // =========================================================
         function runFilter() { 
-            // 1. Captura as referências dos elementos primeiro
+            // BLINDAGEM CONTRA TELA BRANCA: Só lê o valor se o elemento existir na tela.
             const elSearch = document.getElementById('filterSearch');
-            const elRegiao = document.getElementById('filterRegiao');
-            const elCidade = document.getElementById('filterCidade');
-            const elSubStatus = document.getElementById('filterSubStatus');
-
-            // 👑 BLINDAGEM MÁXIMA: Se o usuário estiver no Login, os elementos não existem.
-            // Aborta aqui temporariamente para evitar o erro fatal e a tela branca.
-            if (!elSearch || !elRegiao || !elCidade || !elSubStatus) return;
-
-            const termRaw = elSearch.value || "";
-            // Usa o motor para limpar o termo de busca (sem acentos, tudo minúsculo)
+            const termRaw = elSearch ? elSearch.value : "";
+            
             const term = typeof window.removerAcentos === 'function' ? window.removerAcentos(termRaw) : safeStr(termRaw);
             
-            const reg = elRegiao.value; 
-            const cid = elCidade.value; 
-            const subStatusFilter = elSubStatus.value; 
+            const elRegiao = document.getElementById('filterRegiao');
+            const reg = elRegiao ? elRegiao.value : ""; 
+            
+            const elCidade = document.getElementById('filterCidade');
+            const cid = elCidade ? elCidade.value : ""; 
+            
+            const elSubStatus = document.getElementById('filterSubStatus');
+            const subStatusFilter = elSubStatus ? elSubStatus.value : ""; 
+            
             const rawData = STATE.scope === 'tecnico' ? DB.tec : DB.quali; 
             
             // FUNÇÃO AUXILIAR: Limpa o dado do aluno para comparar
