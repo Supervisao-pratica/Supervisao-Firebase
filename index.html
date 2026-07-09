@@ -1852,19 +1852,22 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         function countVisits(item) { return (item.visits || []).filter(v => v.ok).length; }
         function checkServed(item) { return (item.visits || []).some(v => v.ok); }
         
-        function analyzeStatus(item) { 
+        function analyzeStatus(item) {
             const obsText = (item.obs_origem || "").toLowerCase();
-            const isManual = item.isDesligado || obsText.includes('desligamento') || obsText.includes('desligado') || obsText.includes('cancelado') || obsText.includes('evasão');
-            const now = new Date(); 
-            let alertObj = { isAlert: false, msg: '' };
+            // --- INÍCIO DA MODIFICAÇÃO ---
+            // Regra mais explícita para considerar um aluno como "desligado"
+            const isManualDesligado = item.isDesligado || obsText.includes("desligamento") || obsText.includes("desligado") || obsText.includes("cancelado") || obsText.includes("evasão");
+            const isEncerradoContrato = item.fim && !isNaN(new Date(item.fim).getTime()) && new Date(item.fim) < new Date(); // Verifica se a data de fim é válida e já passou
+            // --- FIM DA MODIFICAÇÃO ---
+
+            const now = new Date();
             const visitsDone = countVisits(item);
-            
             const isTec = DB.tec.some(t => t.id === item.id);
             const totalVisitasEsperadas = isTec ? 6 : 3;
 
             let currentDelay = 0;
             const formatDelay = (d) => {
-                const numD = parseInt(d) || 0; 
+                const numD = parseInt(d) || 0;
                 if (numD === 0) return "0 dias";
                 if (numD < 7) return numD + (numD > 1 ? " dias" : " dia");
                 if (numD < 30) return Math.floor(numD / 7) + " sem";
@@ -1880,8 +1883,9 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if (diffDaysStart > 30) isSemAtendimento = true;
             }
 
-            if (isManual) return { status: 'desligado', subStatus: 'manual', color: 'gray', label: 'DESLIGADO', alert: alertObj, delay: 0 }; 
-            if (item.fim && now > new Date(item.fim)) return { status: 'desligado', subStatus: 'contrato', color: 'gray', label: 'ENCERRADO', alert: alertObj, delay: 0 }; 
+            // --- LÓGICA DE STATUS ---
+            if (isManualDesligado) return { status: 'desligado', subStatus: 'manual', color: 'gray', label: 'DESLIGADO', alert: { isAlert: false, msg: '' }, delay: 0 };
+            if (isEncerradoContrato) return { status: 'desligado', subStatus: 'contrato', color: 'gray', label: 'ENCERRADO', alert: { isAlert: false, msg: '' }, delay: 0 };
 
             let baseDate = item.ini ? new Date(item.ini) : null;
             if (visitsDone > 0) {
@@ -1893,33 +1897,35 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 }
             }
 
-            if (visitsDone < totalVisitasEsperadas && baseDate && !isNaN(baseDate.getTime())) {
+            let currentDelayDays = 0; // Renomeado para clareza
+            if (baseDate && !isNaN(baseDate.getTime())) {
                 const expectedDate = new Date(baseDate);
                 expectedDate.setMonth(expectedDate.getMonth() + 3); // REGRA DE 3 MESES PARA TODOS
-                
+
                 const diffDays = Math.ceil((expectedDate - now) / (1000 * 60 * 60 * 24)) || 0;
-                
+                currentDelayDays = Math.abs(diffDays); // Usamos o valor absoluto para o delay
+
                 if (diffDays < 0) {
-                    currentDelay = Math.abs(diffDays);
-                    alertObj.isAlert = true; 
-                    alertObj.msg = `V${visitsDone + 1} Atrasada (${formatDelay(currentDelay)})`;
+                    alertObj.isAlert = true;
+                    alertObj.msg = `V${visitsDone + 1} Atrasada (${formatDelay(currentDelayDays)})`;
                 } else if (diffDays <= 30) {
-                    alertObj.isAlert = true; 
+                    alertObj.isAlert = true;
                     alertObj.msg = `V${visitsDone + 1} em ${diffDays}d`;
                 } else if (isSemAtendimento) {
                     alertObj.isAlert = true;
                     alertObj.msg = `Sem V1 há ${formatDelay(diffDaysStart)}`;
                 }
+            } else if (isSemAtendimento) { // Caso não tenha data base mas já passou 30 dias sem visita
+                 alertObj.isAlert = true;
+                 alertObj.msg = `Sem V1 há ${formatDelay(diffDaysStart)}`;
             }
 
-            currentDelay = parseInt(currentDelay) || 0; 
-            if(visitsDone >= totalVisitasEsperadas) return { status: 'completed', color: 'blue', label: 'CONCLUÍDO', alert: alertObj, delay: 0 }; 
-            
-            // Se tem 1 ou mais visitas e ainda não concluiu, fica ATIVO
-            if(visitsDone >= 1) return { status: 'ativo', color: 'green', label: 'ATIVO', alert: alertObj, delay: currentDelay }; 
-            
-            // REGRA NOVA: Se chegou até aqui, é porque tem 0 visitas. Vai direto para SEM ATENDIMENTO.
-            return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', alert: alertObj, delay: currentDelay }; 
+            currentDelayDays = parseInt(currentDelayDays) || 0;
+            if (visitsDone >= totalVisitasEsperadas) return { status: 'completed', color: 'blue', label: 'CONCLUÍDO', alert: alertObj, delay: 0 };
+            if (visitsDone >= 1) return { status: 'ativo', color: 'green', label: 'ATIVO', alert: alertObj, delay: currentDelayDays };
+
+            // Se chegou aqui, é porque tem 0 visitas e não está em atraso por data de início
+            return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', alert: alertObj, delay: currentDelayDays };
         }
 
         function checkGlobalAlerts() {
