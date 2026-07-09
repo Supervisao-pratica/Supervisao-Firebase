@@ -1562,7 +1562,11 @@ window.requestRestore = function() {
                 setVal('editEmpresa', s.empresa?.razao); setVal('editEndereco', s.empresa?.endereco);
                 setVal('editLink', s.empresa?.link); setVal('editSupervisor', s.supervisor?.display);
                 setVal('editTel', s.supervisor?.tel); setVal('editEmail', s.supervisor?.email);
-                setVal('editObs', s.obs_origem); setCheck('editDesligado', s.isDesligado);
+                setVal('editObs', s.obs_origem); 
+                
+                // MUDANÇA AQUI: Lê o status real (inclusive palavras-chave) para marcar a caixa
+                const realStatus = typeof analyzeStatus === 'function' ? analyzeStatus(s) : { status: s.isDesligado ? 'desligado' : 'ativo' };
+                setCheck('editDesligado', realStatus.status === 'desligado');
 
                 if(s.ini) setVal('editIni', new Date(s.ini).toISOString().split('T')[0]);
                 if(s.fim) setVal('editFim', new Date(s.fim).toISOString().split('T')[0]);
@@ -1576,7 +1580,6 @@ window.requestRestore = function() {
                     sel.innerHTML = '<option value="">Selecione...</option>' + [...new Set(list)].sort().map(r => `<option value="${r}" ${r===s.regiao?'selected':''}>${r}</option>`).join(""); 
                 }
 
-                // Identifica se o aluno é da Técnica
                 const isTec = DB.tec.some(t => t.id == id) || STATE.scope === 'tecnico';
 
                 for(let i=1; i<=6; i++) {
@@ -1584,7 +1587,7 @@ window.requestRestore = function() {
                     const dateInp = document.getElementById('dateV' + i);
                     
                     if (check) {
-                        const container = check.parentElement; // Pega a div correta que envolve a visita
+                        const container = check.parentElement;
                         if (i <= 3 || isTec) {
                             container.classList.remove('hidden'); 
                             const vData = s.visits && s.visits[i-1];
@@ -1613,7 +1616,6 @@ window.requestRestore = function() {
 
         function saveStudentData() { 
             try {
-                // Descobre se o aluno é Técnico ou Qualificação
                 const isTec = DB.tec.some(t => t.id == STATE.editingId) || STATE.scope === 'tecnico';
                 const rawData = isTec ? DB.tec : DB.quali; 
                 
@@ -1621,13 +1623,21 @@ window.requestRestore = function() {
                 const getDate = id => { const v = getVal(id); return v ? new Date(v + "T12:00:00") : null; }; 
                 
                 let finalVisits = [];
-                // ==========================================
-                // REGRA CORRIGIDA: 6 PARA TÉCNICO, 3 PARA QUALI
-                // ==========================================
                 const maxV = isTec ? 6 : 3; 
                 for(let i=1; i<=maxV; i++) {
                     const ck = document.getElementById('checkV' + i);
                     if(ck) finalVisits.push({ ok: ck.checked, date: getDate('dateV' + i) });
+                }
+
+                let isDesl = !!document.getElementById('editDesligado')?.checked;
+                let obsText = getVal('editObs');
+                
+                // MUDANÇA AQUI: Se a caixa estiver DESMARCADA, apaga as palavras que forçam o desligamento
+                let baseStatus = "Ativo";
+                if (!isDesl) {
+                    obsText = obsText.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
+                } else {
+                    baseStatus = "Encerrado";
                 }
 
                 const newData = { 
@@ -1643,8 +1653,10 @@ window.requestRestore = function() {
                     empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink') },
                     supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
                     ini: getDate('editIni'), fim: getDate('editFim'),
-                    visits: finalVisits, isDesligado: !!document.getElementById('editDesligado')?.checked,
-                    obs_origem: getVal('editObs')
+                    visits: finalVisits, 
+                    isDesligado: isDesl,
+                    status: baseStatus,
+                    obs_origem: obsText
                 }; 
                 
                 if(STATE.editingId) { 
@@ -1658,7 +1670,7 @@ window.requestRestore = function() {
                 } else { rawData.unshift(newData); } 
                 
                 if(typeof saveToStorage === 'function') saveToStorage(); 
-                closeStudentModal(); 
+                if(typeof closeStudentModal === 'function') closeStudentModal(); 
                 if(typeof runFilter === 'function') runFilter(); 
                 if(typeof showToast === 'function') showToast("Dados salvos!"); 
             } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
