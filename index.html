@@ -1488,8 +1488,10 @@
         function switchTab(tab) { 
             if(tab !== 'planejamento' && tab !== 'controle') STATE.scope = tab; 
             
+            // Remove a seleção de todos os botões
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); 
             
+            // Marca o botão atual como ativo
             const btnId = tab === 'planejamento' ? 'btnPlan' : (tab === 'controle' ? 'btnControle' : (tab === 'tecnico' ? 'btnTec' : 'btnQuali')); 
             if(document.getElementById(btnId)) document.getElementById(btnId).classList.add('active'); 
             
@@ -1497,13 +1499,16 @@
             const plan = document.getElementById('viewPlanejamento'); 
             const controle = document.getElementById('viewControleRateio');
             
+            // 1. Esconde todas as telas primeiro (CORRIGIDO PARA USAR CLASSLIST)
             if(dash) { dash.classList.add('hidden'); dash.classList.remove('flex', 'flex-col'); }
             if(plan) { plan.classList.add('hidden'); plan.classList.remove('flex', 'flex-col'); }
             if(controle) { controle.classList.add('hidden'); controle.classList.remove('flex', 'flex-col'); }
             
+            // 2. Mostra a tela selecionada e carrega os dados
             if (tab === 'planejamento') { 
                 if(plan) { plan.classList.remove('hidden'); plan.classList.add('flex'); }
                 
+                // Força o sistema a desenhar os planejamentos
                 setTimeout(() => {
                     if(typeof setupPlanningFilters === 'function') setupPlanningFilters();
                     if(typeof initPlanSelector === 'function') initPlanSelector();
@@ -1512,10 +1517,12 @@
                 
             } else if (tab === 'controle') {
                 if(controle) { controle.classList.remove('hidden'); controle.classList.add('flex', 'flex-col'); }
+                
                 if(window.renderControleRateio) window.renderControleRateio();
                 
             } else { 
-                if(dash) { dash.remove('hidden'); dash.classList.add('flex', 'flex-col'); }
+                // AQUI ESTAVA O ERRO FATAL QUE DELETAVA A TELA. AGORA ESTÁ CORRIGIDO:
+                if(dash) { dash.classList.remove('hidden'); dash.classList.add('flex', 'flex-col'); }
                 
                 const titleEl = document.getElementById('listTitle');
                 if(titleEl) {
@@ -1525,6 +1532,9 @@
                 }
                 
                 STATE.page = 1; 
+                if (typeof runFilter === 'function') runFilter(); // Força o painel a se desenhar
+            }
+        } 
 
                 // ==========================================
                 // GATILHO DOS FILTROS ADICIONADO AQUI!
