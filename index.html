@@ -2076,6 +2076,13 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                     countDelayAtivo++;
                 }
             });
+            // --- DEBUG PARA DESCOBRIR ONDE ESTÃO OS ALUNOS ---
+console.log("--- DEBUG DE CONTAGEM ---");
+console.log("Total DB (Raw):", (DB.quali.length + DB.tec.length));
+console.log("Total Filtrado (statsSet):", statsSet.length);
+console.log("Quantos estão como Desligados (Manual+Contrato):", cDesligadoTotal);
+console.log("Quantos estão como Ativos:", cAtivo);
+// --------------------------------------------------
             
             const avgAtrasado = countDelayAtrasado > 0 ? Math.round(sumDelayAtrasado / countDelayAtrasado) : 0;
             const avgAtivo = countDelayAtivo > 0 ? Math.round(sumDelayAtivo / countDelayAtivo) : 0;
