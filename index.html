@@ -1265,12 +1265,10 @@
                     data.quali.forEach(novoAluno => { 
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
-                            // Se não existe, adiciona!
                             DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
                             const alunoAntigo = bancoQuali.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
@@ -1286,7 +1284,6 @@
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // Conserta os antigos da Técnica também
                             const alunoAntigo = bancoTec.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
@@ -1297,8 +1294,12 @@
 
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
-                    if(typeof runFilter === 'function') runFilter(); 
+                    
+                    // --- MÁGICA DOS BANNERS AQUI ---
+                    // Antes, o sistema estava rodando o filtro e DEPOIS atualizando os dados base.
+                    // Agora, o setupFilters garante que o sistema enxergue os novos alunos antes de calcular os cards!
                     if(typeof setupFilters === 'function') setupFilters(); 
+                    if(typeof runFilter === 'function') runFilter(); 
                     
                     alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
                 } catch(e) { 
