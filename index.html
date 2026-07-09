@@ -1247,60 +1247,57 @@
                     const data = await readAndParseFile(file); 
                     let adicionados = 0;
                     let corrigidos = 0;
+
+                    // 👑 O SEGREDO: A data no seu sistema já é um Objeto Date!
+                    const tratarVencidos = (a) => {
+                        if(!a) return;
+                        if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
+                        // Compara diretamente com a data lida pelo seu parser original
+                        if (a.fim instanceof Date && !isNaN(a.fim)) {
+                            let hoje = new Date(); hoje.setHours(0,0,0,0);
+                            let dataFim = new Date(a.fim); dataFim.setHours(0,0,0,0);
+                            let st = String(a.status).toLowerCase();
+                            if (dataFim < hoje && !st.includes("desl") && !st.includes("enc") && !st.includes("concl")) {
+                                a.status = "Encerrado";
+                            }
+                        }
+                    };
+                    if(data.quali) data.quali.forEach(tratarVencidos);
+                    if(data.tec) data.tec.forEach(tratarVencidos);
                     
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
                     
                     const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
                     const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
 
-                    // --- FUNÇÃO INTERNA DE TRATAMENTO DE STATUS ---
-                    const tratarStatusContrato = (aluno) => {
-                        if (!aluno) return;
-                        if (!aluno.status || String(aluno.status).trim() === "") aluno.status = "Ativo";
-                        let d = String(aluno.data_fim || aluno.termino || aluno.fim_contrato || "").trim();
-                        let p = d.includes('/') ? d.split('/') : (d.includes('-') ? d.split('-') : []);
-                        if (p.length === 3) {
-                            let dObj = d.includes('/') ? new Date(p[2], p[1]-1, p[0]) : new Date(p[0], p[1]-1, p[2]);
-                            let hoje = new Date(); hoje.setHours(0,0,0,0);
-                            if (dObj < hoje && !String(aluno.status).toLowerCase().includes("desl") && !String(aluno.status).toLowerCase().includes("enc")) {
-                                aluno.status = "Encerrado";
-                            }
-                        }
-                    };
-
                     data.quali.forEach(novoAluno => { 
-                        tratarStatusContrato(novoAluno); // Força a regra de término
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
-                            // Se não existe, adiciona!
                             DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
                             const alunoAntigo = bancoQuali.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status) alunoAntigo.status = novoAluno.status;
+                            if (novoAluno.status) alunoAntigo.status = novoAluno.status; // <- ATUALIZAÇÃO NO BANCO
                             corrigidos++;
                         }
                     }); 
 
                     data.tec.forEach(novoAluno => { 
-                        tratarStatusContrato(novoAluno); // Força a regra de término
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoTec.has(ass)) { 
                             DB.tec.unshift(novoAluno); 
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            // Conserta os antigos da Técnica também
                             const alunoAntigo = bancoTec.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status) alunoAntigo.status = novoAluno.status;
+                            if (novoAluno.status) alunoAntigo.status = novoAluno.status; // <- ATUALIZAÇÃO NO BANCO
                             corrigidos++;
                         }
                     }); 
@@ -1310,7 +1307,7 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tidos os dados atualizados!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos atualizados!`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro na importação: " + e); 
@@ -1337,24 +1334,23 @@
                 try { 
                     const data = await readAndParseFile(file); 
                     
-                    // --- FUNÇÃO INTERNA DE TRATAMENTO DE STATUS ---
-                    const tratarStatusContrato = (aluno) => {
-                        if (!aluno) return aluno;
-                        if (!aluno.status || String(aluno.status).trim() === "") aluno.status = "Ativo";
-                        let d = String(aluno.data_fim || aluno.termino || aluno.fim_contrato || "").trim();
-                        let p = d.includes('/') ? d.split('/') : (d.includes('-') ? d.split('-') : []);
-                        if (p.length === 3) {
-                            let dObj = d.includes('/') ? new Date(p[2], p[1]-1, p[0]) : new Date(p[0], p[1]-1, p[2]);
+                    const tratarVencidos = (a) => {
+                        if(!a) return;
+                        if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
+                        if (a.fim instanceof Date && !isNaN(a.fim)) {
                             let hoje = new Date(); hoje.setHours(0,0,0,0);
-                            if (dObj < hoje && !String(aluno.status).toLowerCase().includes("desl") && !String(aluno.status).toLowerCase().includes("enc")) {
+                            let dataFim = new Date(a.fim); dataFim.setHours(0,0,0,0);
+                            let st = String(a.status).toLowerCase();
+                            if (dataFim < hoje && !st.includes("desl") && !st.includes("enc") && !st.includes("concl")) {
                                 a.status = "Encerrado";
                             }
                         }
-                        return aluno;
                     };
-
-                    DB.quali = (data.quali || []).map(tratarStatusContrato); 
-                    DB.tec = (data.tec || []).map(tratarStatusContrato); 
+                    if(data.quali) data.quali.forEach(tratarVencidos);
+                    if(data.tec) data.tec.forEach(tratarVencidos);
+                    
+                    DB.quali = data.quali; 
+                    DB.tec = data.tec; 
                     
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
@@ -1371,7 +1367,6 @@
                 } 
             }, 100); 
         }
-
         function initLogin() { 
             const sel = document.getElementById('loginRegion'); 
             let html = '<option value="">👑 Gestão Central / Admin (Requer Senha)</option>'; 
@@ -1406,19 +1401,25 @@
             STATE.userType = type; 
             STATE.userRegion = region; 
             
-            document.getElementById('loginPage').classList.add('hidden'); 
-            document.getElementById('appContainer').classList.remove('hidden'); 
-            document.getElementById('appContainer').classList.add('flex'); 
+            const elLogin = document.getElementById('loginPage');
+            if(elLogin) elLogin.classList.add('hidden'); 
             
-            document.getElementById('roleDisplay').innerText = type === 'admin' ? "Administrador" : "Modo Leitura"; 
-            document.getElementById('userDisplay').innerText = type === 'admin' ? "Gestão Geral" : "VISITANTE"; 
+            const elApp = document.getElementById('appContainer');
+            if(elApp) {
+                elApp.classList.remove('hidden'); 
+                elApp.classList.add('flex'); 
+            }
+            
+            const elRole = document.getElementById('roleDisplay');
+            if(elRole) elRole.innerText = type === 'admin' ? "Administrador" : "Modo Leitura"; 
+            
+            const elUser = document.getElementById('userDisplay');
+            if(elUser) elUser.innerText = type === 'admin' ? "Gestão Geral" : "VISITANTE"; 
             
             const btnFin = document.getElementById('btnFin'); 
             const filterReg = document.getElementById('filterRegiao'); 
             
-            if (filterReg) {
-                filterReg.disabled = false; 
-            } 
+            if(filterReg) filterReg.disabled = false; 
             
             if(type === 'admin') { 
                 if(btnFin) btnFin.classList.remove('hidden'); 
@@ -1435,20 +1436,15 @@
                     style = document.createElement('style');
                     style.id = 'spectatorLocks';
                     style.innerHTML = `
-                        /* Trava campos de digitação na aba Planejamento e Controle */
                         #viewPlanejamento input, #viewPlanejamento select, #viewPlanejamento textarea,
                         #viewControleRateio input, #viewControleRateio select {
                             pointer-events: none !important;
                             opacity: 0.7 !important;
                             background-color: #f8fafc !important;
                         }
-                        
-                        /* Esconde botões que alteram dados (salvar, lixeira, adicionar) */
                         #viewPlanejamento button, #viewControleRateio button {
                             display: none !important;
                         }
-                        
-                        /* Libera os botões inofensivos (Exportar, PDF, Imprimir, Navegação) */
                         #viewPlanejamento button[onclick*="openHistoryModal"],
                         #viewPlanejamento button[onclick*="export"],
                         #viewPlanejamento button[onclick*="print"],
@@ -1472,7 +1468,7 @@
             if (typeof runFilter === 'function') runFilter(); 
         }
         function logout() { location.reload(); }
-        window.requestRestore = function() {
+window.requestRestore = function() {
             const pass = prompt("⚠️ AÇÃO RESTRITA! Digite a senha de Admin Geral para restaurar o banco de dados:");
             if(pass === PASS_ADMIN) document.getElementById('backupInput').click();
             else if (pass !== null) alert("Senha Incorreta! Acesso negado.");
@@ -1499,7 +1495,7 @@
             const plan = document.getElementById('viewPlanejamento'); 
             const controle = document.getElementById('viewControleRateio');
             
-            // 1. Esconde todas as telas primeiro (CORRIGIDO PARA USAR CLASSLIST)
+            // 1. Esconde todas as telas primeiro
             if(dash) { dash.classList.add('hidden'); dash.classList.remove('flex', 'flex-col'); }
             if(plan) { plan.classList.add('hidden'); plan.classList.remove('flex', 'flex-col'); }
             if(controle) { controle.classList.add('hidden'); controle.classList.remove('flex', 'flex-col'); }
@@ -1518,10 +1514,12 @@
             } else if (tab === 'controle') {
                 if(controle) { controle.classList.remove('hidden'); controle.classList.add('flex', 'flex-col'); }
                 
+                // --- AQUI ESTÁ A MÁGICA QUE VOCÊ PEDIU ---
+                // Isso faz com que, ao clicar na aba, as horas do planejamento sejam recalculadas na hora!
                 if(window.renderControleRateio) window.renderControleRateio();
                 
             } else { 
-                // AQUI ESTAVA O ERRO FATAL QUE DELETAVA A TELA. AGORA ESTÁ CORRIGIDO:
+                // Se for técnico ou qualificação, mostra o Dashboard
                 if(dash) { dash.classList.remove('hidden'); dash.classList.add('flex', 'flex-col'); }
                 
                 const titleEl = document.getElementById('listTitle');
@@ -1532,9 +1530,6 @@
                 }
                 
                 STATE.page = 1; 
-                if (typeof runFilter === 'function') runFilter(); // Força o painel a se desenhar
-            }
-        } 
 
                 // ==========================================
                 // GATILHO DOS FILTROS ADICIONADO AQUI!
@@ -1990,7 +1985,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         // FILTRO PRINCIPAL TURBINADO (ANTI-ACENTOS)
         // =========================================================
         function runFilter() { 
-            // BLINDAGEM CONTRA TELA BRANCA: Só lê o valor se o elemento existir na tela.
+            // 🛡️ BLINDAGEM ANTI-TELA BRANCA:
             const elSearch = document.getElementById('filterSearch');
             const termRaw = elSearch ? elSearch.value : "";
             
@@ -2007,10 +2002,9 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             
             const rawData = STATE.scope === 'tecnico' ? DB.tec : DB.quali; 
             
-            // FUNÇÃO AUXILIAR: Limpa o dado do aluno para comparar
             const normalizar = (texto) => typeof window.removerAcentos === 'function' ? window.removerAcentos(texto) : safeStr(texto);
 
-            // 1. FILTRA OS ALUNOS PARA A TABELA (COM A BUSCA INTELIGENTE)
+            // 1. FILTRA OS ALUNOS PARA A TABELA
             STATE.filter = rawData.filter(item => { 
                 if (term) {
                     const nomeOk = normalizar(item.nome).includes(term);
@@ -2038,14 +2032,13 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 return true; 
             }); 
             
-            // 2. FILTRA OS ALUNOS APENAS PARA CALCULAR OS KPIS (CARDS DO TOPO)
+            // 2. FILTRA OS ALUNOS PARA OS BANNERS SUPERIORES
             const statsSet = rawData.filter(item => { 
                 if(term) {
                     const nomeOk = normalizar(item.nome).includes(term);
                     const turmaOk = normalizar(item.turma).includes(term);
                     const empresaOk = normalizar(item.empresa ? item.empresa.razao : "").includes(term);
                     const cidadeOk = normalizar(item.cidade).includes(term);
-                    
                     if (!nomeOk && !turmaOk && !empresaOk && !cidadeOk) return false;
                 }
                 if(reg && item.regiao !== reg) return false; 
@@ -2067,7 +2060,6 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const totalActual = statsSet.filter(i => { return i.visits.some(v => v.ok && v.date && v.date.getFullYear() === 2026); }).length;
             const dynamic2025 = statsSet.filter(i => { return i.visits.some(v => v.ok && v.date && v.date.getFullYear() === 2025); }).length;
             
-            // CÁLCULO SEPARADO DA MÉDIA DE ATRASOS E TOTAL DE VISITAS
             let sumDelayAtrasado = 0, countDelayAtrasado = 0;
             let sumDelayAtivo = 0, countDelayAtivo = 0;
             let totalVisitasRealizadas = 0;
@@ -2075,9 +2067,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             statsSet.forEach(i => {
                 const st = analyzeStatus(i);
                 totalVisitasRealizadas += typeof countVisits === 'function' ? countVisits(i) : 0; 
-                
                 const safeDelay = parseInt(st.delay) || 0; 
-                
                 if (st.status === 'atrasado' && safeDelay > 0) {
                     sumDelayAtrasado += safeDelay;
                     countDelayAtrasado++;
@@ -2102,7 +2092,6 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const avgTextAtrasado = `Média: ${formatAvgDelay(avgAtrasado)}`;
             const avgTextAtivo = `Média: ${formatAvgDelay(avgAtivo)}`;
 
-            // Atualização dos elementos com validação de existência
             if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = cTotal; 
             if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = cBaseAtiva; 
             if(document.getElementById('valAtrasado')) document.getElementById('valAtrasado').innerText = cAtrasado; 
