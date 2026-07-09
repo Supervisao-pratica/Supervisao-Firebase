@@ -1133,7 +1133,7 @@
         function formatExcelTime(val) { if (!val) return ''; if (val instanceof Date) { const h = String(val.getHours()).padStart(2, '0'); const m = String(val.getMinutes()).padStart(2, '0'); return `${h}:${m}`; } if (typeof val === 'number') { const totalMinutes = Math.round(val * 24 * 60); const hours = Math.floor(totalMinutes / 60); const minutes = totalMinutes % 60; return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`; } return String(val).trim(); }
 
         // =========================================================================
-        // 2. EXTRATOR DE DADOS (Com proteção contra troca de colunas)
+        // 2. EXTRATOR DE DADOS (Com Leitura Automática da Coluna Z - Situação)
         // =========================================================================
         function parseMainSheet(ws, type) { 
             const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}); 
@@ -1161,7 +1161,7 @@
             const C = { 
                 turma: findCol(['turma']), 
                 nome: findCol(['apr. nome']), 
-                curso: findCol(['curso']), // Blindado para pegar só o curso
+                curso: findCol(['curso']), 
                 ini: findCol(['turdatini']), 
                 fim: findCol(['turdatfim']), 
                 empresa: findCol(['razao social', 'razão social']), 
@@ -1173,8 +1173,9 @@
                 sup: findCol(['sup. cadastrado']), 
                 tel: findCol(['sup celular']), 
                 email: findCol(['sup. email']), 
-                teoria: findCol(['teoria hr ini']), // Blindado para pegar EXATAMENTE o horário
-                pratica: findCol(['pratica hr ini', 'prática hr ini']) 
+                teoria: findCol(['teoria hr ini']), 
+                pratica: findCol(['pratica hr ini', 'prática hr ini']),
+                situacao: findCol(['situação', 'situacao', 'status']) // <- BUSCA A COLUNA SITUAÇÃO
             }; 
 
             const safeStr = (v) => v !== undefined && v !== null ? String(v) : "";
@@ -1190,6 +1191,13 @@
 
                 if(!nomeVal || nomeVal.length < 3 || nomeVal.toLowerCase().includes("nome")) continue; 
                 
+                // --- MÁGICA DA COLUNA Z AQUI ---
+                // Se não achar pelo cabeçalho, vai direto na Coluna Z (índice 25)
+                const idxSituacao = C.situacao > -1 ? C.situacao : 25;
+                const situacaoVal = String(val(idxSituacao)).toLowerCase().trim();
+                const alunoVemDesligado = situacaoVal.includes('desligado');
+                // --------------------------------
+
                 const parseDate = (v) => { 
                     if (v instanceof Date) return v; 
                     if (typeof v === 'number') return new Date(Math.round((v - 25569)*864e5)); 
@@ -1224,7 +1232,8 @@
                     teoria: hrTeoria, 
                     pratica: hrPratica, 
                     visits: [], 
-                    isDesligado: false 
+                    isDesligado: alunoVemDesligado, // Aplica a regra!
+                    obs_origem: alunoVemDesligado ? "Desligado via planilha" : "" // Grava o motivo
                 });
             }
             return alunosLidos; 
