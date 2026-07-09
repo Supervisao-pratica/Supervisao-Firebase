@@ -1247,23 +1247,6 @@
                     const data = await readAndParseFile(file); 
                     let adicionados = 0;
                     let corrigidos = 0;
-
-                    // 👑 O SEGREDO: A data no seu sistema já é um Objeto Date!
-                    const tratarVencidos = (a) => {
-                        if(!a) return;
-                        if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
-                        // Compara diretamente com a data lida pelo seu parser original
-                        if (a.fim instanceof Date && !isNaN(a.fim)) {
-                            let hoje = new Date(); hoje.setHours(0,0,0,0);
-                            let dataFim = new Date(a.fim); dataFim.setHours(0,0,0,0);
-                            let st = String(a.status).toLowerCase();
-                            if (dataFim < hoje && !st.includes("desl") && !st.includes("enc") && !st.includes("concl")) {
-                                a.status = "Encerrado";
-                            }
-                        }
-                    };
-                    if(data.quali) data.quali.forEach(tratarVencidos);
-                    if(data.tec) data.tec.forEach(tratarVencidos);
                     
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
                     
@@ -1273,15 +1256,16 @@
                     data.quali.forEach(novoAluno => { 
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
+                            // Se não existe, adiciona!
                             DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // Se JÁ EXISTE, conserta o curso e os horários sujos!
                             const alunoAntigo = bancoQuali.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status) alunoAntigo.status = novoAluno.status; // <- ATUALIZAÇÃO NO BANCO
                             corrigidos++;
                         }
                     }); 
@@ -1293,11 +1277,11 @@
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
+                            // Conserta os antigos da Técnica também
                             const alunoAntigo = bancoTec.get(ass);
                             if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
                             if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
                             if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            if (novoAluno.status) alunoAntigo.status = novoAluno.status; // <- ATUALIZAÇÃO NO BANCO
                             corrigidos++;
                         }
                     }); 
@@ -1307,7 +1291,7 @@
                     if(typeof runFilter === 'function') runFilter(); 
                     if(typeof setupFilters === 'function') setupFilters(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos atualizados!`); 
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro na importação: " + e); 
@@ -1333,22 +1317,6 @@
             setTimeout(async () => { 
                 try { 
                     const data = await readAndParseFile(file); 
-                    
-                    const tratarVencidos = (a) => {
-                        if(!a) return;
-                        if (!a.status || String(a.status).trim() === "") a.status = "Ativo";
-                        if (a.fim instanceof Date && !isNaN(a.fim)) {
-                            let hoje = new Date(); hoje.setHours(0,0,0,0);
-                            let dataFim = new Date(a.fim); dataFim.setHours(0,0,0,0);
-                            let st = String(a.status).toLowerCase();
-                            if (dataFim < hoje && !st.includes("desl") && !st.includes("enc") && !st.includes("concl")) {
-                                a.status = "Encerrado";
-                            }
-                        }
-                    };
-                    if(data.quali) data.quali.forEach(tratarVencidos);
-                    if(data.tec) data.tec.forEach(tratarVencidos);
-                    
                     DB.quali = data.quali; 
                     DB.tec = data.tec; 
                     
@@ -1401,25 +1369,18 @@
             STATE.userType = type; 
             STATE.userRegion = region; 
             
-            const elLogin = document.getElementById('loginPage');
-            if(elLogin) elLogin.classList.add('hidden'); 
+            document.getElementById('loginPage').classList.add('hidden'); 
+            document.getElementById('appContainer').classList.remove('hidden'); 
+            document.getElementById('appContainer').classList.add('flex'); 
             
-            const elApp = document.getElementById('appContainer');
-            if(elApp) {
-                elApp.classList.remove('hidden'); 
-                elApp.classList.add('flex'); 
-            }
-            
-            const elRole = document.getElementById('roleDisplay');
-            if(elRole) elRole.innerText = type === 'admin' ? "Administrador" : "Modo Leitura"; 
-            
-            const elUser = document.getElementById('userDisplay');
-            if(elUser) elUser.innerText = type === 'admin' ? "Gestão Geral" : "VISITANTE"; 
+            document.getElementById('roleDisplay').innerText = type === 'admin' ? "Administrador" : "Modo Leitura"; 
+            document.getElementById('userDisplay').innerText = type === 'admin' ? "Gestão Geral" : "VISITANTE"; 
             
             const btnFin = document.getElementById('btnFin'); 
             const filterReg = document.getElementById('filterRegiao'); 
             
-            if(filterReg) filterReg.disabled = false; 
+            // Ambos podem usar o filtro de regiões para gerar relatórios
+            filterReg.disabled = false; 
             
             if(type === 'admin') { 
                 if(btnFin) btnFin.classList.remove('hidden'); 
@@ -1436,15 +1397,20 @@
                     style = document.createElement('style');
                     style.id = 'spectatorLocks';
                     style.innerHTML = `
+                        /* Trava campos de digitação na aba Planejamento e Controle */
                         #viewPlanejamento input, #viewPlanejamento select, #viewPlanejamento textarea,
                         #viewControleRateio input, #viewControleRateio select {
                             pointer-events: none !important;
                             opacity: 0.7 !important;
                             background-color: #f8fafc !important;
                         }
+                        
+                        /* Esconde botões que alteram dados (salvar, lixeira, adicionar) */
                         #viewPlanejamento button, #viewControleRateio button {
                             display: none !important;
                         }
+                        
+                        /* Libera os botões inofensivos (Exportar, PDF, Imprimir, Navegação) */
                         #viewPlanejamento button[onclick*="openHistoryModal"],
                         #viewPlanejamento button[onclick*="export"],
                         #viewPlanejamento button[onclick*="print"],
@@ -1460,6 +1426,7 @@
                     document.head.appendChild(style);
                 }
             } else {
+                // Se for Admin, remove a blindagem e destrava tudo
                 const style = document.getElementById('spectatorLocks');
                 if (style) style.remove();
             }
@@ -1852,22 +1819,19 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         function countVisits(item) { return (item.visits || []).filter(v => v.ok).length; }
         function checkServed(item) { return (item.visits || []).some(v => v.ok); }
         
-        function analyzeStatus(item) {
+        function analyzeStatus(item) { 
             const obsText = (item.obs_origem || "").toLowerCase();
-            // --- INÍCIO DA MODIFICAÇÃO ---
-            // Regra mais explícita para considerar um aluno como "desligado"
-            const isManualDesligado = item.isDesligado || obsText.includes("desligamento") || obsText.includes("desligado") || obsText.includes("cancelado") || obsText.includes("evasão");
-            const isEncerradoContrato = item.fim && !isNaN(new Date(item.fim).getTime()) && new Date(item.fim) < new Date(); // Verifica se a data de fim é válida e já passou
-            // --- FIM DA MODIFICAÇÃO ---
-
-            const now = new Date();
+            const isManual = item.isDesligado || obsText.includes('desligamento') || obsText.includes('desligado') || obsText.includes('cancelado') || obsText.includes('evasão');
+            const now = new Date(); 
+            let alertObj = { isAlert: false, msg: '' };
             const visitsDone = countVisits(item);
+            
             const isTec = DB.tec.some(t => t.id === item.id);
             const totalVisitasEsperadas = isTec ? 6 : 3;
 
             let currentDelay = 0;
             const formatDelay = (d) => {
-                const numD = parseInt(d) || 0;
+                const numD = parseInt(d) || 0; 
                 if (numD === 0) return "0 dias";
                 if (numD < 7) return numD + (numD > 1 ? " dias" : " dia");
                 if (numD < 30) return Math.floor(numD / 7) + " sem";
@@ -1883,9 +1847,8 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if (diffDaysStart > 30) isSemAtendimento = true;
             }
 
-            // --- LÓGICA DE STATUS ---
-            if (isManualDesligado) return { status: 'desligado', subStatus: 'manual', color: 'gray', label: 'DESLIGADO', alert: { isAlert: false, msg: '' }, delay: 0 };
-            if (isEncerradoContrato) return { status: 'desligado', subStatus: 'contrato', color: 'gray', label: 'ENCERRADO', alert: { isAlert: false, msg: '' }, delay: 0 };
+            if (isManual) return { status: 'desligado', subStatus: 'manual', color: 'gray', label: 'DESLIGADO', alert: alertObj, delay: 0 }; 
+            if (item.fim && now > new Date(item.fim)) return { status: 'desligado', subStatus: 'contrato', color: 'gray', label: 'ENCERRADO', alert: alertObj, delay: 0 }; 
 
             let baseDate = item.ini ? new Date(item.ini) : null;
             if (visitsDone > 0) {
@@ -1897,35 +1860,33 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 }
             }
 
-            let currentDelayDays = 0; // Renomeado para clareza
-            if (baseDate && !isNaN(baseDate.getTime())) {
+            if (visitsDone < totalVisitasEsperadas && baseDate && !isNaN(baseDate.getTime())) {
                 const expectedDate = new Date(baseDate);
                 expectedDate.setMonth(expectedDate.getMonth() + 3); // REGRA DE 3 MESES PARA TODOS
-
+                
                 const diffDays = Math.ceil((expectedDate - now) / (1000 * 60 * 60 * 24)) || 0;
-                currentDelayDays = Math.abs(diffDays); // Usamos o valor absoluto para o delay
-
+                
                 if (diffDays < 0) {
-                    alertObj.isAlert = true;
-                    alertObj.msg = `V${visitsDone + 1} Atrasada (${formatDelay(currentDelayDays)})`;
+                    currentDelay = Math.abs(diffDays);
+                    alertObj.isAlert = true; 
+                    alertObj.msg = `V${visitsDone + 1} Atrasada (${formatDelay(currentDelay)})`;
                 } else if (diffDays <= 30) {
-                    alertObj.isAlert = true;
+                    alertObj.isAlert = true; 
                     alertObj.msg = `V${visitsDone + 1} em ${diffDays}d`;
                 } else if (isSemAtendimento) {
                     alertObj.isAlert = true;
                     alertObj.msg = `Sem V1 há ${formatDelay(diffDaysStart)}`;
                 }
-            } else if (isSemAtendimento) { // Caso não tenha data base mas já passou 30 dias sem visita
-                 alertObj.isAlert = true;
-                 alertObj.msg = `Sem V1 há ${formatDelay(diffDaysStart)}`;
             }
 
-            currentDelayDays = parseInt(currentDelayDays) || 0;
-            if (visitsDone >= totalVisitasEsperadas) return { status: 'completed', color: 'blue', label: 'CONCLUÍDO', alert: alertObj, delay: 0 };
-            if (visitsDone >= 1) return { status: 'ativo', color: 'green', label: 'ATIVO', alert: alertObj, delay: currentDelayDays };
-
-            // Se chegou aqui, é porque tem 0 visitas e não está em atraso por data de início
-            return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', alert: alertObj, delay: currentDelayDays };
+            currentDelay = parseInt(currentDelay) || 0; 
+            if(visitsDone >= totalVisitasEsperadas) return { status: 'completed', color: 'blue', label: 'CONCLUÍDO', alert: alertObj, delay: 0 }; 
+            
+            // Se tem 1 ou mais visitas e ainda não concluiu, fica ATIVO
+            if(visitsDone >= 1) return { status: 'ativo', color: 'green', label: 'ATIVO', alert: alertObj, delay: currentDelay }; 
+            
+            // REGRA NOVA: Se chegou até aqui, é porque tem 0 visitas. Vai direto para SEM ATENDIMENTO.
+            return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', alert: alertObj, delay: currentDelay }; 
         }
 
         function checkGlobalAlerts() {
@@ -1988,116 +1949,89 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         }
 
         // =========================================================
-        // 🛡️ MOTOR DE FILTRAGEM TURBINADO (ANTI-ACENTOS E MAIS INTELIGENTE)
+        // FILTRO PRINCIPAL TURBINADO (ANTI-ACENTOS)
         // =========================================================
-        function runFilter() {
-            // --- COLETA DOS TERMOS DE FILTRO ---
-            const elSearch = document.getElementById('filterSearch');
-            const termRaw = elSearch ? elSearch.value : "";
+        function runFilter() { 
+            const termRaw = document.getElementById('filterSearch').value || "";
+            // Usa o motor para limpar o termo de busca (sem acentos, tudo minúsculo)
             const term = typeof window.removerAcentos === 'function' ? window.removerAcentos(termRaw) : safeStr(termRaw);
-
-            const elRegiao = document.getElementById('filterRegiao');
-            const reg = elRegiao ? elRegiao.value : "";
-            const elCidade = document.getElementById('filterCidade');
-            const cid = elCidade ? elCidade.value : "";
-            const elSubStatus = document.getElementById('filterSubStatus');
-            const subStatusFilter = elSubStatus ? elSubStatus.value : "";
-
-            // --- SELECIONA A FONTE DE DADOS ---
-            const rawData = STATE.scope === 'tecnico' ? DB.tec : DB.quali;
+            
+            const reg = document.getElementById('filterRegiao').value; 
+            const cid = document.getElementById('filterCidade').value; 
+            const subStatusFilter = document.getElementById('filterSubStatus').value; 
+            const rawData = STATE.scope === 'tecnico' ? DB.tec : DB.quali; 
+            
+            // FUNÇÃO AUXILIAR: Limpa o dado do aluno para comparar
             const normalizar = (texto) => typeof window.removerAcentos === 'function' ? window.removerAcentos(texto) : safeStr(texto);
 
-            // --- FILTRO PRINCIPAL PARA A TABELA (STATE.filter) ---
-            // Este filtro aplica TODOS os critérios: pesquisa, região, cidade, KPI e substatus
-            STATE.filter = rawData.filter(item => {
-                // Filtro de Pesquisa
+            // 1. FILTRA OS ALUNOS PARA A TABELA (COM A BUSCA INTELIGENTE)
+            STATE.filter = rawData.filter(item => { 
                 if (term) {
                     const nomeOk = normalizar(item.nome).includes(term);
                     const turmaOk = normalizar(item.turma).includes(term);
                     const empresaOk = normalizar(item.empresa ? item.empresa.razao : "").includes(term);
                     const cidadeOk = normalizar(item.cidade).includes(term);
+                    
+                    if (!nomeOk && !turmaOk && !empresaOk && !cidadeOk) return false; 
+                }
+
+                if(reg && item.regiao !== reg) return false; 
+                if(cid && item.cidade !== cid) return false; 
+                
+                const st = analyzeStatus(item); 
+                
+                if(STATE.kpi === 'atrasado' && st.status !== 'atrasado') return false; 
+                if(STATE.kpi === 'ativo' && st.status !== 'ativo') return false; 
+                if(STATE.kpi === 'concluido' && st.status !== 'completed') return false; 
+                if(STATE.kpi === 'desligado') { 
+                    if (st.status !== 'desligado') return false; 
+                    if (subStatusFilter && st.subStatus !== subStatusFilter) return false; 
+                } 
+                if(STATE.kpi === 'base_ativa' && st.status === 'desligado') return false; 
+                
+                return true; 
+            }); 
+            
+            // 2. FILTRA OS ALUNOS APENAS PARA CALCULAR OS KPIS (CARDS DO TOPO)
+            const statsSet = rawData.filter(item => { 
+                if(term) {
+                    const nomeOk = normalizar(item.nome).includes(term);
+                    const turmaOk = normalizar(item.turma).includes(term);
+                    const empresaOk = normalizar(item.empresa ? item.empresa.razao : "").includes(term);
+                    const cidadeOk = normalizar(item.cidade).includes(term);
+                    
                     if (!nomeOk && !turmaOk && !empresaOk && !cidadeOk) return false;
                 }
-
-                // Filtro de Região e Cidade (SE ESTIVEREM SELECIONADOS)
-                if (reg && item.regiao !== reg) return false;
-                if (cid && item.cidade !== cid) return false;
-
-                // Filtro de Substatus (APENAS para o KPI 'desligado')
-                const st = analyzeStatus(item);
-                if (STATE.kpi === 'desligado') {
-                    if (st.status !== 'desligado') return false;
-                    if (subStatusFilter && st.subStatus !== subStatusFilter) return false;
-                }
-
-                // Filtro de KPI (APENAS para os KPIs específicos)
-                if (STATE.kpi === 'atrasado' && st.status !== 'atrasado') return false;
-                if (STATE.kpi === 'ativo' && st.status !== 'ativo') return false;
-                if (STATE.kpi === 'concluido' && st.status !== 'completed') return false;
-                if (STATE.kpi === 'base_ativa' && st.status === 'desligado') return false; // Base ativa exclui desligados
-
-                return true; // Se passou por todos os filtros, inclui
-            });
-
-            // --- CÁLCULO DOS BANNERS (KPIs) ---
-            // Este cálculo DEVE considerar TODOS os alunos da aba atual (rawData),
-            // mas aplicar a lógica de status para cada KPI.
+                if(reg && item.regiao !== reg) return false; 
+                if(cid && item.cidade !== cid) return false; 
+                return true; 
+            }); 
             
-            let alunosParaBanner = [...rawData]; // Começa com TODOS os alunos da aba atual
-
-            // Se um KPI específico foi selecionado (e não é 'all'), filtra os alunos para o cálculo do banner
-            if (STATE.kpi !== 'all') {
-                alunosParaBanner = alunosParaBanner.filter(item => {
-                    const st = analyzeStatus(item);
-                    if (STATE.kpi === 'atrasado' && st.status !== 'atrasado') return false;
-                    if (STATE.kpi === 'ativo' && st.status !== 'ativo') return false;
-                    if (STATE.kpi === 'concluido' && st.status !== 'completed') return false;
-                    if (STATE.kpi === 'desligado') {
-                        if (st.status !== 'desligado') return false;
-                        if (subStatusFilter && st.subStatus !== subStatusFilter) return false;
-                    }
-                    if (STATE.kpi === 'base_ativa' && st.status === 'desligado') return false;
-                    return true;
-                });
-            }
-            // Se o KPI for 'all', alunosParaBanner continua sendo o rawData completo (todos da aba)
-
-            // --- CÁLCULO DAS ESTATÍSTICAS GERAIS ---
-            const cTotal = alunosParaBanner.length; // Total de alunos que passaram pelos filtros de BANNER (pesquisa, região, cidade, E o KPI selecionado)
+            const isQuali = STATE.scope === 'qualificacao'; 
             
-            // --- AJUSTE CRUCIAL: Para o banner "Total (Planilha)", queremos o total BRUTO da aba, sem filtros de KPI ---
-            let cTotalBrutoAba = rawData.length; // Total de alunos na aba atual (Quali ou Tec)
-            if (STATE.kpi === 'all') { // Se o KPI selecionado for "Total", usamos o total bruto da aba
-                alunosParaBanner = [...rawData]; // Reseta para todos os alunos da aba
-            }
-            // --- FIM DO AJUSTE ---
-
-            const cCompleted = alunosParaBanner.filter(i => analyzeStatus(i).status === 'completed').length;
-            const cAtrasado = alunosParaBanner.filter(i => analyzeStatus(i).status === 'atrasado').length;
-            const cAtivo = alunosParaBanner.filter(i => analyzeStatus(i).status === 'ativo').length;
-            const cDesligadosManual = alunosParaBanner.filter(i => analyzeStatus(i).subStatus === 'manual').length;
-            const cEncerradosContrato = alunosParaBanner.filter(i => analyzeStatus(i).subStatus === 'contrato').length;
+            const cTotal = statsSet.length; 
+            const cCompleted = statsSet.filter(i => analyzeStatus(i).status === 'completed').length; 
+            const cAtrasado = statsSet.filter(i => analyzeStatus(i).status === 'atrasado').length; 
+            const cAtivo = statsSet.filter(i => analyzeStatus(i).status === 'ativo').length;
+            const cDesligadosManual = statsSet.filter(i => analyzeStatus(i).subStatus === 'manual').length;
+            const cEncerradosContrato = statsSet.filter(i => analyzeStatus(i).subStatus === 'contrato').length;
             const cDesligadoTotal = cDesligadosManual + cEncerradosContrato;
-            const cBaseAtiva = cTotal - cDesligadoTotal; // Base Ativa é o total filtrado pelo KPI atual MENOS os desligados
+            const cBaseAtiva = cTotal - cDesligadoTotal; 
 
-            // --- CÁLCULO PARA O DASHBOARD PRINCIPAL (sempre considera todos os alunos da aba) ---
-            const statsSetDashboard = [...rawData]; // Usa todos os alunos da aba para os gráficos e totais principais
-            const totalActual = statsSetDashboard.filter(i => {
-                if (STATE.userRegion && i.regiao !== STATE.userRegion) return false; // Filtro de região do usuário
-                if (reg && i.regiao !== reg) return false; // Filtro de região da tela
-                if (cid && i.cidade !== cid) return false; // Filtro de cidade da tela
-                return i.visits.some(v => v.ok && v.date && v.date.getFullYear() === 2026);
-            }).length;
-            const dynamic2025 = statsSetDashboard.filter(i => i.visits.some(v => v.ok && v.date && v.date.getFullYear() === 2025)).length;
+            const totalActual = statsSet.filter(i => { return i.visits.some(v => v.ok && v.date && v.date.getFullYear() === 2026); }).length;
+            const dynamic2025 = statsSet.filter(i => { return i.visits.some(v => v.ok && v.date && v.date.getFullYear() === 2025); }).length;
             
+            // CÁLCULO SEPARADO DA MÉDIA DE ATRASOS E TOTAL DE VISITAS
             let sumDelayAtrasado = 0, countDelayAtrasado = 0;
             let sumDelayAtivo = 0, countDelayAtivo = 0;
             let totalVisitasRealizadas = 0;
 
-            statsSetDashboard.forEach(i => {
+            statsSet.forEach(i => {
                 const st = analyzeStatus(i);
-                totalVisitasRealizadas += typeof countVisits === 'function' ? countVisits(i) : 0;
-                const safeDelay = parseInt(st.delay) || 0;
+                totalVisitasRealizadas += typeof countVisits === 'function' ? countVisits(i) : 0; 
+                
+                const safeDelay = parseInt(st.delay) || 0; 
+                
                 if (st.status === 'atrasado' && safeDelay > 0) {
                     sumDelayAtrasado += safeDelay;
                     countDelayAtrasado++;
@@ -2106,22 +2040,28 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                     countDelayAtivo++;
                 }
             });
-
+            
             const avgAtrasado = countDelayAtrasado > 0 ? Math.round(sumDelayAtrasado / countDelayAtrasado) : 0;
             const avgAtivo = countDelayAtivo > 0 ? Math.round(sumDelayAtivo / countDelayAtivo) : 0;
 
-            const formatAvgDelay = (d) => { /* ... (sua função existente) ... */ };
+            const formatAvgDelay = (d) => {
+                const numD = parseInt(d) || 0; // Bloqueia propagação do NaN
+                if (numD === 0) return "0 dias";
+                if (numD < 7) return numD + (numD > 1 ? " dias" : " dia");
+                if (numD < 30) return Math.floor(numD / 7) + " sem";
+                const m = Math.floor(numD / 30);
+                return m + (m > 1 ? " meses" : " mês");
+            };
 
             const avgTextAtrasado = `Média: ${formatAvgDelay(avgAtrasado)}`;
             const avgTextAtivo = `Média: ${formatAvgDelay(avgAtivo)}`;
 
-            // --- ATUALIZA OS ELEMENTOS HTML ---
-            // Atualiza os banners (KPIs)
-            if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = cTotal;
-            if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = cBaseAtiva;
-            if(document.getElementById('valAtrasado')) document.getElementById('valAtrasado').innerText = cAtrasado;
+            if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = cTotal; 
+            if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = cBaseAtiva; 
+            if(document.getElementById('valAtrasado')) document.getElementById('valAtrasado').innerText = cAtrasado; 
             if(document.getElementById('valMediaAtraso')) document.getElementById('valMediaAtraso').innerText = avgTextAtrasado;
-            if(document.getElementById('valOk')) document.getElementById('valOk').innerText = cAtivo;
+            if(document.getElementById('valOk')) document.getElementById('valOk').innerText = cAtivo; 
+            
             if(document.getElementById('valTotalVisitas')) document.getElementById('valTotalVisitas').innerText = totalVisitasRealizadas + (totalVisitasRealizadas === 1 ? ' VISITA REALIZADA' : ' VISITAS REALIZADAS');
             
             const elMediaAtivo = document.getElementById('valMediaAtivo');
@@ -2134,22 +2074,20 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 }
             }
             
-            if(document.getElementById('valDone')) document.getElementById('valDone').innerText = cCompleted;
+            if(document.getElementById('valDone')) document.getElementById('valDone').innerText = cCompleted; 
             
-            const legDone = document.getElementById('legDone');
-            const legacyContainer = document.getElementById('legacyContainer');
+            const legDone = document.getElementById('legDone'); 
+            const legacyContainer = document.getElementById('legacyContainer'); 
             
             const isFilteredRegion = (reg !== "");
-            const appliedLegacy = isFilteredRegion ? 0 : LEGACY_VALUE; // Se houver filtro de região, o legado é 0
+            const appliedLegacy = isFilteredRegion ? 0 : LEGACY_VALUE;
             const final2025 = appliedLegacy + dynamic2025;
 
-            // Lógica para mostrar/esconder o container do legado 2025
-            if(STATE.scope === 'qualificacao') { // Apenas Qualificação mostra o legado
-                if(legDone) legDone.classList.remove('hidden');
-                if(legacyContainer) {
-                    legacyContainer.style.opacity = '0.6';
-                    legacyContainer.classList.remove('hidden');
-                }
+            if(isQuali) { 
+                legDone.classList.remove('hidden'); 
+                legacyContainer.style.opacity = '0.6'; 
+                legacyContainer.classList.remove('hidden'); 
+                
                 const val2025El = document.getElementById('valLegacy2025');
                 if(val2025El) {
                     if (appliedLegacy > 0 && dynamic2025 > 0) {
@@ -2160,33 +2098,23 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                         val2025El.innerText = dynamic2025;
                     }
                 }
-            } else { // Para Técnica, esconde o legado
-                if(legDone) legDone.classList.add('hidden');
-                if(legacyContainer) {
-                    legacyContainer.style.opacity = '0';
-                    legacyContainer.classList.add('hidden');
-                }
-            }
+            } else { 
+                legDone.classList.add('hidden'); 
+                legacyContainer.style.opacity = '0'; 
+                legacyContainer.classList.add('hidden'); 
+            } 
             
-            if(document.getElementById('valDesligado')) document.getElementById('valDesligado').innerText = cDesligadoTotal;
-            if(document.getElementById('valDesligadoSplit')) document.getElementById('valDesligadoSplit').innerText = `(${cDesligadosManual} | ${cEncerradosContrato})`;
-            if(document.getElementById('dashGrandTotal')) document.getElementById('dashGrandTotal').innerText = totalActual;
+            document.getElementById('valDesligado').innerText = cDesligadoTotal; 
+            document.getElementById('valDesligadoSplit').innerText = `(${cDesligadosManual} | ${cEncerradosContrato})`;
+            document.getElementById('dashGrandTotal').innerText = totalActual; 
             
-            // --- AJUSTE CRUCIAL PARA O BANNER "TOTAL (PLANILHA)" ---
-            // Se o KPI selecionado for "all", o total deve ser o bruto da aba (rawData.length)
-            // Caso contrário, deve ser o total filtrado pelo KPI (cTotal)
-            const valorTotalPlanilha = (STATE.kpi === 'all') ? rawData.length : cTotal;
-            if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = valorTotalPlanilha;
-            // --- FIM DO AJUSTE ---
+            if(document.getElementById('pGrandTotal')) document.getElementById('pGrandTotal').innerText = totalActual + (isQuali ? final2025 : 0); 
+            if(document.getElementById('pBaseAtiva')) document.getElementById('pBaseAtiva').innerText = cBaseAtiva; 
 
-            // Atualiza os gráficos e a paginação
-            if(document.getElementById('pGrandTotal')) document.getElementById('pGrandTotal').innerText = totalActual + (STATE.scope === 'qualificacao' ? final2025 : 0);
-            if(document.getElementById('pBaseAtiva')) document.getElementById('pBaseAtiva').innerText = cBaseAtiva;
-
-            STATE.page = 1;
-            if(typeof changePage === 'function') changePage(0);
-            if(typeof renderCharts === 'function') renderCharts(STATE.scope === 'qualificacao' ? final2025 : 0);
-            if(typeof checkGlobalAlerts === 'function') checkGlobalAlerts();
+            STATE.page = 1; 
+            changePage(0); 
+            renderCharts(isQuali ? final2025 : 0); 
+            checkGlobalAlerts();
         }
         function changePage(delta) { const totalPages = Math.ceil(STATE.filter.length / STATE.perPage) || 1; let newPage = parseInt(STATE.page) + delta; if(newPage < 1) newPage = 1; if(newPage > totalPages) newPage = totalPages; STATE.page = newPage; document.getElementById('pageInfo').innerText = `Página ${STATE.page} de ${totalPages}`; document.getElementById('btnPrev').disabled = STATE.page <= 1; document.getElementById('btnNext').disabled = STATE.page >= totalPages; renderTable(); const listContainer = document.querySelector('.overflow-x-auto'); if(listContainer) listContainer.scrollTop = 0; }
 // =========================================================================
