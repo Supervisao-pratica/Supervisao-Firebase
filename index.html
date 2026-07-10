@@ -1787,10 +1787,21 @@ window.requestRestore = function() {
             } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
         }
         window.copiarFichaAluno = function() {
-            // Função rápida para pegar o valor do campo
+            // Função rápida para pegar o valor do campo de texto
             const getVal = (id) => {
                 const el = document.getElementById(id);
                 return (el && el.value) ? el.value.trim() : '-';
+            };
+
+            // 👑 Função rápida para checar as caixinhas de contraturno
+            const getContraTurno = () => {
+                const dias = [];
+                if (document.getElementById('ctSeg')?.checked) dias.push('Segunda');
+                if (document.getElementById('ctTer')?.checked) dias.push('Terça');
+                if (document.getElementById('ctQua')?.checked) dias.push('Quarta');
+                if (document.getElementById('ctQui')?.checked) dias.push('Quinta');
+                if (document.getElementById('ctSex')?.checked) dias.push('Sexta');
+                return dias.length > 0 ? dias.join(', ') : 'Não possui';
             };
 
             // Pegando os dados com os SEUS IDs exatos!
@@ -1801,7 +1812,7 @@ window.requestRestore = function() {
             const cidade = getVal('editCidade');
             const teoria = getVal('editTeoria');
             const pratica = getVal('editPratica');
-            const contraturno = getVal('editcontraturno');
+            const contraturno = getContraTurno(); // <-- Puxa os dias certinhos aqui!
             
             const empresa = getVal('editEmpresa');
             const endereco = getVal('editEndereco');
@@ -7188,7 +7199,6 @@ window.atualizarAutocompleteGlobal = function() {
         // =========================================================================
         window.prepararProximaVisita = function() {
             try {
-                // A mesma blindagem à prova de falhas que usamos no botão Organizar
                 const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 
@@ -7205,20 +7215,21 @@ window.atualizarAutocompleteGlobal = function() {
                 let alterados = 0;
                 let removidos = 0;
 
-                // Dicionário de status reais do DB central para saber quem foi desligado
-                const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
-                const statusMap = {};
-                todos.forEach(a => statusMap[a.id] = String(a.status || a.situacao || "").toUpperCase());
+                // 👑 NOVO MAPA SEGURO DE STATUS (Sem falsos positivos)
+                const inativosIds = new Set();
+                [...(dbObj.quali || []), ...(dbObj.tec || [])].forEach(a => {
+                    const statusTxt = String(a.status || a.situacao || "").toUpperCase();
+                    if (a.isDesligado === true || statusTxt.includes('DESLIGADO') || statusTxt.includes('ENCERRAD') || statusTxt.includes('EVADI') || statusTxt.includes('CANCELAD')) {
+                        inativosIds.add(String(a.id));
+                    }
+                });
 
-                // Loop de trás para frente para poder remover itens da lista com segurança
                 for (let i = roteiro.length - 1; i >= 0; i--) {
                     const item = roteiro[i];
-                    if (!item.student) continue;
+                    if (!item || !item.student) continue;
 
-                    const statusDb = statusMap[item.student.id] || "";
-                    
-                    // 🛑 FAXINA: Remove se desligado, evadido, concluído ou cancelado
-                    if (statusDb.includes('DESLIGADO') || statusDb.includes('ENCERRAD') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
+                    // 🛑 FAXINA SEGURA: Baseada apenas na ID e caixinha oficial
+                    if (inativosIds.has(String(item.student.id))) {
                         roteiro.splice(i, 1);
                         removidos++;
                         continue;
@@ -7229,14 +7240,12 @@ window.atualizarAutocompleteGlobal = function() {
                     if (statusPlano === 'REALIZADA') {
                         item.status = 'Realizar'; 
                         
-                        // Soma +1 no número da visita
                         if (item.visitaTipo) {
                             item.visitaTipo = item.visitaTipo.replace(/(\d+)(ª|º|a|o)/i, (match, numero, sufixo) => {
                                 return (parseInt(numero) + 1) + sufixo;
                             });
                         }
                         
-                        // Zera os dados de agendamento e limpa os alertas passados
                         item.date = '';
                         item.hrAtend = '';
                         if (item.obs) {
@@ -7248,12 +7257,10 @@ window.atualizarAutocompleteGlobal = function() {
                 }
 
                 if (alterados > 0 || removidos > 0) {
-                    // Reordena a numeração da coluna "Ordem" caso alguém tenha sido apagado
                     roteiro.forEach((item, idx) => item.ordem = idx + 1);
-                    
                     if(typeof saveToStorage === 'function') saveToStorage();
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                    alert(`✅ Ciclo Avançado!\n\n- ${alterados} aluno(s) movidos para o próximo ciclo (Datas zeradas).\n- ${removidos} aluno(s) inativos/desligados foram removidos do roteiro.`);
+                    alert(`✅ Ciclo Avançado!\n\n- ${alterados} aluno(s) movidos para o próximo ciclo.\n- ${removidos} aluno(s) desligados foram removidos do roteiro.`);
                 } else {
                     alert("ℹ️ Nenhuma alteração necessária. Não há alunos 'Realizados' ou 'Desligados'.");
                 }
@@ -7261,6 +7268,144 @@ window.atualizarAutocompleteGlobal = function() {
             } catch (error) {
                 console.error("Erro ao avançar ciclo:", error);
                 alert("Erro técnico ao tentar avançar: " + error.message);
+            }
+        };
+
+        // =========================================================================
+        // 🗺️ ORDENADOR LOGÍSTICO + FAXINA GLOBAL DE DESLIGADOS
+        // =========================================================================
+        window.organizarRoteiro = function() {
+            try {
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+                if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
+
+                // 👑 NOVO MAPA SEGURO DE STATUS
+                const inativosIds = new Set();
+                [...(dbObj.quali || []), ...(dbObj.tec || [])].forEach(a => {
+                    const statusTxt = String(a.status || a.situacao || "").toUpperCase();
+                    if (a.isDesligado === true || statusTxt.includes('DESLIGADO') || statusTxt.includes('ENCERRAD') || statusTxt.includes('EVADI') || statusTxt.includes('CANCELAD')) {
+                        inativosIds.add(String(a.id));
+                    }
+                });
+
+                let totalRemovidos = 0;
+
+                Object.keys(dbObj.planning).forEach(nomeRoteiro => {
+                    let roteiro = dbObj.planning[nomeRoteiro];
+                    for (let i = roteiro.length - 1; i >= 0; i--) {
+                        const item = roteiro[i];
+                        if (!item || !item.student) continue;
+                        
+                        // 🛑 FAXINA SEGURA
+                        if (inativosIds.has(String(item.student.id))) {
+                            roteiro.splice(i, 1);
+                            totalRemovidos++;
+                        }
+                    }
+                    roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                });
+
+                const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
+                const ctx = stateObj ? stateObj.planContext : null;
+
+                if (ctx && dbObj.planning[ctx]) {
+                    dbObj.planning[ctx].sort((a, b) => {
+                        const sA = a.student || {}; const sB = b.student || {};
+                        const cidA = String(sA.cidade || "").toUpperCase().trim();
+                        const cidB = String(sB.cidade || "").toUpperCase().trim();
+                        if (cidA < cidB) return -1; if (cidA > cidB) return 1;
+
+                        const visA = String(a.visitaTipo || "").toUpperCase().trim();
+                        const visB = String(b.visitaTipo || "").toUpperCase().trim();
+                        if (visA < visB) return -1; if (visA > visB) return 1;
+
+                        return String(sA.nome || "").toUpperCase().trim().localeCompare(String(sB.nome || "").toUpperCase().trim());
+                    });
+                    dbObj.planning[ctx].forEach((item, idx) => item.ordem = idx + 1);
+                }
+
+                if(typeof saveToStorage === 'function') saveToStorage();
+                if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                
+                let msg = "✅ Roteiro atual organizado com sucesso (Cidades e Prioridades)!";
+                if (totalRemovidos > 0) {
+                    msg += `\n\n🧹 FAXINA CONCLUÍDA:\n${totalRemovidos} aluno(s) Desligados/Encerrados reais foram removidos dos planejamentos!`;
+                }
+                alert(msg);
+                
+            } catch (error) {
+                console.error("Erro na organização:", error);
+                alert("Erro ao tentar organizar o roteiro: " + error.message);
+            }
+        };
+
+        // =========================================================================
+        // 🧹 MOTOR DEDICADO: FAXINA GLOBAL BLINDADA COM BACKUP INSTANTÂNEO
+        // =========================================================================
+        window.executarFaxinaGlobal = function() {
+            try {
+                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
+                if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
+
+                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL COM RELATÓRIO\n\nO sistema vai remover apenas os alunos que estão oficialmente com a caixinha de 'Desligado' marcada no perfil.\n\nDeseja continuar?");
+                if (!confirmar) return;
+
+                if (typeof salvarEstadoParaDesfazer === 'function') salvarEstadoParaDesfazer();
+
+                // 👑 1. IDENTIFICAÇÃO EXATA E SEGURA (Sem ler textos aleatórios)
+                const listaNegraIds = new Set();
+                [...(dbObj.quali || []), ...(dbObj.tec || [])].forEach(a => {
+                    const statusTxt = String(a.status || a.situacao || "").toUpperCase();
+                    if (a.isDesligado === true || statusTxt.includes('DESLIGADO') || statusTxt.includes('ENCERRAD') || statusTxt.includes('EVADI') || statusTxt.includes('CANCELAD')) {
+                        listaNegraIds.add(String(a.id));
+                    }
+                });
+
+                let totalRemovidos = 0;
+                let relatorioRemocoes = {};
+
+                // 👑 2. FAXINA REAL E SEGURA
+                Object.keys(dbObj.planning).forEach(nomeRoteiro => {
+                    let roteiro = dbObj.planning[nomeRoteiro];
+                    let removeuDeste = false;
+                    
+                    for (let i = roteiro.length - 1; i >= 0; i--) {
+                        const item = roteiro[i];
+                        if (!item || !item.student) continue;
+
+                        const idAluno = String(item.student.id || "");
+                        const statusPlano = String(item.status || "").toUpperCase();
+
+                        // Remove APENAS se a ID estiver na lista negra oficial
+                        if (listaNegraIds.has(idAluno) || statusPlano.includes('DESLIGADO') || statusPlano.includes('ENCERRADO')) {
+                            if (!relatorioRemocoes[nomeRoteiro]) relatorioRemocoes[nomeRoteiro] = [];
+                            relatorioRemocoes[nomeRoteiro].push(item.student.nome);
+
+                            roteiro.splice(i, 1);
+                            totalRemovidos++;
+                            removeuDeste = true;
+                        }
+                    }
+                    if (removeuDeste) roteiro.forEach((item, idx) => item.ordem = idx + 1);
+                });
+
+                if (totalRemovidos > 0) {
+                    if(typeof saveToStorage === 'function') saveToStorage();
+                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                    
+                    let msgRelatorio = `✅ FAXINA CONCLUÍDA COM SEGURANÇA!\n\nForam retirados ${totalRemovidos} aluno(s) desligados.\n\n📋 DETALHAMENTO:\n`;
+                    Object.keys(relatorioRemocoes).forEach(plan => {
+                        msgRelatorio += `\n📅 ${plan}:\n`;
+                        relatorioRemocoes[plan].forEach(nome => { msgRelatorio += `   ❌ ${nome}\n`; });
+                    });
+                    alert(msgRelatorio);
+                } else {
+                    alert("✨ Varredura Completa!\n\nNenhum aluno desligado foi encontrado misturado nos seus planejamentos.");
+                }
+                
+            } catch (error) {
+                console.error("Erro na faxina:", error);
+                alert("Erro técnico ao tentar executar a faxina: " + error.message);
             }
         };
 
