@@ -1858,6 +1858,26 @@ ${obs}`;
         }
 
         function setupFilters() { 
+            // 👑 1. VARREDURA AUTOMÁTICA DE CORREÇÃO (O "Rodo" no Banco de Dados)
+            // Varre todos os alunos e conserta a Região de quem estiver sem, baseado na cidade!
+            if (typeof getRegiaoDaCidade === 'function') {
+                let precisaSalvar = false;
+                [...(DB.quali || []), ...(DB.tec || [])].forEach(s => {
+                    if (!s.regiao || s.regiao.trim() === '' || s.regiao.includes('NÃO INF')) {
+                        const regiaoCerta = getRegiaoDaCidade(s.cidade);
+                        if (regiaoCerta) {
+                            s.regiao = regiaoCerta;
+                            precisaSalvar = true;
+                        }
+                    }
+                });
+                // Se arrumou a região de alguém, salva o banco de dados silenciosamente para ficar definitivo
+                if (precisaSalvar && typeof saveToStorage === 'function') saveToStorage();
+            }
+
+            // ==========================================
+            // 2. SEU CÓDIGO ORIGINAL MANTIDO INTACTO
+            // ==========================================
             const fReg = document.getElementById('filterRegiao'); if(!fReg) return;
             const currentRegVal = fReg.value;
             
@@ -1874,7 +1894,7 @@ ${obs}`;
             const dl = document.getElementById('turmasList'); if(dl) dl.innerHTML = allTurmas.map(t => `<option value="${t}">`).join(""); 
             
             // FORÇA a atualização da lista de Cidades logo após carregar as Regiões
-            handleRegionChange();
+            if (typeof handleRegionChange === 'function') handleRegionChange();
         }
 
         function handleRegionChange() { 
