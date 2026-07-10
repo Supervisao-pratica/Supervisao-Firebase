@@ -1133,7 +1133,7 @@
         function formatExcelTime(val) { if (!val) return ''; if (val instanceof Date) { const h = String(val.getHours()).padStart(2, '0'); const m = String(val.getMinutes()).padStart(2, '0'); return `${h}:${m}`; } if (typeof val === 'number') { const totalMinutes = Math.round(val * 24 * 60); const hours = Math.floor(totalMinutes / 60); const minutes = totalMinutes % 60; return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`; } return String(val).trim(); }
 
         // =========================================================================
-        // 2. EXTRATOR DE DADOS (Com Leitura Automática da Coluna Z - Situação)
+        // 2. EXTRATOR DE DADOS (Com Leitura Automática da Coluna Z - Situação e CNPJ)
         // =========================================================================
         function parseMainSheet(ws, type) { 
             const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}); 
@@ -1165,7 +1165,7 @@
                 ini: findCol(['turdatini']), 
                 fim: findCol(['turdatfim']), 
                 empresa: findCol(['razao social', 'razão social']), 
-                cnpj: findCol(['cnpj']), 
+                cnpj: findCol(['cnpj', 'c.n.p.j']), // 👑 BUSCA DA COLUNA CNPJ
                 end: findCol(['endereço', 'endereco']), 
                 mapa: findCol(['link mapa']), 
                 cidade: findCol(['emp. cidade']), 
@@ -1204,7 +1204,9 @@
                     return null; 
                 }; 
                 
+                // 👑 INSERÇÃO DO CNPJ TRATADO
                 let cnpjTratado = String(val(C.cnpj)).replace(/\D/g, '');
+                
                 let hrTeoria = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.teoria)) : val(C.teoria);
                 let hrPratica = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.pratica)) : val(C.pratica);
                 
@@ -1213,12 +1215,12 @@
                     nome: nomeVal, 
                     turma: turmaVal, 
                     curso: val(C.curso),
-                    cnpj: cnpjTratado, 
+                    cnpj: cnpjTratado, // 👑 SALVA O CNPJ AQUI
                     empresa: { 
                         razao: String(val(C.empresa)).trim() || "Não Inf.", 
                         endereco: val(C.end), 
                         link: val(C.mapa), 
-                        cnpj: cnpjTratado 
+                        cnpj: cnpjTratado // 👑 SALVA O CNPJ AQUI TAMBÉM
                     }, 
                     supervisor: { 
                         display: val(C.sup) || "Não Inf.", 
@@ -1232,15 +1234,15 @@
                     teoria: hrTeoria, 
                     pratica: hrPratica, 
                     visits: [], 
-                    isDesligado: alunoVemDesligado, // Aplica a regra!
-                    obs_origem: alunoVemDesligado ? "Desligado via planilha" : "" // Grava o motivo
+                    isDesligado: alunoVemDesligado, 
+                    obs_origem: alunoVemDesligado ? "Desligado via planilha" : "" 
                 });
             }
             return alunosLidos; 
         }
 
         // =========================================================================
-        // 3. ADICIONAR NOVOS (E Corrigir os horários dos antigos!)
+        // 3. ADICIONAR NOVOS (COM PROTEÇÃO ABSOLUTA DOS ANTIGOS)
         // =========================================================================
         async function runMergeImport(input) { 
             const file = input.files[0]; 
@@ -1249,13 +1251,13 @@
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
             const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "ATUALIZANDO ALUNOS E ADICIONANDO NOVOS..."; 
+            if(loadMsg) loadMsg.innerText = "PROCURANDO ALUNOS NOVOS..."; 
             
             setTimeout(async () => { 
                 try { 
                     const data = await readAndParseFile(file); 
                     let adicionados = 0;
-                    let corrigidos = 0;
+                    let ignorados = 0; 
                     
                     const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
                     
@@ -1265,43 +1267,37 @@
                     data.quali.forEach(novoAluno => { 
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoQuali.has(ass)) { 
+                            // É ALUNO NOVO: Insere no banco
                             DB.quali.unshift(novoAluno); 
                             bancoQuali.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            const alunoAntigo = bancoQuali.get(ass);
-                            if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
-                            if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
-                            if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            corrigidos++;
+                            // 👑 JÁ EXISTE NO SISTEMA: Protege o aluno! (Não apaga endereços)
+                            ignorados++;
                         }
                     }); 
 
                     data.tec.forEach(novoAluno => { 
                         const ass = getAssinatura(novoAluno); 
                         if(!bancoTec.has(ass)) { 
+                            // É ALUNO NOVO: Insere no banco
                             DB.tec.unshift(novoAluno); 
                             bancoTec.set(ass, novoAluno); 
                             adicionados++; 
                         } else {
-                            const alunoAntigo = bancoTec.get(ass);
-                            if (novoAluno.teoria) alunoAntigo.teoria = novoAluno.teoria;
-                            if (novoAluno.pratica) alunoAntigo.pratica = novoAluno.pratica;
-                            if (novoAluno.curso) alunoAntigo.curso = novoAluno.curso;
-                            corrigidos++;
+                            // 👑 JÁ EXISTE NO SISTEMA: Protege o aluno! (Não apaga endereços)
+                            ignorados++;
                         }
                     }); 
 
                     if(typeof rehydratePlanning === 'function') rehydratePlanning();
                     if(typeof saveToStorage === 'function') await saveToStorage(); 
                     
-                    // --- MÁGICA DOS BANNERS AQUI ---
-                    // Antes, o sistema estava rodando o filtro e DEPOIS atualizando os dados base.
-                    // Agora, o setupFilters garante que o sistema enxergue os novos alunos antes de calcular os cards!
                     if(typeof setupFilters === 'function') setupFilters(); 
                     if(typeof runFilter === 'function') runFilter(); 
                     
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} alunos novos cadastrados.\n🔄 ${corrigidos} alunos antigos tiveram os horários corrigidos!`); 
+                    // 👑 AVISO ATUALIZADO
+                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} novos alunos cadastrados.\n🛡️ ${ignorados} alunos antigos preservados (endereços e supervisores intocados).`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro na importação: " + e); 
