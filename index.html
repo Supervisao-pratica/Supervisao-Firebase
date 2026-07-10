@@ -1551,6 +1551,85 @@ window.requestRestore = function() {
             document.getElementById('studentModal').classList.remove('hidden'); 
             document.getElementById('studentModal').classList.add('flex'); 
         }
+        // =========================================================================
+        // FUNÇÕES AUXILIARES (Data/Hora nas Obs e Corretor de Região)
+        // =========================================================================
+        
+        // 1. Cria o botão de "Novo Registro" automaticamente em qualquer campo de texto
+        function setupObsButton(inputId) {
+            const obsEl = document.getElementById(inputId);
+            if (!obsEl) return;
+            
+            const btnId = 'btnStamp_' + inputId;
+            if (document.getElementById(btnId)) return; // Evita duplicar o botão
+            
+            const btn = document.createElement('button');
+            btn.id = btnId;
+            btn.type = 'button';
+            btn.innerHTML = '🕒 Novo Registro (Data/Hora)';
+            btn.className = 'text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded border border-blue-300 font-bold mb-1 transition-colors block';
+            btn.onclick = () => {
+                const now = new Date();
+                const strDate = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                const stamp = `[${strDate}] - `;
+                obsEl.value = obsEl.value ? obsEl.value.trim() + '\n\n' + stamp : stamp;
+                obsEl.focus();
+                obsEl.scrollTop = obsEl.scrollHeight; // Rola para o fim
+            };
+            obsEl.parentNode.insertBefore(btn, obsEl);
+        }
+
+        // 2. Descobre a região correta baseada na cidade
+        function getRegiaoDaCidade(cidade) {
+            if (!cidade || !DB.regioes_map) return "";
+            const cid = cidade.toUpperCase().trim();
+            for (const [regiao, cidadesDaRegiao] of Object.entries(DB.regioes_map)) {
+                if (Array.isArray(cidadesDaRegiao)) {
+                    if (cidadesDaRegiao.map(c => c.toUpperCase().trim()).includes(cid)) {
+                        return regiao.toUpperCase();
+                    }
+                }
+            }
+            return "";
+        }
+        // =========================================================================
+        // FUNÇÕES AUXILIARES (Data/Hora nas Obs e Corretor de Região)
+        // =========================================================================
+        function setupObsButton(inputId) {
+            const obsEl = document.getElementById(inputId);
+            if (!obsEl) return;
+            
+            const btnId = 'btnStamp_' + inputId;
+            if (document.getElementById(btnId)) return; 
+            
+            const btn = document.createElement('button');
+            btn.id = btnId;
+            btn.type = 'button';
+            btn.innerHTML = '🕒 Novo Registro (Data/Hora)';
+            btn.className = 'text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded border border-blue-300 font-bold mb-1 transition-colors block';
+            btn.onclick = () => {
+                const now = new Date();
+                const strDate = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                const stamp = `[${strDate}] - `;
+                obsEl.value = obsEl.value ? obsEl.value.trim() + '\n\n' + stamp : stamp;
+                obsEl.focus();
+                obsEl.scrollTop = obsEl.scrollHeight; 
+            };
+            obsEl.parentNode.insertBefore(btn, obsEl);
+        }
+
+        function getRegiaoDaCidade(cidade) {
+            if (!cidade || !DB.regioes_map) return "";
+            const cid = cidade.toUpperCase().trim();
+            for (const [regiao, cidadesDaRegiao] of Object.entries(DB.regioes_map)) {
+                if (Array.isArray(cidadesDaRegiao)) {
+                    if (cidadesDaRegiao.map(c => c.toUpperCase().trim()).includes(cid)) {
+                        return regiao.toUpperCase();
+                    }
+                }
+            }
+            return "";
+        }
 
         function openEditModal(id) { 
             try {
@@ -1564,13 +1643,19 @@ window.requestRestore = function() {
                 const setCheck = (elemId, val) => { const el = document.getElementById(elemId); if(el) el.checked = !!val; };
 
                 setVal('editNome', s.nome); setVal('editCPF', s.cpf || s.CPF || s.Cpf || s['Apr CPF']); setVal('editTurma', s.turma);
+                
+                // 👑 INJETA O CNPJ NA TELA 
+                setVal('editCNPJ', s.cnpj || s.empresa?.cnpj);
+
                 setVal('editCidade', s.cidade); setVal('editTeoria', s.teoria); setVal('editPratica', s.pratica);
                 setVal('editEmpresa', s.empresa?.razao); setVal('editEndereco', s.empresa?.endereco);
                 setVal('editLink', s.empresa?.link); setVal('editSupervisor', s.supervisor?.display);
                 setVal('editTel', s.supervisor?.tel); setVal('editEmail', s.supervisor?.email);
                 setVal('editObs', s.obs_origem); 
                 
-                // MUDANÇA AQUI: Lê o status real (inclusive palavras-chave) para marcar a caixa
+                // 👑 INJETA O BOTÃO DE DATA/HORA NA CAIXA DE OBSERVAÇÃO
+                setupObsButton('editObs');
+                
                 const realStatus = typeof analyzeStatus === 'function' ? analyzeStatus(s) : { status: s.isDesligado ? 'desligado' : 'ativo' };
                 setCheck('editDesligado', realStatus.status === 'desligado');
 
@@ -1580,10 +1665,16 @@ window.requestRestore = function() {
                 const ct = s.contraTurno || {};
                 setCheck('ctSeg', ct.seg); setCheck('ctTer', ct.ter); setCheck('ctQua', ct.qua); setCheck('ctQui', ct.qui); setCheck('ctSex', ct.sex);
 
+                // 👑 CORREÇÃO AUTOMÁTICA DA REGIÃO NA TELA
+                let regiaoCorreta = s.regiao;
+                if (!regiaoCorreta || regiaoCorreta.trim() === "" || regiaoCorreta === "NÃO INF.") {
+                    regiaoCorreta = getRegiaoDaCidade(s.cidade);
+                }
+
                 const sel = document.getElementById('editRegiao');
                 if (sel) {
                     const list = Object.keys(DB.regioes_map).length > 0 ? Object.keys(DB.regioes_map) : REGIONS_FALLBACK; 
-                    sel.innerHTML = '<option value="">Selecione...</option>' + [...new Set(list)].sort().map(r => `<option value="${r}" ${r===s.regiao?'selected':''}>${r}</option>`).join(""); 
+                    sel.innerHTML = '<option value="">Selecione...</option>' + [...new Set(list)].sort().map(r => `<option value="${r}" ${r===regiaoCorreta?'selected':''}>${r}</option>`).join(""); 
                 }
 
                 const isTec = DB.tec.some(t => t.id == id) || STATE.scope === 'tecnico';
@@ -1646,17 +1737,31 @@ window.requestRestore = function() {
                     baseStatus = "Encerrado";
                 }
 
+                // 👑 INSERÇÃO NOVA 1: GARANTIA DO CNPJ SALVO
+                const inputCNPJ = document.getElementById('editCNPJ');
+                const alunoAntigo = rawData.find(x => x.id === STATE.editingId);
+                const cnpjSalvo = inputCNPJ ? inputCNPJ.value : (alunoAntigo ? alunoAntigo.cnpj : "");
+
+                // 👑 INSERÇÃO NOVA 2: CORREÇÃO DE REGIÃO SALVA NO BANCO
+                let regiaoSalva = getVal('editRegiao').toUpperCase();
+                const cidadeSalva = getVal('editCidade').toUpperCase();
+                if (!regiaoSalva || regiaoSalva === "") {
+                    regiaoSalva = (typeof getRegiaoDaCidade === 'function') ? getRegiaoDaCidade(cidadeSalva) : regiaoSalva;
+                }
+
                 const newData = { 
                     id: STATE.editingId || ("NEW_" + Date.now()), 
                     nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'),
-                    regiao: getVal('editRegiao').toUpperCase(), cidade: getVal('editCidade').toUpperCase(),
+                    regiao: regiaoSalva, // <- Salva a região corrigida
+                    cidade: cidadeSalva,
                     teoria: getVal('editTeoria'), pratica: getVal('editPratica'),
                     contraTurno: { 
                         seg: !!document.getElementById('ctSeg')?.checked, ter: !!document.getElementById('ctTer')?.checked, 
                         qua: !!document.getElementById('ctQua')?.checked, qui: !!document.getElementById('ctQui')?.checked, 
                         sex: !!document.getElementById('ctSex')?.checked 
                     },
-                    empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink') },
+                    cnpj: cnpjSalvo, // <- Salva o CNPJ na raiz do aluno
+                    empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink'), cnpj: cnpjSalvo }, // <- Salva o CNPJ na empresa
                     supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
                     ini: getDate('editIni'), fim: getDate('editFim'),
                     visits: finalVisits, 
