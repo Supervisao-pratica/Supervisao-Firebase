@@ -3575,13 +3575,13 @@ window.updateVisitCC = function(idx, val) {
                 
                 if (s) s.turma = turmaReal; 
 
-                // 👑 LÓGICA DO CONTRATURNO (Híbrida: Lê manual OU Importação Pedagógica)
-                const ct = alunoAoVivo.contraTurno || {}; // Objeto manual
-                const ctString = alunoAoVivo.contraturno || ""; // Texto da planilha
+                // 👑 LÓGICA DO CONTRATURNO (Ignora se for vazio, "-" ou inválido)
+                const ct = alunoAoVivo.contraTurno || {}; 
+                const ctString = (alunoAoVivo.contraturno || "").trim();
                 
                 const diasCt = [];
-                // Se veio da planilha como texto (ex: "Segunda"), usamos direto
-                if (ctString && ctString !== "-") {
+                // Prioriza o que veio da planilha, MAS só se não estiver vazio
+                if (ctString && ctString !== "-" && ctString !== "") {
                     diasCt.push(ctString);
                 } else {
                     // Se não, usa o marcador manual
@@ -3596,7 +3596,6 @@ window.updateVisitCC = function(idx, val) {
                 if (diasCt.length > 0) {
                     badgeContraturno = `<span class="bg-red-100 text-red-800 border border-red-300 font-bold text-[9px] px-1.5 py-0.5 rounded ml-2 shadow-sm whitespace-nowrap">⚠️ CT: ${diasCt.join(', ')}</span>`;
                 }
-
                 let cc = '-';
                 if (turmaReal) { 
                     const turmaEncontrada = (DB.controle_turmas || []).find(t => 
