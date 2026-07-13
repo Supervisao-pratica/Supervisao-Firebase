@@ -3575,14 +3575,22 @@ window.updateVisitCC = function(idx, val) {
                 
                 if (s) s.turma = turmaReal; 
 
-                // 👑 LÓGICA DO CONTRATURNO (Aparecerá no nome)
-                const ct = alunoAoVivo.contraTurno || {};
+                // 👑 LÓGICA DO CONTRATURNO (Híbrida: Lê manual OU Importação Pedagógica)
+                const ct = alunoAoVivo.contraTurno || {}; // Objeto manual
+                const ctString = alunoAoVivo.contraturno || ""; // Texto da planilha
+                
                 const diasCt = [];
-                if (ct.seg) diasCt.push('Seg');
-                if (ct.ter) diasCt.push('Ter');
-                if (ct.qua) diasCt.push('Qua');
-                if (ct.qui) diasCt.push('Qui');
-                if (ct.sex) diasCt.push('Sex');
+                // Se veio da planilha como texto (ex: "Segunda"), usamos direto
+                if (ctString && ctString !== "-") {
+                    diasCt.push(ctString);
+                } else {
+                    // Se não, usa o marcador manual
+                    if (ct.seg) diasCt.push('Seg');
+                    if (ct.ter) diasCt.push('Ter');
+                    if (ct.qua) diasCt.push('Qua');
+                    if (ct.qui) diasCt.push('Qui');
+                    if (ct.sex) diasCt.push('Sex');
+                }
                 
                 let badgeContraturno = "";
                 if (diasCt.length > 0) {
