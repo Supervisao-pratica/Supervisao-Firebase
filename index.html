@@ -1642,7 +1642,7 @@ window.requestRestore = function() {
                 const setVal = (elemId, val) => { const el = document.getElementById(elemId); if(el) el.value = val || ''; };
                 const setCheck = (elemId, val) => { const el = document.getElementById(elemId); if(el) el.checked = !!val; };
 
-                setVal('editNome', s.nome); setVal('editCPF', s.cpf || s.CPF || s.Cpf || s['Apr CPF']); setVal('editTurma', s.turma);
+                setVal('editNome', s.nome); setVal('editCPF', s.cpf || s.CPF || s.Cpf || s['Apr CPF']); setVal('editTurma', s.turma); setVal('editContraturno', s.contraturno || '');
                 
                 // 👑 INJETA O CNPJ NA TELA 
                 setVal('editCNPJ', s.cnpj || s.empresa?.cnpj);
@@ -1751,7 +1751,7 @@ window.requestRestore = function() {
 
                 const newData = { 
                     id: STATE.editingId || ("NEW_" + Date.now()), 
-                    nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'),
+                    nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'), contraturno: getVal('editContraturno'),
                     regiao: regiaoSalva, // <- Salva a região corrigida
                     cidade: cidadeSalva,
                     teoria: getVal('editTeoria'), pratica: getVal('editPratica'),
