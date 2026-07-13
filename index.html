@@ -3521,7 +3521,7 @@ window.updateVisitCC = function(idx, val) {
             
             let contTec = 0;
             let contQuali = 0;
-            let contRealizadas = 0; // 🎯 NOVO: Placar de Atendimentos
+            let contRealizadas = 0; 
             
             currentItems.forEach(item => {
                 if(item && item.student) {
@@ -3529,7 +3529,6 @@ window.updateVisitCC = function(idx, val) {
                     if(isTec) contTec++; else contQuali++;
                 }
                 
-                // Verifica o status para o placar
                 if(item && item.status === "Realizada") {
                     contRealizadas++;
                 }
@@ -3559,7 +3558,7 @@ window.updateVisitCC = function(idx, val) {
             if(currentItems.length === 0) { 
                 tbody.innerHTML = '<tr><td colspan="15" class="p-8 text-center text-slate-400">Nenhum aluno neste planejamento. Adicione alunos pela barra lateral.</td></tr>'; 
                 return; 
-            } 
+            }
             
             // Ordenação Dinâmica
             DB.planning[STATE.planContext].sort((a, b) => {
@@ -3575,6 +3574,20 @@ window.updateVisitCC = function(idx, val) {
                 const turmaReal = alunoAoVivo.turma || s.turma || '';
                 
                 if (s) s.turma = turmaReal; 
+
+                // 👑 LÓGICA DO CONTRATURNO (Aparecerá no nome)
+                const ct = alunoAoVivo.contraTurno || {};
+                const diasCt = [];
+                if (ct.seg) diasCt.push('Seg');
+                if (ct.ter) diasCt.push('Ter');
+                if (ct.qua) diasCt.push('Qua');
+                if (ct.qui) diasCt.push('Qui');
+                if (ct.sex) diasCt.push('Sex');
+                
+                let badgeContraturno = "";
+                if (diasCt.length > 0) {
+                    badgeContraturno = `<span class="bg-red-100 text-red-800 border border-red-300 font-bold text-[9px] px-1.5 py-0.5 rounded ml-2 shadow-sm whitespace-nowrap">⚠️ CT: ${diasCt.join(', ')}</span>`;
+                }
 
                 let cc = '-';
                 if (turmaReal) { 
@@ -3628,7 +3641,13 @@ window.updateVisitCC = function(idx, val) {
                     </td>
                     <td class="p-1"><div class="flex items-center gap-1"><input type="text" class="w-14 text-center plan-input bg-slate-50 border text-[10px]" placeholder="Teoria" value="${item.hrTeoria}" onchange="updatePlanItem(${idx}, 'hrTeoria', this.value)"><span class="text-slate-400">/</span><input type="text" class="w-14 text-center plan-input bg-slate-50 border text-[10px]" placeholder="Prática" value="${item.hrPratica || ''}" onchange="updatePlanItem(${idx}, 'hrPratica', this.value)"></div></td>
                     <td class="p-2"><input class="plan-input font-bold w-full" value="${s.turma}" onchange="updatePlanStudent(${idx}, 'turma', this.value)"><div class="text-[9px] text-slate-400 mt-1">CC: ${cc}</div></td>
-                    <td class="p-2"><input class="plan-input font-bold text-xs leading-tight w-full" value="${s.nome}" onchange="updatePlanStudent(${idx}, 'nome', this.value)"><div class="text-[9px] text-slate-400 mt-1">${cursoLabel}</div></td>
+                    <td class="p-2">
+                        <div class="flex items-center">
+                            <input class="plan-input font-bold text-xs leading-tight w-full" value="${s.nome}" onchange="updatePlanStudent(${idx}, 'nome', this.value)">
+                            ${badgeContraturno}
+                        </div>
+                        <div class="text-[9px] text-slate-400 mt-1">${cursoLabel}</div>
+                    </td>
                     <td class="p-2"><textarea class="plan-input text-[10px] font-bold leading-tight w-full resize-none" rows="2" onchange="updatePlanCompany(${idx}, 'razao', this.value)">${s.empresa.razao}</textarea></td>
                     <td class="p-2"><textarea class="plan-input text-[9px] w-full resize-none" rows="2" onchange="updatePlanCompany(${idx}, 'endereco', this.value)">${s.empresa.endereco || ''}</textarea><div class="mt-1">${link}</div></td>
                     <td class="p-2"><input class="plan-input font-bold w-full" value="${s.cidade}" onchange="updatePlanStudent(${idx}, 'cidade', this.value)"></td>
@@ -3642,7 +3661,6 @@ window.updateVisitCC = function(idx, val) {
             
             if(window.lucide) window.lucide.createIcons(); 
         }
-
         // --- SISTEMA DE DRAG & DROP E ORDENAÇÃO MANUAL ---
         let draggedPlanIndex = null;
         
