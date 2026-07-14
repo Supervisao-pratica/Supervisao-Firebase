@@ -1309,7 +1309,7 @@
         }
 
         // =========================================================================
-        // 4. SUBSTITUIR BASE (Apaga tudo e coloca os novos)
+        // 4. SUBSTITUIR BASE (Híbrido: Restaura Backup JSON ou Importa Excel)
         // =========================================================================
         async function runReplaceImport(input) { 
             const file = input.files[0]; 
@@ -1321,21 +1321,61 @@
             if(loadMsg) loadMsg.innerText = "SUBSTITUINDO TODA A BASE DE DADOS..."; 
             
             setTimeout(async () => { 
-                try { 
-                    const data = await readAndParseFile(file); 
-                    DB.quali = data.quali; 
-                    DB.tec = data.tec; 
+                try {
+                    // 👑 DETECTOR DE TIPO DE ARQUIVO
+                    if (file.name.toLowerCase().endsWith('.json')) {
+                        // 1. LÓGICA PARA ARQUIVO DE BACKUP JSON
+                        const reader = new FileReader();
+                        reader.onload = async (e) => {
+                            try {
+                                const backupData = JSON.parse(e.target.result);
+                                
+                                // Restaura as listas de alunos
+                                if (backupData.quali) DB.quali = backupData.quali;
+                                if (backupData.tec) DB.tec = backupData.tec;
+                                
+                                // Restaura os Roteiros, Regiões e Turmas (se existirem no backup)
+                                if (backupData.planning) DB.planning = backupData.planning;
+                                if (backupData.regioes_map) DB.regioes_map = backupData.regioes_map;
+                                if (backupData.cc_map) DB.cc_map = backupData.cc_map;
+                                if (backupData.controle_turmas) DB.controle_turmas = backupData.controle_turmas;
+
+                                if(typeof rehydratePlanning === 'function') rehydratePlanning();
+                                if(typeof saveToStorage === 'function') await saveToStorage(); 
+                                if(typeof setupFilters === 'function') setupFilters(); 
+                                if(typeof runFilter === 'function') runFilter(); 
+
+                                alert(`✅ RESTAURAÇÃO CONCLUÍDA!\n\nBackup (JSON) carregado com sucesso!\nQualificação: ${DB.quali.length} alunos\nTécnico: ${DB.tec.length} alunos`);
+                            } catch (err) {
+                                console.error(err);
+                                alert("Erro ao ler o arquivo de Backup JSON: " + err.message);
+                            } finally {
+                                if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                                input.value = ''; 
+                            }
+                        };
+                        reader.readAsText(file); // Lê o JSON como texto
+
+                    } else {
+                        // 2. LÓGICA ANTIGA PARA PLANILHAS DO EXCEL (.xlsx)
+                        const data = await readAndParseFile(file); 
+                        DB.quali = data.quali; 
+                        DB.tec = data.tec; 
+                        
+                        if(typeof rehydratePlanning === 'function') rehydratePlanning();
+                        if(typeof saveToStorage === 'function') await saveToStorage(); 
+                        if(typeof setupFilters === 'function') setupFilters(); 
+                        if(typeof runFilter === 'function') runFilter(); 
+                        
+                        alert(`✅ BASE SUBSTITUÍDA!\n\nPlanilha importada com sucesso!\nQualificação: ${data.quali.length} alunos\nTécnico: ${data.tec.length} alunos`); 
+                        
+                        if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
+                        input.value = ''; 
+                    }
                     
-                    if(typeof rehydratePlanning === 'function') rehydratePlanning();
-                    if(typeof saveToStorage === 'function') await saveToStorage(); 
-                    if(typeof setupFilters === 'function') setupFilters(); 
-                    if(typeof runFilter === 'function') runFilter(); 
-                    
-                    alert(`Base substituída com sucesso!\n\nQualificação: ${data.quali.length} alunos\nTécnico: ${data.tec.length} alunos`); 
                 } catch(e) { 
                     console.error(e); 
                     alert("Erro ao substituir: " + e); 
-                } finally { 
                     if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                     input.value = ''; 
                 } 
@@ -2965,6 +3005,16 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
         window.restoreBackup = function(input) {
             const file = input.files[0];
             if (!file) return;
+
+            // 👑 A TRAVA DE FORÇA BRUTA LOGO ANTES DE LER O ARQUIVO
+            const PASS_ADMIN = "supervisao2026";
+            const userPass = prompt("⚠️ ÁREA RESTRITA: RESTAURAÇÃO DE SISTEMA\n\nAviso: Esta ação irá apagar todos os dados atuais e substituí-los pelo backup selecionado.\n\nDigite a senha de Gestão para autorizar:");
+            
+            if (userPass !== PASS_ADMIN) {
+                alert("❌ Acesso negado. Senha incorreta ou operação cancelada.");
+                input.value = ''; // Limpa a seleção do arquivo
+                return;
+            }
             
             const loader = document.getElementById('globalLoader'); 
             if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
@@ -3005,6 +3055,13 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 }
             };
             reader.readAsText(file);
+        };
+        
+        // Garante que o botão 'Restaurar Manual' acione a proteção também
+        window.restaurarManual = function() {
+            // O botão apenas aciona a caixa de seleção de arquivo. 
+            // A senha agora é pedida na função restoreBackup logo após o arquivo ser selecionado.
+            document.getElementById('backupInput').click();
         };
         
         // Garante que o botão 'Restaurar Manual' acione a mesma trava de força bruta
