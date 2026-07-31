@@ -2022,7 +2022,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             let alertObj = { isAlert: false, msg: '' };
             const visitsDone = countVisits(item);
             
-            const isTec = DB.tec.some(t => t.id === item.id);
+            const isTec = (DB.tec || []).some(t => t.id === item.id);
             const totalVisitasEsperadas = isTec ? 6 : 3;
 
             let currentDelay = 0;
@@ -2035,12 +2035,23 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 return m + (m > 1 ? " meses" : " mês");
             };
 
-            let isSemAtendimento = false;
+            // 👑 NOVA LÓGICA DE PRAZO INICIAL (1ª Visita)
+            let isPrimeiraVisitaAtrasada = false;
             let diffDaysStart = 0;
+            
             if (visitsDone === 0 && item.ini) {
-                const diffTime = now - new Date(item.ini);
+                const dataInicio = new Date(item.ini);
+                const prazoPrimeiraVisita = new Date(dataInicio);
+                prazoPrimeiraVisita.setMonth(prazoPrimeiraVisita.getMonth() + 3); // 3 meses a partir do início
+                
+                const diffTime = now - prazoPrimeiraVisita;
                 diffDaysStart = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 0;
-                if (diffDaysStart > 30) isSemAtendimento = true;
+                
+                if (diffDaysStart > 0) {
+                    // Já passou do prazo de 3 meses para a 1ª visita
+                    isPrimeiraVisitaAtrasada = true;
+                    currentDelay = diffDaysStart; 
+                }
             }
 
             if (isManual) return { status: 'desligado', subStatus: 'manual', color: 'gray', label: 'DESLIGADO', alert: alertObj, delay: 0 }; 
@@ -2056,9 +2067,9 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 }
             }
 
-            if (visitsDone < totalVisitasEsperadas && baseDate && !isNaN(baseDate.getTime())) {
+            if (visitsDone < totalVisitasEsperadas && visitsDone > 0 && baseDate && !isNaN(baseDate.getTime())) {
                 const expectedDate = new Date(baseDate);
-                expectedDate.setMonth(expectedDate.getMonth() + 3); // REGRA DE 3 MESES PARA TODOS
+                expectedDate.setMonth(expectedDate.getMonth() + 3); // REGRA DE 3 MESES
                 
                 const diffDays = Math.ceil((expectedDate - now) / (1000 * 60 * 60 * 24)) || 0;
                 
@@ -2069,20 +2080,23 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 } else if (diffDays <= 30) {
                     alertObj.isAlert = true; 
                     alertObj.msg = `V${visitsDone + 1} em ${diffDays}d`;
-                } else if (isSemAtendimento) {
-                    alertObj.isAlert = true;
-                    alertObj.msg = `Sem V1 há ${formatDelay(diffDaysStart)}`;
                 }
+            } else if (visitsDone === 0 && isPrimeiraVisitaAtrasada) {
+                 alertObj.isAlert = true;
+                 alertObj.msg = `Sem V1 há ${formatDelay(diffDaysStart)}`;
             }
 
             currentDelay = parseInt(currentDelay) || 0; 
             if(visitsDone >= totalVisitasEsperadas) return { status: 'completed', color: 'blue', label: 'CONCLUÍDO', alert: alertObj, delay: 0 }; 
             
-            // Se tem 1 ou mais visitas e ainda não concluiu, fica ATIVO
             if(visitsDone >= 1) return { status: 'ativo', color: 'green', label: 'ATIVO', alert: alertObj, delay: currentDelay }; 
             
-            // REGRA NOVA: Se chegou até aqui, é porque tem 0 visitas. Vai direto para SEM ATENDIMENTO.
-            return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', alert: alertObj, delay: currentDelay }; 
+            // 👑 DIVISÃO DO SEM ATENDIMENTO
+            if (isPrimeiraVisitaAtrasada) {
+                return { status: 'atrasado', color: 'red', label: 'SEM ATENDIMENTO', subLabel: 'Atrasado', alert: alertObj, delay: currentDelay }; 
+            } else {
+                return { status: 'base_ativa', color: 'blue', label: 'SEM ATENDIMENTO', subLabel: 'No Prazo', alert: alertObj, delay: 0 }; 
+            }
         }
 
         function checkGlobalAlerts() {
@@ -2221,6 +2235,10 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             let sumDelayAtrasado = 0, countDelayAtrasado = 0;
             let sumDelayAtivo = 0, countDelayAtivo = 0;
             let totalVisitasRealizadas = 0;
+            
+            // 👑 NOVAS VARIÁVEIS PARA SEPARAÇÃO (Sem Atendimento)
+            let semAtendimentoAtrasado = 0;
+            let semAtendimentoNoPrazo = 0;
 
             statsSet.forEach(i => {
                 const st = analyzeStatus(i);
@@ -2228,12 +2246,18 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 
                 const safeDelay = parseInt(st.delay) || 0; 
                 
-                if (st.status === 'atrasado' && safeDelay > 0) {
-                    sumDelayAtrasado += safeDelay;
-                    countDelayAtrasado++;
+                // Separação Inteligente: É Sem Atendimento?
+                if (st.status === 'atrasado') {
+                    if (safeDelay > 0) {
+                        sumDelayAtrasado += safeDelay;
+                        countDelayAtrasado++;
+                    }
+                    semAtendimentoAtrasado++; // Conta todos que estão no status atrasado
                 } else if (st.status === 'ativo' && safeDelay > 0) {
                     sumDelayAtivo += safeDelay;
                     countDelayAtivo++;
+                } else if (st.status === 'base_ativa' && safeDelay === 0 && st.label === 'SEM ATENDIMENTO') {
+                    semAtendimentoNoPrazo++; // Conta os que estão no status base_ativa (No Prazo)
                 }
             });
             
@@ -2254,7 +2278,24 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
 
             if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = cTotal; 
             if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = cBaseAtiva; 
-            if(document.getElementById('valAtrasado')) document.getElementById('valAtrasado').innerText = cAtrasado; 
+            
+            // 👑 MONTAGEM DO NOVO BLOCO DE ATRASADOS (Separando o Sem Atendimento)
+            const boxAtrasado = document.getElementById('valAtrasado');
+            if(boxAtrasado) {
+                // Altera o HTML do card Atrasados para mostrar o desmembramento
+                boxAtrasado.innerHTML = `
+                    <div style="font-size: 2.25rem; line-height: 2.5rem; font-weight: 900;">${cAtrasado}</div>
+                    <div class="text-[10px] mt-2 font-bold opacity-90 leading-tight bg-red-600/20 p-1.5 rounded" style="text-align: left;">
+                        <div class="flex justify-between border-b border-red-500/30 pb-0.5 mb-0.5">
+                            <span>Atrasados Reais:</span><span>${semAtendimentoAtrasado}</span>
+                        </div>
+                        <div class="flex justify-between text-yellow-100">
+                            <span>Aguard. Prazo:</span><span>${semAtendimentoNoPrazo}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
             if(document.getElementById('valMediaAtraso')) document.getElementById('valMediaAtraso').innerText = avgTextAtrasado;
             if(document.getElementById('valOk')) document.getElementById('valOk').innerText = cAtivo; 
             
