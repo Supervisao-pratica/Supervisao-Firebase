@@ -2286,36 +2286,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const avgTextAtivo = `Média: ${formatAvgDelay(avgAtivo)}`;
 
             if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = cTotal; 
-            
-            // ========================================================
-            // 👑 BLOCO "BASE ATIVA" (Com Legenda e Prova Real)
-            // ========================================================
-            const boxBaseAtiva = document.getElementById('valBaseAtiva');
-            if(boxBaseAtiva) {
-                const totalSemAtendimento = semAtendimentoAtrasado + semAtendimentoNoPrazo;
-                
-                // 🔒 TRAVA DE SEGURANÇA MATEMÁTICA: 
-                // Forçamos a Base Ativa a ser exatamente a soma dos 3 blocos
-                cBaseAtiva = totalSemAtendimento + cAtivo + cCompleted;
-
-                boxBaseAtiva.innerHTML = `
-                    <div style="font-size: 2.25rem; line-height: 2.5rem; font-weight: 900;">${cBaseAtiva}</div>
-                    <div class="text-[10px] mt-2 font-bold leading-tight bg-slate-50 text-slate-700 p-1.5 rounded border border-slate-200" style="text-align: left;" title="A Base Ativa é a soma de todos os alunos não desligados.">
-                        <div class="text-center border-b border-slate-200 pb-0.5 mb-1 text-slate-400" style="font-size: 8px;">
-                            COMPOSIÇÃO DA BASE
-                        </div>
-                        <div class="flex justify-between border-b border-slate-200 pb-0.5 mb-0.5">
-                            <span>Sem Atend.:</span><span>${totalSemAtendimento}</span>
-                        </div>
-                        <div class="flex justify-between border-b border-slate-200 pb-0.5 mb-0.5">
-                            <span>Ativos:</span><span class="text-emerald-600">${cAtivo}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span>Concluídos:</span><span class="text-blue-600">${cCompleted}</span>
-                        </div>
-                    </div>
-                `;
-            } 
+            if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = cBaseAtiva; 
             
             // ========================================================
             // 👑 BLOCO "SEM ATENDIMENTO" (Correção de Cor e Matemática)
