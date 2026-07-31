@@ -7118,7 +7118,8 @@ window.atualizarAutocompleteGlobal = function() {
 
                             // Monta o Bloco de Observação Original
                             if (textoPedagogico !== "" || textoContraturno !== "" || textoAlertaCritico !== "") {
-                                let relatorio = "[PEDAGÓGICO] ";
+                                const dataHoje = new Date().toLocaleDateString('pt-BR');
+                                let relatorio = `[Pedagógico em ${dataHoje}]: `;
                                 let blocos = [];
                                 
                                 if (textoAlertaCritico) blocos.push(textoAlertaCritico);
@@ -7127,11 +7128,20 @@ window.atualizarAutocompleteGlobal = function() {
                                 
                                 relatorio += blocos.join(" | ");
                                 
-                                if (item.obs && item.obs.includes("[PEDAGÓGICO]")) {
-                                    item.obs = item.obs.replace(/\[PEDAGÓGICO\].*/, relatorio);
+                                let obsAtual = (item.obs || "").trim();
+                                
+                                // Verifica se já existe uma leitura HOJE para evitar texto duplicado
+                                if (obsAtual.includes(`[Pedagógico em ${dataHoje}]`)) {
+                                    // Substitui apenas a leitura de hoje, preservando TODO o resto do histórico e anotações manuais
+                                    let linhas = obsAtual.split('\n');
+                                    let index = linhas.findIndex(l => l.includes(`[Pedagógico em ${dataHoje}]`));
+                                    if (index !== -1) {
+                                        linhas[index] = relatorio;
+                                        item.obs = linhas.join('\n');
+                                    }
                                 } else {
-                                    const obsAtual = item.obs ? item.obs + "\n" : "";
-                                    item.obs = obsAtual + relatorio;
+                                    // Adiciona o novo relatório no final (ordem cronológica), pulando linha se já houver texto
+                                    item.obs = obsAtual !== "" ? obsAtual + "\n" + relatorio : relatorio;
                                 }
                                 alunosAtualizados++;
                             }
