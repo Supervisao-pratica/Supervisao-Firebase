@@ -4433,7 +4433,23 @@ window.updateVisitCC = function(idx, val) {
         let rowsHtml = "";
         visits.forEach(v => { 
             const s = v.student || {}; 
-            const dataBr = v.date ? v.date.split('-').reverse().join('/') : '--/--/----'; 
+            
+            // 👑 CONVERSOR UNIVERSAL DE DATAS PARA O PADRÃO BRASILEIRO
+            let dataBr = '--/--/----';
+            if (v.date) {
+                const dataConvertida = new Date(v.date);
+                if (!isNaN(dataConvertida)) {
+                    // Verifica se é o formato de traço (YYYY-MM-DD) ou objeto/inglês
+                    if (typeof v.date === 'string' && v.date.length === 10 && v.date.includes('-')) {
+                        dataBr = v.date.split('-').reverse().join('/');
+                    } else {
+                        // Converte o "Fri Jul 31 2026" para "31/07/2026"
+                        dataBr = dataConvertida.toLocaleDateString('pt-BR');
+                    }
+                } else {
+                    dataBr = String(v.date);
+                }
+            } 
             
             // MÁGICA 2: Busca os dados do aluno "Ao Vivo" para garantir a Turma exata
             const alunoAoVivo = [...(window.DB.quali || []), ...(window.DB.tec || [])].find(a => a && s && a.id === s.id) || s;
