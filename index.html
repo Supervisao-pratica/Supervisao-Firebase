@@ -3814,31 +3814,37 @@ window.updateVisitCC = function(idx, val) {
                 // =========================================================
                 // 🤖 ASSISTENTE INTELIGENTE: FUNCIONA EM QUALQUER LINHA!
                 // =========================================================
-                // A regra agora é: O campo é data? Tem linhas ABAIXO dessa? A data não tá vazia?
                 if (field === 'date' && idx < plan.length - 1 && val !== '') {
                     setTimeout(() => {
-                        const dataFormatada = val.split('-').reverse().join('/'); 
-                        const linhaAtual = idx + 1; // Transforma o índice do sistema (0) em linha visual (1)
+                        const parts = val.split('-');
+                        if (parts.length !== 3) return; 
+
+                        const dataFormatada = `${parts[2]}/${parts[1]}/${parts[0]}`; 
+                        const linhaAtual = idx + 1; 
                         
-                        // Pergunta 1: Quer copiar para todos abaixo?
-                        const querTodos = confirm(`Você preencheu a data na linha ${linhaAtual}.\n\nDeseja copiar esta data (${dataFormatada}) para TODOS os alunos ABAIXO desta linha?`);
+                        // Pergunta 1: Você quer usar a inteligência?
+                        const querUsarInteligencia = confirm(`Linha ${linhaAtual} atualizada.\n\nDeseja copiar esta data (${dataFormatada}) para os alunos ABAIXO desta linha?`);
                         
+                        // SE O USUÁRIO APERTAR CANCELAR, PARA TUDO AQUI MESMO. Não faz mais pergunta nenhuma.
+                        if (!querUsarInteligencia) return;
+
                         let limite = -1;
 
-                        if (querTodos) {
-                            limite = plan.length;
+                        // Pergunta 2: Até qual linha?
+                        const resp = prompt(`Até qual linha você deseja preencher?\n\n- O roteiro possui ${plan.length} alunos.\n- Para preencher TODOS, digite ${plan.length}\n\nDigite o número limite (maior que ${linhaAtual}):`);
+                        
+                        // SE O USUÁRIO APERTAR CANCELAR NESTA CAIXA, PARA TUDO.
+                        if (resp === null || resp.trim() === '') {
+                            alert("Cópia cancelada. A data foi mantida apenas nesta linha.");
+                            return; 
+                        }
+
+                        const num = parseInt(resp);
+                        if (!isNaN(num) && num > linhaAtual) {
+                            limite = Math.min(num, plan.length);
                         } else {
-                            // Pergunta 2: Se não for todos, até qual linha?
-                            const resp = prompt(`Ok! Até qual linha você deseja preencher?\n\n(O roteiro possui ${plan.length} alunos)\n\nDigite um número maior que ${linhaAtual} (ou clique em Cancelar para manter apenas neste aluno):`);
-                            
-                            if (resp !== null && resp.trim() !== '') {
-                                const num = parseInt(resp);
-                                if (!isNaN(num) && num > linhaAtual) {
-                                    limite = Math.min(num, plan.length);
-                                } else {
-                                    alert("Número inválido. A data foi mantida apenas nesta linha.");
-                                }
-                            }
+                            alert("Número inválido. Cópia cancelada.");
+                            return;
                         }
 
                         // O Motor: Começa a copiar da próxima linha (idx + 1) até o limite escolhido
@@ -3846,17 +3852,29 @@ window.updateVisitCC = function(idx, val) {
                             let copiados = 0;
                             let bloqueados = 0;
                             
-                            const parts = val.split('-');
-                            const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+                            const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
                             const dayOfWeek = dateObj.getDay();
                             const dayMap = { 1: 'seg', 2: 'ter', 3: 'qua', 4: 'qui', 5: 'sex' };
 
                             for (let i = idx + 1; i < limite; i++) {
                                 const checkItem = plan[i];
-                                const ct = checkItem.student.contraTurno || {};
                                 
-                                // Proteção contra-turno no lote
-                                if (dayMap[dayOfWeek] && ct[dayMap[dayOfWeek]]) {
+                                const ct = checkItem.student.contraTurno || {};
+                                const ctStr = (checkItem.student.contraturno || "").toLowerCase();
+                                
+                                const diaHjId = dayMap[dayOfWeek];
+                                let temCTHoje = false;
+                                
+                                if (diaHjId) {
+                                    if (ct[diaHjId]) temCTHoje = true;
+                                    if (diaHjId === 'seg' && ctStr.includes("segunda")) temCTHoje = true;
+                                    if (diaHjId === 'ter' && ctStr.includes("terça")) temCTHoje = true;
+                                    if (diaHjId === 'qua' && ctStr.includes("quarta")) temCTHoje = true;
+                                    if (diaHjId === 'qui' && ctStr.includes("quinta")) temCTHoje = true;
+                                    if (diaHjId === 'sex' && ctStr.includes("sexta")) temCTHoje = true;
+                                }
+
+                                if (temCTHoje) {
                                     bloqueados++;
                                     continue; 
                                 }
@@ -3870,7 +3888,7 @@ window.updateVisitCC = function(idx, val) {
                             
                             let msgFinal = `${copiados} linhas ABAIXO foram preenchidas automaticamente!`;
                             if (bloqueados > 0) {
-                                msgFinal += `\n\n🛡️ PROTEÇÃO ATIVA: ${bloqueados} aluno(s) foram ignorados na cópia porque possuem contra-turno neste dia da semana!`;
+                                msgFinal += `\n\n🛡️ PROTEÇÃO ATIVA: ${bloqueados} aluno(s) foram ignorados na cópia porque possuem contra-turno neste dia!`;
                                 alert(msgFinal); 
                             } else {
                                 if (typeof showToast === 'function') showToast(msgFinal);
