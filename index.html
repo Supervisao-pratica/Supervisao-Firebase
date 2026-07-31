@@ -2236,13 +2236,22 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             let sumDelayAtivo = 0, countDelayAtivo = 0;
             let totalVisitasRealizadas = 0;
             
-            // 👑 NOVAS VARIÁVEIS PARA SEPARAÇÃO (Sem Atendimento)
+            // 👑 NOVAS VARIÁVEIS PARA SEPARAÇÃO (Sem Atendimento e Visitas)
             let semAtendimentoAtrasado = 0;
             let semAtendimentoNoPrazo = 0;
+            let countV1 = 0;
+            let countV2 = 0;
+            let countV3 = 0;
 
             statsSet.forEach(i => {
                 const st = analyzeStatus(i);
-                totalVisitasRealizadas += typeof countVisits === 'function' ? countVisits(i) : 0; 
+                const vCount = typeof countVisits === 'function' ? countVisits(i) : 0;
+                totalVisitasRealizadas += vCount; 
+                
+                // Conta as visitas (apenas para o breakdown do bloco Ativo)
+                if (vCount === 1) countV1++;
+                else if (vCount === 2) countV2++;
+                else if (vCount >= 3) countV3++;
                 
                 const safeDelay = parseInt(st.delay) || 0; 
                 
@@ -2252,12 +2261,12 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                         sumDelayAtrasado += safeDelay;
                         countDelayAtrasado++;
                     }
-                    semAtendimentoAtrasado++; // Conta todos que estão no status atrasado
+                    semAtendimentoAtrasado++; // Conta os atrasados
                 } else if (st.status === 'ativo' && safeDelay > 0) {
                     sumDelayAtivo += safeDelay;
                     countDelayAtivo++;
                 } else if (st.status === 'base_ativa' && safeDelay === 0 && st.label === 'SEM ATENDIMENTO') {
-                    semAtendimentoNoPrazo++; // Conta os que estão no status base_ativa (No Prazo)
+                    semAtendimentoNoPrazo++; // Conta os que estão no prazo
                 }
             });
             
@@ -2265,7 +2274,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const avgAtivo = countDelayAtivo > 0 ? Math.round(sumDelayAtivo / countDelayAtivo) : 0;
 
             const formatAvgDelay = (d) => {
-                const numD = parseInt(d) || 0; // Bloqueia propagação do NaN
+                const numD = parseInt(d) || 0; 
                 if (numD === 0) return "0 dias";
                 if (numD < 7) return numD + (numD > 1 ? " dias" : " dia");
                 if (numD < 30) return Math.floor(numD / 7) + " sem";
@@ -2279,25 +2288,48 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             if(document.getElementById('valTotal')) document.getElementById('valTotal').innerText = cTotal; 
             if(document.getElementById('valBaseAtiva')) document.getElementById('valBaseAtiva').innerText = cBaseAtiva; 
             
-            // 👑 MONTAGEM DO NOVO BLOCO DE ATRASADOS (Separando o Sem Atendimento)
+            // ========================================================
+            // 👑 BLOCO "SEM ATENDIMENTO" (Correção de Cor e Matemática)
+            // ========================================================
             const boxAtrasado = document.getElementById('valAtrasado');
             if(boxAtrasado) {
-                // Altera o HTML do card Atrasados para mostrar o desmembramento
+                // Agora o número grande é a soma total
+                const totalSemAtendimento = semAtendimentoAtrasado + semAtendimentoNoPrazo;
                 boxAtrasado.innerHTML = `
-                    <div style="font-size: 2.25rem; line-height: 2.5rem; font-weight: 900;">${cAtrasado}</div>
-                    <div class="text-[10px] mt-2 font-bold opacity-90 leading-tight bg-red-600/20 p-1.5 rounded" style="text-align: left;">
-                        <div class="flex justify-between border-b border-red-500/30 pb-0.5 mb-0.5">
-                            <span>Atrasados Reais:</span><span>${semAtendimentoAtrasado}</span>
+                    <div style="font-size: 2.25rem; line-height: 2.5rem; font-weight: 900;">${totalSemAtendimento}</div>
+                    <div class="text-[10px] mt-2 font-bold leading-tight bg-red-50 text-red-900 p-1.5 rounded border border-red-200" style="text-align: left;">
+                        <div class="flex justify-between border-b border-red-200 pb-0.5 mb-0.5">
+                            <span>Atrasados:</span><span class="text-red-700">${semAtendimentoAtrasado}</span>
                         </div>
-                        <div class="flex justify-between text-yellow-100">
-                            <span>Aguard. Prazo:</span><span>${semAtendimentoNoPrazo}</span>
+                        <div class="flex justify-between">
+                            <span>Em dia:</span><span class="text-emerald-700">${semAtendimentoNoPrazo}</span>
                         </div>
                     </div>
                 `;
             }
             
             if(document.getElementById('valMediaAtraso')) document.getElementById('valMediaAtraso').innerText = avgTextAtrasado;
-            if(document.getElementById('valOk')) document.getElementById('valOk').innerText = cAtivo; 
+            
+            // ========================================================
+            // 👑 BLOCO "ATIVOS" (Com o Breakdown de Visitas)
+            // ========================================================
+            const boxAtivo = document.getElementById('valOk');
+            if(boxAtivo) {
+                boxAtivo.innerHTML = `
+                    <div style="font-size: 2.25rem; line-height: 2.5rem; font-weight: 900;">${cAtivo}</div>
+                    <div class="text-[10px] mt-2 font-bold leading-tight bg-emerald-50 text-emerald-900 p-1.5 rounded border border-emerald-200" style="text-align: left;">
+                        <div class="flex justify-between border-b border-emerald-200 pb-0.5 mb-0.5">
+                            <span>1ª Visita:</span><span class="text-emerald-700">${countV1}</span>
+                        </div>
+                        <div class="flex justify-between border-b border-emerald-200 pb-0.5 mb-0.5">
+                            <span>2ª Visita:</span><span class="text-emerald-700">${countV2}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>3ª Visita+:</span><span class="text-emerald-700">${countV3}</span>
+                        </div>
+                    </div>
+                `;
+            }
             
             if(document.getElementById('valTotalVisitas')) document.getElementById('valTotalVisitas').innerText = totalVisitasRealizadas + (totalVisitasRealizadas === 1 ? ' VISITA REALIZADA' : ' VISITAS REALIZADAS');
             
@@ -2353,7 +2385,20 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             renderCharts(isQuali ? final2025 : 0); 
             checkGlobalAlerts();
         }
-        function changePage(delta) { const totalPages = Math.ceil(STATE.filter.length / STATE.perPage) || 1; let newPage = parseInt(STATE.page) + delta; if(newPage < 1) newPage = 1; if(newPage > totalPages) newPage = totalPages; STATE.page = newPage; document.getElementById('pageInfo').innerText = `Página ${STATE.page} de ${totalPages}`; document.getElementById('btnPrev').disabled = STATE.page <= 1; document.getElementById('btnNext').disabled = STATE.page >= totalPages; renderTable(); const listContainer = document.querySelector('.overflow-x-auto'); if(listContainer) listContainer.scrollTop = 0; }
+        
+        function changePage(delta) { 
+            const totalPages = Math.ceil(STATE.filter.length / STATE.perPage) || 1; 
+            let newPage = parseInt(STATE.page) + delta; 
+            if(newPage < 1) newPage = 1; 
+            if(newPage > totalPages) newPage = totalPages; 
+            STATE.page = newPage; 
+            document.getElementById('pageInfo').innerText = `Página ${STATE.page} de ${totalPages}`; 
+            document.getElementById('btnPrev').disabled = STATE.page <= 1; 
+            document.getElementById('btnNext').disabled = STATE.page >= totalPages; 
+            renderTable(); 
+            const listContainer = document.querySelector('.overflow-x-auto'); 
+            if(listContainer) listContainer.scrollTop = 0; 
+        }
 // =========================================================================
         // MOTOR DE PREVISÃO DE VISITAS (CASCATA DE 3 MESES)
         // =========================================================================
