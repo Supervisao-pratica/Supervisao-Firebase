@@ -3952,9 +3952,24 @@ window.updateVisitCC = function(idx, val) {
                 const plan = DB.planning[STATE.planContext];
                 const item = plan[idx]; 
                 
-                // --- NOVA TRAVA DE SEGURANÇA: CONTRATURNO (MANTIDA INTACTA) ---
                 if (field === 'date' && val) {
                     const parts = val.split('-');
+                    const ano = parseInt(parts[0]);
+
+                    // ==========================================
+                    // 🔒 NOVA TRAVA: ANO ABSURDO (Erro de digitação)
+                    // ==========================================
+                    if (ano < 2020 || ano > 2035) {
+                        alert(`⚠️ DATA INVÁLIDA!\n\nVocê digitou o ano ${ano}. O sistema bloqueou a ação para proteger as médias do painel.\n\nPor favor, digite um ano real (entre 2020 e 2035).`);
+                        
+                        // Atualiza a tela para apagar a data errada que você acabou de digitar
+                        if(typeof renderPlanningTable === 'function') renderPlanningTable(); 
+                        return; // O 'return' mata o processo aqui e não deixa salvar!
+                    }
+
+                    // ==========================================
+                    // --- TRAVA DE SEGURANÇA: CONTRATURNO (MANTIDA INTACTA) ---
+                    // ==========================================
                     const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
                     const dayOfWeek = dateObj.getDay(); 
                     const ct = item.student.contraTurno || {};
@@ -3971,7 +3986,7 @@ window.updateVisitCC = function(idx, val) {
                 // ---------------------------------------------
 
                 // 1. Atualiza a linha que você acabou de digitar
-                item[field] = val; 
+                item[field] = val;
                 
                 // =========================================================
                 // 🤖 ASSISTENTE INTELIGENTE: FUNCIONA EM QUALQUER LINHA!
