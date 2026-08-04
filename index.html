@@ -1795,13 +1795,36 @@ window.requestRestore = function() {
                 const rawData = isTec ? DB.tec : DB.quali; 
                 
                 const getVal = id => document.getElementById(id)?.value || ""; 
-                const getDate = id => { const v = getVal(id); return v ? new Date(v + "T12:00:00") : null; }; 
+                
+                // ==========================================
+                // 🔒 NOVA TRAVA: ANO ABSURDO NAS DATAS DO ALUNO
+                // ==========================================
+                const getDateSegura = (id, nomeCampoLabel) => { 
+                    const v = getVal(id); 
+                    if (!v) return null;
+                    
+                    const ano = parseInt(v.substring(0, 4));
+                    if (ano < 2020 || ano > 2035) {
+                        alert(`⚠️ DATA INVÁLIDA!\n\nNo campo ${nomeCampoLabel}, você digitou o ano ${ano}. O sistema bloqueou a gravação para proteger o painel.\n\nPor favor, corrija a data para um ano válido (entre 2020 e 2035) antes de salvar.`);
+                        throw new Error(`Data inválida bloqueada pelo sistema: ${ano}`); // Interrompe o salvamento
+                    }
+                    
+                    return new Date(v + "T12:00:00"); 
+                }; 
+                
+                // Tenta puxar as datas de Início e Fim passando pela trava
+                const dataInicioSegura = getDateSegura('editIni', 'Data de Início');
+                const dataFimSegura = getDateSegura('editFim', 'Data de Fim');
                 
                 let finalVisits = [];
-                const maxV = isTec ? 6 : 3; 
+                const maxV = isTec ? 6 : 3; // São 6 visitas para Técnica e 3 para Qualificação
                 for(let i=1; i<=maxV; i++) {
                     const ck = document.getElementById('checkV' + i);
-                    if(ck) finalVisits.push({ ok: ck.checked, date: getDate('dateV' + i) });
+                    if(ck) {
+                        // O inspetor verifica a V1, depois a V2, depois a V3...
+                        const dataVisitaSegura = getDateSegura('dateV' + i, `Data da ${i}ª Visita`);
+                        finalVisits.push({ ok: ck.checked, date: dataVisitaSegura });
+                    }
                 }
 
                 let isDesl = !!document.getElementById('editDesligado')?.checked;
