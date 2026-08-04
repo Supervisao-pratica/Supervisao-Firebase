@@ -6335,7 +6335,6 @@ window.atualizarAutocompleteGlobal = function() {
                 todosAlunos.forEach(aluno => {
                     if (aluno.empresa && aluno.empresa.razao && aluno.empresa.razao !== "Não Inf.") {
                         const nomeLimpo = aluno.empresa.razao.toUpperCase().trim();
-                        // Se esse aluno tem endereço, salva no dicionário para ajudar os outros
                         if (aluno.empresa.endereco && aluno.empresa.endereco.length > 3) {
                             if (!bancoEmpresas[nomeLimpo]) {
                                 bancoEmpresas[nomeLimpo] = {
@@ -6351,17 +6350,21 @@ window.atualizarAutocompleteGlobal = function() {
                 // 2. Percorrer alunos sem endereço e tentar preencher
                 for (let i = 0; i < todosAlunos.length; i++) {
                     let aluno = todosAlunos[i];
-                    if (!aluno.empresa) continue;
+                    
+                    // 👑 A CORREÇÃO ESTÁ AQUI: Se o aluno não tem a "pasta" empresa criada, nós criamos agora!
+                    if (!aluno.empresa) {
+                        aluno.empresa = { razao: "", cnpj: aluno.cnpj || "", endereco: "", link: "" };
+                    }
 
                     let razao = (aluno.empresa.razao || "").toUpperCase().trim();
                     let temEndereco = aluno.empresa.endereco && aluno.empresa.endereco.length > 3;
 
-                    // A) TENTA PELO BANCO INTERNO (Cruza a Razão Social)
+                    // A) TENTA PELO BANCO INTERNO
                     if (!temEndereco && razao && razao !== "NÃO INF." && bancoEmpresas[razao]) {
                         aluno.empresa.endereco = bancoEmpresas[razao].endereco;
                         if (!aluno.empresa.cnpj && bancoEmpresas[razao].cnpj) {
                             aluno.empresa.cnpj = bancoEmpresas[razao].cnpj;
-                            aluno.cnpj = bancoEmpresas[razao].cnpj; // Atualiza o CNPJ raiz também
+                            aluno.cnpj = bancoEmpresas[razao].cnpj; // Atualiza o CNPJ raiz
                         }
                         if (!aluno.empresa.link && bancoEmpresas[razao].link) {
                             aluno.empresa.link = bancoEmpresas[razao].link;
@@ -6370,26 +6373,24 @@ window.atualizarAutocompleteGlobal = function() {
                         temEndereco = true;
                     }
 
-                    // B) TENTA PELA INTERNET SE AINDA NÃO TIVER ENDEREÇO (Usa a BrasilAPI)
+                    // B) TENTA PELA INTERNET
                     let cnpjAluno = aluno.empresa.cnpj || aluno.cnpj;
                     if (!temEndereco && cnpjAluno) {
-                        let cnpjLimpo = cnpjAluno.replace(/\D/g, ''); // Tira pontos e traços
+                        let cnpjLimpo = cnpjAluno.replace(/\D/g, ''); 
                         
-                        if (cnpjLimpo.length === 14) { // Se for um CNPJ válido
-                            if(loadMsg) loadMsg.innerText = `CONSULTANDO RECEITA FEDERAL...\n${razao}`;
+                        if (cnpjLimpo.length === 14) { 
+                            if(loadMsg) loadMsg.innerText = `CONSULTANDO RECEITA FEDERAL...\n${razao || cnpjLimpo}`;
                             try {
                                 const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
                                 if (res.ok) {
                                     const dados = await res.json();
                                     
-                                    // Monta o endereço bonitinho: Rua, Numero - Complemento - Bairro, Cidade - UF
                                     let enderecoCompleto = `${dados.logradouro}, ${dados.numero}`;
                                     if (dados.complemento) enderecoCompleto += ` - ${dados.complemento}`;
                                     enderecoCompleto += ` - ${dados.bairro}, ${dados.municipio} - ${dados.uf}`;
                                     
                                     aluno.empresa.endereco = enderecoCompleto;
                                     
-                                    // Se o aluno nem Razão Social tinha, puxamos da internet também!
                                     if(razao === "" || razao === "NÃO INF.") {
                                         aluno.empresa.razao = dados.razao_social;
                                     }
@@ -6398,7 +6399,6 @@ window.atualizarAutocompleteGlobal = function() {
                             } catch(err) {
                                 console.log("Não foi possível buscar na internet o CNPJ: ", cnpjLimpo);
                             }
-                            // Pausa de 300 milissegundos para a Receita Federal não bloquear o nosso sistema por "excesso de velocidade"
                             await new Promise(r => setTimeout(r, 300));
                         }
                     }
