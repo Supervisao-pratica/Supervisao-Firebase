@@ -39,6 +39,44 @@
       }
     </script>
     <style>
+        /* ============================================== */
+/* ESTILOS DE TABELA, IMPRESSÃO E REDIMENSIONAMENTO */
+/* ============================================== */
+
+/* Permite que você puxe o cantinho do título da coluna para aumentar ou diminuir a largura */
+th {
+    resize: horizontal;
+    overflow: auto;
+}
+
+/* Oculta os quadradinhos (checkboxes) na tela normal */
+.print-checkbox {
+    display: none;
+}
+
+@media print {
+    /* Faz os quadradinhos aparecerem APENAS na folha de papel */
+    .print-checkbox {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid #334155;
+        border-radius: 2px;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+    
+    /* Força o texto das observações a quebrar de linha e não ficar espremido */
+    td, th {
+        white-space: pre-wrap !important;
+        word-break: normal !important;
+    }
+    
+    /* Dá um espaço generoso para a observação na impressão */
+    .col-obs {
+        min-width: 300px !important; 
+    }
+}
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
         /* Quando a tela estiver expandida (tela cheia), força o texto a quebrar de linha e mostrar tudo! */
