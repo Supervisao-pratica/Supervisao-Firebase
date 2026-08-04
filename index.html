@@ -6498,20 +6498,43 @@ window.atualizarAutocompleteGlobal = function() {
 
                 const parseDate = (v) => {
                     if(!v) return "";
+                    let resultadoFinal = "";
+
+                    // 1. Tenta ler como número serial do Excel
                     if(typeof v === 'number') {
                         let d = new Date(Math.round((v - 25569) * 86400 * 1000));
                         d = new Date(d.getTime() + d.getTimezoneOffset() * 60000);
-                        return d.toISOString().split('T')[0];
-                    }
-                    let s = String(v).trim();
-                    if(s.includes('/')) {
-                        let p = s.split('/');
-                        if(p.length >= 3) {
-                            let yr = p[2].length === 2 ? "20" + p[2] : p[2];
-                            return `${yr}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+                        resultadoFinal = d.toISOString().split('T')[0];
+                    } 
+                    // 2. Tenta ler como texto (ex: "31/07/2026" ou "2026-07-31")
+                    else {
+                        let s = String(v).trim();
+                        if(s.includes('/')) {
+                            let p = s.split('/');
+                            if(p.length >= 3) {
+                                let yr = p[2].length === 2 ? "20" + p[2] : p[2];
+                                resultadoFinal = `${yr}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+                            }
+                        } else if(s.match(/^\d{4}-\d{2}-\d{2}/)) {
+                            resultadoFinal = s.substring(0, 10);
                         }
                     }
-                    if(s.match(/^\d{4}-\d{2}-\d{2}/)) return s.substring(0, 10);
+
+                    // ==========================================
+                    // 🔒 ESCUDO TEMPORAL (ANTI-ERRO DE DIGITAÇÃO)
+                    // ==========================================
+                    if (resultadoFinal !== "") {
+                        // Pega apenas os 4 primeiros dígitos (o ano)
+                        const ano = parseInt(resultadoFinal.substring(0, 4));
+                        
+                        // Se o ano for menor que 2020 ou maior que 2035, é um erro de digitação clássico!
+                        if (ano < 2020 || ano > 2035) {
+                            console.warn(`Data absurda bloqueada pelo sistema: Ano ${ano}`);
+                            return ""; // Finge que a célula estava vazia para proteger o dashboard
+                        }
+                        return resultadoFinal;
+                    }
+
                     return "";
                 };
 
