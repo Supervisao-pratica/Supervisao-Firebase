@@ -6527,9 +6527,22 @@ window.atualizarAutocompleteGlobal = function() {
                         // Pega apenas os 4 primeiros dígitos (o ano)
                         const ano = parseInt(resultadoFinal.substring(0, 4));
                         
-                        // Se o ano for menor que 2020 ou maior que 2035, é um erro de digitação clássico!
+                        // Se o ano for absurdo...
                         if (ano < 2020 || ano > 2035) {
                             console.warn(`Data absurda bloqueada pelo sistema: Ano ${ano}`);
+                            
+                            // Trava para exibir o alerta apenas UMA VEZ por leitura, mesmo que haja 50 erros
+                            if (!window.alertaDataDisparado) {
+                                window.alertaDataDisparado = true; // Aciona a trava
+                                
+                                // O setTimeout garante que o aviso só pule na tela após o sistema terminar de carregar tudo
+                                setTimeout(() => {
+                                    alert(`⚠️ AVISO DE DIGITAÇÃO NA PLANILHA:\n\nO sistema detectou e bloqueou datas de visitas com anos fora do comum (exemplo: encontrou o ano ${ano}).\n\nIsso geralmente acontece por erro de digitação no Excel (como 0202, 1990, etc). O sistema "limpou" essas datas para não estragar a sua média de meses.\n\nRecomendamos localizar e corrigir essas datas na planilha original!`);
+                                    
+                                    window.alertaDataDisparado = false; // Destrava para a próxima vez que você usar o sistema
+                                }, 800);
+                            }
+                            
                             return ""; // Finge que a célula estava vazia para proteger o dashboard
                         }
                         return resultadoFinal;
