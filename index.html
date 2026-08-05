@@ -3381,19 +3381,36 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             renderPlanningCandidates(); 
         }
 
-        // --- SISTEMA DE HISTÓRICO DE ROTEIROS ---
+        // --- SISTEMA DE HISTÓRICO DE ROTEIROS COM BUSCA INTELIGENTE ---
         function openHistoryModal() {
             const listContainer = document.getElementById('historyPlanList');
             const plans = Object.keys(DB.planning);
             
+            // Adiciona a caixa de pesquisa no topo da lista se ela ainda não existir
+            let modalBody = listContainer.parentElement;
+            if (!document.getElementById('historySearchInput')) {
+                const searchHtml = `
+                    <div class="mb-4 relative">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
+                        <input type="text" id="historySearchInput" placeholder="Pesquisar roteiro..." class="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-slate-50 focus:bg-white focus:border-senac-blue focus:ring-1 outline-none transition-all" onkeyup="filterHistoryPlans(this.value)">
+                    </div>
+                `;
+                // Insere a caixa de pesquisa antes da lista de roteiros
+                modalBody.insertAdjacentHTML('afterbegin', searchHtml);
+            } else {
+                // Limpa a pesquisa antiga se já existir ao reabrir a janela
+                document.getElementById('historySearchInput').value = '';
+            }
+
             if(plans.length === 0) {
                 listContainer.innerHTML = '<div class="text-center text-sm text-slate-400 py-6">Nenhum roteiro salvo no histórico.</div>';
             } else {
+                // Renderiza a lista de roteiros (agora com a classe history-plan-item)
                 listContainer.innerHTML = plans.map(p => {
                     const count = DB.planning[p] ? DB.planning[p].length : 0;
                     const isActive = p === STATE.planContext;
                     return `
-                    <div class="flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 transition-colors ${isActive ? 'border-senac-blue bg-blue-50/30' : 'border-slate-200'}">
+                    <div class="history-plan-item flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 transition-colors ${isActive ? 'border-senac-blue bg-blue-50/30' : 'border-slate-200'} mb-2" data-name="${p.toLowerCase()}">
                         <div class="flex-1 cursor-pointer" onclick="loadPlanFromHistory('${p}')">
                             <h4 class="font-bold text-sm text-slate-700 flex items-center gap-2">${p} ${isActive ? '<span class="text-[9px] bg-senac-blue text-white px-1.5 py-0.5 rounded uppercase">Aberto Agora</span>' : ''}</h4>
                             <p class="text-[10px] text-slate-500 mt-0.5">${count} aluno(s) neste roteiro</p>
@@ -3406,9 +3423,34 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                     `;
                 }).join("");
             }
-            lucide.createIcons();
-            document.getElementById('historyPlanModal').classList.remove('hidden');
-            document.getElementById('historyPlanModal').classList.add('flex');
+            if(window.lucide) window.lucide.createIcons();
+            
+            const modal = document.getElementById('historyPlanModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Foca na barra de pesquisa automaticamente para você já sair digitando
+            setTimeout(() => { 
+                const searchInput = document.getElementById('historySearchInput');
+                if(searchInput) searchInput.focus();
+            }, 100);
+        }
+
+        // --- MOTOR DE BUSCA (A LUPA) ---
+        function filterHistoryPlans(query) {
+            const termo = query.toLowerCase().trim();
+            const items = document.querySelectorAll('.history-plan-item');
+            
+            items.forEach(item => {
+                const nomeDoRoteiro = item.getAttribute('data-name');
+                if (nomeDoRoteiro.includes(termo)) {
+                    item.classList.remove('hidden');
+                    item.classList.add('flex'); 
+                } else {
+                    item.classList.add('hidden');
+                    item.classList.remove('flex');
+                }
+            });
         }
 
         function closeHistoryModal() {
