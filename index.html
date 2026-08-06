@@ -1797,47 +1797,54 @@ window.requestRestore = function() {
                 const getVal = id => document.getElementById(id)?.value || ""; 
                 
                 // ==========================================
-                // 🔒 NOVA TRAVA: ANO ABSURDO NAS DATAS DO ALUNO
+                // 🔒 NOVA TRAVA: ANO ABSURDO (VERSÃO SUAVE)
                 // ==========================================
+                let bloqueioAtivado = false; // Nosso botão vermelho
+                
                 const getDateSegura = (id, nomeCampoLabel) => { 
                     const v = getVal(id); 
                     if (!v) return null;
                     
-                    const ano = parseInt(v.substring(0, 4));
-                    if (ano < 2020 || ano > 2035) {
-                        alert(`⚠️ DATA INVÁLIDA!\n\nNo campo ${nomeCampoLabel}, você digitou o ano ${ano}. O sistema bloqueou a gravação para proteger o painel.\n\nPor favor, corrija a data para um ano válido (entre 2020 e 2035) antes de salvar.`);
-                        throw new Error(`Data inválida bloqueada pelo sistema: ${ano}`); // Interrompe o salvamento
+                    // Lê o ano independente se a data vem como 2026-05-15 ou 15/05/2026
+                    let ano = 0;
+                    if (v.includes('-')) {
+                        ano = parseInt(v.split('-')[0]);
+                    } else if (v.includes('/')) {
+                        ano = parseInt(v.split('/')[2]);
+                    }
+
+                    // Se achar o erro, aperta o botão vermelho
+                    if (ano > 0 && (ano < 2020 || ano > 2035)) {
+                        alert(`⚠️ DATA INVÁLIDA!\n\nNo campo [ ${nomeCampoLabel} ], o ano digitado está incorreto (${ano}).\n\nPor favor, corrija para um ano válido antes de salvar.`);
+                        bloqueioAtivado = true; 
+                        return null;
                     }
                     
                     return new Date(v + "T12:00:00"); 
                 }; 
                 
-                // Tenta puxar as datas de Início e Fim passando pela trava
                 const dataInicioSegura = getDateSegura('editIni', 'Data de Início');
                 const dataFimSegura = getDateSegura('editFim', 'Data de Fim');
                 
                 let finalVisits = [];
-                const maxV = isTec ? 6 : 3; // São 6 visitas para Técnica e 3 para Qualificação
+                const maxV = isTec ? 6 : 3; 
                 for(let i=1; i<=maxV; i++) {
                     const ck = document.getElementById('checkV' + i);
                     if(ck) {
-                        // O inspetor verifica a V1, depois a V2, depois a V3...
                         const dataVisitaSegura = getDateSegura('dateV' + i, `Data da ${i}ª Visita`);
                         finalVisits.push({ ok: ck.checked, date: dataVisitaSegura });
                     }
                 }
 
+                // 🛑 SE A TRAVA FOI ACIONADA, ABORTA O SALVAMENTO COM SUAVIDADE!
+                if (bloqueioAtivado) return; 
+
                 let isDesl = !!document.getElementById('editDesligado')?.checked;
                 let obsText = getVal('editObs');
                 
-                // MUDANÇA AQUI: Se a caixa estiver DESMARCADA, apaga as palavras que forçam o desligamento
                 let baseStatus = "Ativo";
-                
-                // 👑 CORREÇÃO DO ERRO AO SALVAR: Garante que o texto existe antes de tentar limpar
-                let obsSegura = typeof obsText !== 'undefined' && obsText !== null ? String(obsText) : "";
-                
                 if (!isDesl) {
-                    obsSegura = obsSegura.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
+                    obsText = obsText.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
                 } else {
                     baseStatus = "Encerrado";
                 }
@@ -8086,9 +8093,17 @@ window.atualizarAutocompleteGlobal = function() {
                     console.log(`🧹 Faxina automática concluída: ${mapasCorrigidos} links de mapa foram consertados!`);
                 }
             }
-
-            // (Se havia mais algum código antigo de filtros aqui embaixo, ele continua normalmente...)
         }
+
+        // =================================================================================
+        // 🟢 LIGANDO O MOTOR: Roda a varredura automática 2 segundos após a página carregar
+        // =================================================================================
+        setTimeout(() => {
+            if (typeof setupFilters === 'function') {
+                console.log("Iniciando faxina automática dos mapas...");
+                setupFilters();
+            }
+        }, 2000);
         // =========================================================================
         // 🚗 MOTOR DE LOGÍSTICA: GERADOR DE ROTA NO GOOGLE MAPS
         // =========================================================================
