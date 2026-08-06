@@ -1797,134 +1797,229 @@ window.requestRestore = function() {
                 const getVal = id => document.getElementById(id)?.value || ""; 
                 
                 // ==========================================
-                // 🔒 NOVA TRAVA: ANO ABSURDO NAS DATAS DO ALUNO
-                // ==========================================
-                const getDateSegura = (id, nomeCampoLabel) => { 
-                    const v = getVal(id); 
-                    if (!v) return null;
-                    
-                    const ano = parseInt(v.substring(0, 4));
-                    if (ano < 2020 || ano > 2035) {
-                        alert(`⚠️ DATA INVÁLIDA!\n\nNo campo ${nomeCampoLabel}, você digitou o ano ${ano}. O sistema bloqueou a gravação para proteger o painel.\n\nPor favor, corrija a data para um ano válido (entre 2020 e 2035) antes de salvar.`);
-                        throw new Error(`Data inválida bloqueada pelo sistema: ${ano}`); // Interrompe o salvamento
-                    }
-                    
-                    return new Date(v + "T12:00:00"); 
-                }; 
-                
-                // Tenta puxar as datas de Início e Fim passando pela trava
-                const dataInicioSegura = getDateSegura('editIni', 'Data de Início');
-                const dataFimSegura = getDateSegura('editFim', 'Data de Fim');
-                
-                let finalVisits = [];
-                const maxV = isTec ? 6 : 3; // São 6 visitas para Técnica e 3 para Qualificação
-                for(let i=1; i<=maxV; i++) {
-                    const ck = document.getElementById('checkV' + i);
-                    if(ck) {
-                        // O inspetor verifica a V1, depois a V2, depois a V3...
-                        const dataVisitaSegura = getDateSegura('dateV' + i, `Data da ${i}ª Visita`);
-                        finalVisits.push({ ok: ck.checked, date: dataVisitaSegura });
-                    }
+// ==========================================
+// 🔒 TRAVA: VALIDAÇÃO DAS DATAS DO ALUNO
+// ==========================================
+const getDateSegura = (id, nomeCampoLabel) => {
+    const campo = document.getElementById(id);
+
+    // Campo inexistente ou sem valor
+    if (!campo || !campo.value) {
+        return null;
+    }
+
+    const valor = campo.value.trim();
+    const data = new Date(`${valor}T12:00:00`);
+    const ano = data.getFullYear();
+
+    // Verifica se a data e o ano são válidos
+    if (
+        Number.isNaN(data.getTime()) ||
+        ano < 2020 ||
+        ano > 2035
+    ) {
+        alert(
+            `⚠️ DATA INVÁLIDA!\n\n` +
+            `Verifique o campo ${nomeCampoLabel}.\n` +
+            `O sistema aceita datas com anos entre 2020 e 2035.`
+        );
+
+        throw new Error(
+            `Data inválida bloqueada no campo ${nomeCampoLabel}: ${valor}`
+        );
+    }
+
+    return data;
+};
+
+// ==========================================
+// 🔧 COMPATIBILIDADE COM CHAMADAS ANTIGAS
+// Evita o erro: getDate is not defined
+// ==========================================
+const getDate = (id, nomeCampoLabel = 'Data') => {
+    return getDateSegura(id, nomeCampoLabel);
+};
+
+// Datas de início e fim do aluno
+const dataInicioSegura = getDateSegura(
+    'editIni',
+    'Data de Início'
+);
+
+const dataFimSegura = getDateSegura(
+    'editFim',
+    'Data de Fim'
+);
+
+let finalVisits = [];
+
+const maxV = isTec ? 6 : 3;
+
+for (let i = 1; i <= maxV; i++) {
+    const ck = document.getElementById(`checkV${i}`);
+
+    if (ck) {
+        const dataVisitaSegura = getDateSegura(
+            `dateV${i}`,
+            `Data da ${i}ª Visita`
+        );
+
+        finalVisits.push({
+            ok: ck.checked,
+            date: dataVisitaSegura
+        });
+    }
+}
+
+let isDesl = !!document.getElementById('editDesligado')?.checked;
+let obsText = getVal('editObs');
+
+// MUDANÇA AQUI: Se a caixa estiver DESMARCADA,
+// apaga as palavras que forçam o desligamento
+let baseStatus = "Ativo";
+
+if (!isDesl) {
+    obsText = obsText
+        .replace(/desligamento|desligado|cancelado|evasão/gi, "")
+        .trim();
+} else {
+    baseStatus = "Encerrado";
+}
+
+// 👑 INSERÇÃO NOVA 1: GARANTIA DO CNPJ SALVO
+const inputCNPJ = document.getElementById('editCNPJ');
+
+const alunoAntigo = rawData.find(
+    x => x.id === STATE.editingId
+);
+
+const cnpjSalvo = inputCNPJ
+    ? inputCNPJ.value
+    : (alunoAntigo ? alunoAntigo.cnpj : "");
+
+// 👑 INSERÇÃO NOVA 2: CORREÇÃO DE REGIÃO SALVA NO BANCO
+let regiaoSalva = getVal('editRegiao').toUpperCase();
+const cidadeSalva = getVal('editCidade').toUpperCase();
+
+if (!regiaoSalva || regiaoSalva === "") {
+    regiaoSalva = (typeof getRegiaoDaCidade === 'function')
+        ? getRegiaoDaCidade(cidadeSalva)
+        : regiaoSalva;
+}
+
+const newData = {
+    id: STATE.editingId || ("NEW_" + Date.now()),
+
+    nome: getVal('editNome'),
+    cpf: getVal('editCPF'),
+    turma: getVal('editTurma'),
+    contraturno: getVal('editContraturno'),
+
+    regiao: regiaoSalva, // Salva a região corrigida
+    cidade: cidadeSalva,
+
+    teoria: getVal('editTeoria'),
+    pratica: getVal('editPratica'),
+
+    contraTurno: {
+        seg: !!document.getElementById('ctSeg')?.checked,
+        ter: !!document.getElementById('ctTer')?.checked,
+        qua: !!document.getElementById('ctQua')?.checked,
+        qui: !!document.getElementById('ctQui')?.checked,
+        sex: !!document.getElementById('ctSex')?.checked
+    },
+
+    cnpj: cnpjSalvo, // Salva o CNPJ na raiz do aluno
+
+    empresa: {
+        razao: getVal('editEmpresa'),
+        endereco: getVal('editEndereco'),
+        link: getVal('editLink'),
+        cnpj: cnpjSalvo
+    },
+
+    supervisor: {
+        display: getVal('editSupervisor'),
+        tel: getVal('editTel'),
+        email: getVal('editEmail')
+    },
+
+    ini: dataInicioSegura,
+    fim: dataFimSegura,
+    visits: finalVisits,
+
+    isDesligado: isDesl,
+    status: baseStatus,
+    obs_origem: obsText
+};
+
+if (STATE.editingId) {
+    const idx = rawData.findIndex(
+        s => s.id == STATE.editingId
+    );
+
+    if (idx > -1) {
+        Object.assign(rawData[idx], newData);
+
+        Object.values(DB.planning).forEach(planArr => {
+            planArr.forEach(pItem => {
+                if (pItem.student?.id === STATE.editingId) {
+                    pItem.student = JSON.parse(
+                        JSON.stringify(rawData[idx])
+                    );
                 }
+            });
+        });
+    }
+} else {
+    rawData.unshift(newData);
+}
 
-                let isDesl = !!document.getElementById('editDesligado')?.checked;
-                let obsText = getVal('editObs');
-                
-                // MUDANÇA AQUI: Se a caixa estiver DESMARCADA, apaga as palavras que forçam o desligamento
-                let baseStatus = "Ativo";
-                if (!isDesl) {
-                    obsText = obsText.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
-                } else {
-                    baseStatus = "Encerrado";
-                }
+if (typeof saveToStorage === 'function') {
+    saveToStorage();
+}
 
-                // 👑 INSERÇÃO NOVA 1: GARANTIA DO CNPJ SALVO
-                const inputCNPJ = document.getElementById('editCNPJ');
-                const alunoAntigo = rawData.find(x => x.id === STATE.editingId);
-                const cnpjSalvo = inputCNPJ ? inputCNPJ.value : (alunoAntigo ? alunoAntigo.cnpj : "");
+if (typeof closeStudentModal === 'function') {
+    closeStudentModal();
+}
 
-                // 👑 INSERÇÃO NOVA 2: CORREÇÃO DE REGIÃO SALVA NO BANCO
-                let regiaoSalva = getVal('editRegiao').toUpperCase();
-                const cidadeSalva = getVal('editCidade').toUpperCase();
-                if (!regiaoSalva || regiaoSalva === "") {
-                    regiaoSalva = (typeof getRegiaoDaCidade === 'function') ? getRegiaoDaCidade(cidadeSalva) : regiaoSalva;
-                }
+if (typeof runFilter === 'function') {
+    runFilter();
+}
 
-                const newData = { 
-                    id: STATE.editingId || ("NEW_" + Date.now()), 
-                    nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'), contraturno: getVal('editContraturno'),
-                    regiao: regiaoSalva, // <- Salva a região corrigida
-                    cidade: cidadeSalva,
-                    teoria: getVal('editTeoria'), pratica: getVal('editPratica'),
-                    contraTurno: { 
-                        seg: !!document.getElementById('ctSeg')?.checked, ter: !!document.getElementById('ctTer')?.checked, 
-                        qua: !!document.getElementById('ctQua')?.checked, qui: !!document.getElementById('ctQui')?.checked, 
-                        sex: !!document.getElementById('ctSex')?.checked 
-                    },
-                    cnpj: cnpjSalvo, // <- Salva o CNPJ na raiz do aluno
-                    empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink'), cnpj: cnpjSalvo }, // <- Salva o CNPJ na empresa
-                    supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
-                   ini: dataInicioSegura, // <--- USANDO A VARIÁVEL SEGURA CORRETA
-                    fim: dataFimSegura,    // <--- USANDO A VARIÁVEL SEGURA CORRETA
-                    visits: finalVisits, 
-                    isDesligado: isDesl,
-                    status: baseStatus,
-                    obs_origem: obsText
-                }; 
-                
-                if(STATE.editingId) { 
-                    const idx = rawData.findIndex(s => s.id == STATE.editingId); 
-                    if(idx > -1) {
-                        Object.assign(rawData[idx], newData);
-                        Object.values(DB.planning).forEach(planArr => {
-                            planArr.forEach(pItem => { if (pItem.student?.id === STATE.editingId) pItem.student = JSON.parse(JSON.stringify(rawData[idx])); });
-                        });
-                    }
-                } else { rawData.unshift(newData); } 
-                
-                if(typeof saveToStorage === 'function') saveToStorage(); 
-                if(typeof closeStudentModal === 'function') closeStudentModal(); 
-                if(typeof runFilter === 'function') runFilter(); 
-                if(typeof showToast === 'function') showToast("Dados salvos!"); 
-            } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
+if (typeof showToast === 'function') {
+    showToast("Dados salvos!");
+}
+
+} catch (err) {
+    console.error("Erro ao salvar:", err);
+
+    // Evita mostrar dois alertas quando a própria validação
+    // de data já informou o problema ao usuário
+    if (!err.message.includes("Data inválida bloqueada")) {
+        alert(`Erro ao salvar: ${err.message}`);
+    }
+}
+}
+
+window.copiarFichaAluno = function() {
+    // Função rápida para pegar o valor do campo de texto
+    const getVal = (id) => {
+        const el = document.getElementById(id);
+        return (el && el.value) ? el.value.trim() : '-';
+    };
+
+    // 👑 Função rápida para checar as caixinhas de contraturno
+    const getContraTurno = () => {
+        const dias = [];
+
+        if (document.getElementById('ctSeg')?.checked) {
+            dias.push('Segunda');
         }
-        window.copiarFichaAluno = function() {
-            // Função rápida para pegar o valor do campo de texto
-            const getVal = (id) => {
-                const el = document.getElementById(id);
-                return (el && el.value) ? el.value.trim() : '-';
-            };
 
-            // 👑 Função rápida para checar as caixinhas de contraturno
-            const getContraTurno = () => {
-                const dias = [];
-                if (document.getElementById('ctSeg')?.checked) dias.push('Segunda');
-                if (document.getElementById('ctTer')?.checked) dias.push('Terça');
-                if (document.getElementById('ctQua')?.checked) dias.push('Quarta');
-                if (document.getElementById('ctQui')?.checked) dias.push('Quinta');
-                if (document.getElementById('ctSex')?.checked) dias.push('Sexta');
-                return dias.length > 0 ? dias.join(', ') : 'Não possui';
-            };
-
-            // Pegando os dados com os SEUS IDs exatos!
-            const nome = getVal('editNome');
-            const cpf = getVal('editCPF');
-            const turma = getVal('editTurma');
-            const regiao = getVal('editRegiao');
-            const cidade = getVal('editCidade');
-            const teoria = getVal('editTeoria');
-            const pratica = getVal('editPratica');
-            const contraturno = getContraTurno(); // <-- Puxa os dias certinhos aqui!
-            
-            const empresa = getVal('editEmpresa');
-            const endereco = getVal('editEndereco');
-            const supervisor = getVal('editSupervisor');
-            const telefone = getVal('editTel');
-            const email = getVal('editEmail');
-            const obs = getVal('editObs');
-
-            // Monta o texto formatado para WhatsApp/Teams (com negritos)
-            const texto = `🎓 *FICHA DO ALUNO*
+        if (document.getElementById('ctTer')?.checked) {
+            dias.push('Terça');
+  
 Nome: ${nome}
 Turma: ${turma} | CPF: ${cpf}
 Localidade: ${cidade} (${regiao})
