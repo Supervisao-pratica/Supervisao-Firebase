@@ -1841,7 +1841,9 @@ window.requestRestore = function() {
                     cnpj: cnpjSalvo, // <- Salva o CNPJ na raiz do aluno
                     empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink'), cnpj: cnpjSalvo }, // <- Salva o CNPJ na empresa
                     supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
-                    ini: getDate('editIni'), fim: getDate('editFim'),
+                    ini: dataInicioSegura, // <--- USANDO A VARIÁVEL SEGURA CORRETA
+                    fim: dataFimSegura,    // <--- USANDO A VARIÁVEL SEGURA CORRETA
+                    visits: finalVisits,
                     visits: finalVisits, 
                     isDesligado: isDesl,
                     status: baseStatus,
