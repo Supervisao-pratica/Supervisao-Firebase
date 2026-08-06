@@ -1799,13 +1799,12 @@ window.requestRestore = function() {
                 // ==========================================
                 // 🔒 NOVA TRAVA: ANO ABSURDO (VERSÃO SUAVE)
                 // ==========================================
-                let bloqueioAtivado = false; // Nosso botão vermelho
+                let bloqueioAtivado = false; 
                 
                 const getDateSegura = (id, nomeCampoLabel) => { 
                     const v = getVal(id); 
                     if (!v) return null;
                     
-                    // Lê o ano independente se a data vem como 2026-05-15 ou 15/05/2026
                     let ano = 0;
                     if (v.includes('-')) {
                         ano = parseInt(v.split('-')[0]);
@@ -1813,7 +1812,6 @@ window.requestRestore = function() {
                         ano = parseInt(v.split('/')[2]);
                     }
 
-                    // Se achar o erro, aperta o botão vermelho
                     if (ano > 0 && (ano < 2020 || ano > 2035)) {
                         alert(`⚠️ DATA INVÁLIDA!\n\nNo campo [ ${nomeCampoLabel} ], o ano digitado está incorreto (${ano}).\n\nPor favor, corrija para um ano válido antes de salvar.`);
                         bloqueioAtivado = true; 
@@ -1864,7 +1862,6 @@ window.requestRestore = function() {
                 // 👑 INSERÇÃO NOVA 3: CORREÇÃO AUTOMÁTICA DOS LINKS DE MAPA QUEBRADOS
                 let linkMapeamento = getVal('editLink');
                 if (linkMapeamento && linkMapeamento.includes('googleusercontent.com')) {
-                    // Substitui a raiz problemática pela URL oficial e limpa do Google Maps
                     linkMapeamento = linkMapeamento.replace(/https?:\/\/googleusercontent\.com\/maps\.google\.com/ig, 'https://maps.google.com');
                 }
 
@@ -1885,15 +1882,16 @@ window.requestRestore = function() {
                     empresa: { 
                         razao: getVal('editEmpresa'), 
                         endereco: getVal('editEndereco'), 
-                        link: linkMapeamento, // <- SALVA O LINK DO MAPA JÁ CORRIGIDO!
+                        link: linkMapeamento, 
                         cnpj: cnpjSalvo 
                     }, 
                     supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
-                    ini: getDate('editIni'), fim: getDate('editFim'),
+                    ini: dataInicioSegura, // ← CORRIGIDO AQUI (Variável certa)
+                    fim: dataFimSegura,    // ← CORRIGIDO AQUI (Variável certa)
                     visits: finalVisits, 
                     isDesligado: isDesl,
                     status: baseStatus,
-                    obs_origem: obsSegura // <- SALVA A OBSERVAÇÃO DE FORMA SEGURA SEM TRAVAR
+                    obs_origem: obsText    // ← CORRIGIDO AQUI (Variável certa)
                 }; 
 
                 if(STATE.editingId) { 
@@ -1916,9 +1914,9 @@ window.requestRestore = function() {
                 if(typeof showToast === 'function') showToast("Dados salvos!"); 
             } catch (err) { 
                 console.error("Erro ao salvar:", err); 
-                // Agora o alerta mostra o motivo exato do erro caso aconteça algo novo!
                 alert("Erro ao salvar o cadastro. Detalhe: " + err.message); 
             }
+        }
 
             // ==========================================
             // 2. SEU CÓDIGO ORIGINAL MANTIDO INTACTO
