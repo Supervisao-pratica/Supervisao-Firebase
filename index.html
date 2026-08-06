@@ -1832,8 +1832,12 @@ window.requestRestore = function() {
                 
                 // MUDANÇA AQUI: Se a caixa estiver DESMARCADA, apaga as palavras que forçam o desligamento
                 let baseStatus = "Ativo";
+                
+                // 👑 CORREÇÃO DO ERRO AO SALVAR: Garante que o texto existe antes de tentar limpar
+                let obsSegura = typeof obsText !== 'undefined' && obsText !== null ? String(obsText) : "";
+                
                 if (!isDesl) {
-                    obsText = obsText.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
+                    obsSegura = obsSegura.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
                 } else {
                     baseStatus = "Encerrado";
                 }
@@ -1850,143 +1854,63 @@ window.requestRestore = function() {
                     regiaoSalva = (typeof getRegiaoDaCidade === 'function') ? getRegiaoDaCidade(cidadeSalva) : regiaoSalva;
                 }
 
+                // 👑 INSERÇÃO NOVA 3: CORREÇÃO AUTOMÁTICA DOS LINKS DE MAPA QUEBRADOS
+                let linkMapeamento = getVal('editLink');
+                if (linkMapeamento && linkMapeamento.includes('googleusercontent.com')) {
+                    // Substitui a raiz problemática pela URL oficial e limpa do Google Maps
+                    linkMapeamento = linkMapeamento.replace(/https?:\/\/googleusercontent\.com\/maps\.google\.com/ig, 'https://maps.google.com');
+                }
+
                 const newData = { 
                     id: STATE.editingId || ("NEW_" + Date.now()), 
                     nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'), contraturno: getVal('editContraturno'),
-                    regiao: regiaoSalva, // <- Salva a região corrigida
+                    regiao: regiaoSalva, 
                     cidade: cidadeSalva,
                     teoria: getVal('editTeoria'), pratica: getVal('editPratica'),
                     contraTurno: { 
-                        seg: !!document.getElementById('ctSeg')?.checked, ter: !!document.getElementById('ctTer')?.checked, 
-                        qua: !!document.getElementById('ctQua')?.checked, qui: !!document.getElementById('ctQui')?.checked, 
+                        seg: !!document.getElementById('ctSeg')?.checked, 
+                        ter: !!document.getElementById('ctTer')?.checked, 
+                        qua: !!document.getElementById('ctQua')?.checked, 
+                        qui: !!document.getElementById('ctQui')?.checked, 
                         sex: !!document.getElementById('ctSex')?.checked 
                     },
-                    cnpj: cnpjSalvo, // <- Salva o CNPJ na raiz do aluno
-                    empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink'), cnpj: cnpjSalvo }, // <- Salva o CNPJ na empresa
+                    cnpj: cnpjSalvo, 
+                    empresa: { 
+                        razao: getVal('editEmpresa'), 
+                        endereco: getVal('editEndereco'), 
+                        link: linkMapeamento, // <- SALVA O LINK DO MAPA JÁ CORRIGIDO!
+                        cnpj: cnpjSalvo 
+                    }, 
                     supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
                     ini: getDate('editIni'), fim: getDate('editFim'),
                     visits: finalVisits, 
                     isDesligado: isDesl,
                     status: baseStatus,
-                    obs_origem: obsText
+                    obs_origem: obsSegura // <- SALVA A OBSERVAÇÃO DE FORMA SEGURA SEM TRAVAR
                 }; 
-                
+
                 if(STATE.editingId) { 
                     const idx = rawData.findIndex(s => s.id == STATE.editingId); 
                     if(idx > -1) {
                         Object.assign(rawData[idx], newData);
                         Object.values(DB.planning).forEach(planArr => {
-                            planArr.forEach(pItem => { if (pItem.student?.id === STATE.editingId) pItem.student = JSON.parse(JSON.stringify(rawData[idx])); });
+                            planArr.forEach(pItem => { 
+                                if (pItem.student?.id === STATE.editingId) pItem.student = JSON.parse(JSON.stringify(rawData[idx])); 
+                            });
                         });
                     }
-                } else { rawData.unshift(newData); } 
-                
+                } else { 
+                    rawData.unshift(newData); 
+                } 
+
                 if(typeof saveToStorage === 'function') saveToStorage(); 
                 if(typeof closeStudentModal === 'function') closeStudentModal(); 
                 if(typeof runFilter === 'function') runFilter(); 
                 if(typeof showToast === 'function') showToast("Dados salvos!"); 
-            } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
-        }
-        window.copiarFichaAluno = function() {
-            // Função rápida para pegar o valor do campo de texto
-            const getVal = (id) => {
-                const el = document.getElementById(id);
-                return (el && el.value) ? el.value.trim() : '-';
-            };
-
-            // 👑 Função rápida para checar as caixinhas de contraturno
-            const getContraTurno = () => {
-                const dias = [];
-                if (document.getElementById('ctSeg')?.checked) dias.push('Segunda');
-                if (document.getElementById('ctTer')?.checked) dias.push('Terça');
-                if (document.getElementById('ctQua')?.checked) dias.push('Quarta');
-                if (document.getElementById('ctQui')?.checked) dias.push('Quinta');
-                if (document.getElementById('ctSex')?.checked) dias.push('Sexta');
-                return dias.length > 0 ? dias.join(', ') : 'Não possui';
-            };
-
-            // Pegando os dados com os SEUS IDs exatos!
-            const nome = getVal('editNome');
-            const cpf = getVal('editCPF');
-            const turma = getVal('editTurma');
-            const regiao = getVal('editRegiao');
-            const cidade = getVal('editCidade');
-            const teoria = getVal('editTeoria');
-            const pratica = getVal('editPratica');
-            const contraturno = getContraTurno(); // <-- Puxa os dias certinhos aqui!
-            
-            const empresa = getVal('editEmpresa');
-            const endereco = getVal('editEndereco');
-            const supervisor = getVal('editSupervisor');
-            const telefone = getVal('editTel');
-            const email = getVal('editEmail');
-            const obs = getVal('editObs');
-
-            // Monta o texto formatado para WhatsApp/Teams (com negritos)
-            const texto = `🎓 *FICHA DO ALUNO*
-Nome: ${nome}
-Turma: ${turma} | CPF: ${cpf}
-Localidade: ${cidade} (${regiao})
-
-🕒 *JORNADA*
-Teórica: ${teoria}
-Prática: ${pratica}
-Contra-Turno: ${contraturno}
-
-🏢 *EMPRESA*
-Razão Social: ${empresa}
-Endereço: ${endereco}
-Supervisor: ${supervisor}
-Contato: ${telefone} | E-mail: ${email}
-
-📝 *OBSERVAÇÕES*
-${obs}`;
-
-            // Copia para o seu computador
-            navigator.clipboard.writeText(texto).then(() => {
-                alert("✅ Ficha copiada com sucesso!\n\nAgora é só abrir o WhatsApp, Teams ou E-mail e colar (Ctrl+V).");
-            }).catch(err => {
-                alert("Erro ao copiar: " + err);
-            });
-        };
-
-        // (A sua função já existente ficará logo aqui abaixo)
-        function exportData() {
-            // ... seu código atual ...
-        }
-
-        function exportData() { 
-            if(!STATE.filter || STATE.filter.length === 0) return alert("Sem dados."); 
-            const dataToExport = STATE.filter.map(s => {
-                const st = analyzeStatus(s);
-                const row = { "Nome": s.nome, "Turma": s.turma, "Status": st.label, "Empresa": s.empresa?.razao, "Supervisor": s.supervisor?.display, "Região": s.regiao, "Cidade": s.cidade, "Início": s.ini ? new Date(s.ini).toLocaleDateString('pt-BR') : '', "Fim": s.fim ? new Date(s.fim).toLocaleDateString('pt-BR') : '' };
-                const maxV = DB.tec.some(t => t.id === s.id) ? 6 : 3;
-                for(let idx=0; idx < maxV; idx++) {
-                    const v = s.visits[idx];
-                    row[`${idx+1}ª Visita`] = (v && v.ok) ? (v.date ? new Date(v.date).toLocaleDateString('pt-BR') : 'OK') : '';
-                }
-                row["Desligado/Encerrado"] = st.status === 'desligado' ? 'Sim' : 'Não';
-                return row;
-            }); 
-            const ws = XLSX.utils.json_to_sheet(dataToExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Relatório"); XLSX.writeFile(wb, "Relatorio_Senac.xlsx"); 
-        }
-
-        function setupFilters() { 
-            // 👑 1. VARREDURA AUTOMÁTICA DE CORREÇÃO (O "Rodo" no Banco de Dados)
-            // Varre todos os alunos e conserta a Região de quem estiver sem, baseado na cidade!
-            if (typeof getRegiaoDaCidade === 'function') {
-                let precisaSalvar = false;
-                [...(DB.quali || []), ...(DB.tec || [])].forEach(s => {
-                    if (!s.regiao || s.regiao.trim() === '' || s.regiao.includes('NÃO INF')) {
-                        const regiaoCerta = getRegiaoDaCidade(s.cidade);
-                        if (regiaoCerta) {
-                            s.regiao = regiaoCerta;
-                            precisaSalvar = true;
-                        }
-                    }
-                });
-                // Se arrumou a região de alguém, salva o banco de dados silenciosamente para ficar definitivo
-                if (precisaSalvar && typeof saveToStorage === 'function') saveToStorage();
+            } catch (err) { 
+                console.error("Erro ao salvar:", err); 
+                // Agora o alerta mostra o motivo exato do erro caso aconteça algo novo!
+                alert("Erro ao salvar o cadastro. Detalhe: " + err.message); 
             }
 
             // ==========================================
@@ -8125,6 +8049,46 @@ window.atualizarAutocompleteGlobal = function() {
                 }
             }, 200);
         };
+        // =================================================================================
+        // 🔎 FUNÇÃO: SETUP FILTERS (Filtros da Tela e Varredura Automática do Banco)
+        // =================================================================================
+        function setupFilters() { 
+            // 👑 1. VARREDURA AUTOMÁTICA DE CORREÇÃO (O "Rodo" no Banco de Dados)
+            let precisaSalvar = false;
+            let mapasCorrigidos = 0;
+
+            [...(DB.quali || []), ...(DB.tec || [])].forEach(s => {
+                
+                // A) Conserto Automático das Regiões
+                if (typeof getRegiaoDaCidade === 'function') {
+                    if (!s.regiao || s.regiao.trim() === '' || s.regiao.includes('NÃO INF')) {
+                        const regiaoCerta = getRegiaoDaCidade(s.cidade);
+                        if (regiaoCerta) {
+                            s.regiao = regiaoCerta;
+                            precisaSalvar = true;
+                        }
+                    }
+                }
+
+                // B) Conserto Automático dos Links de Mapa Quebrados (A Mágica acontece aqui!)
+                if (s.empresa && s.empresa.link && s.empresa.link.includes('googleusercontent.com')) {
+                    // Troca o formato antigo e esquisito pela URL limpa oficial do Google
+                    s.empresa.link = s.empresa.link.replace(/https?:\/\/googleusercontent\.com\/maps\.google\.com/ig, 'https://maps.google.com');
+                    precisaSalvar = true;
+                    mapasCorrigidos++;
+                }
+            });
+
+            // Se arrumou a região de alguém ou consertou mapas, salva o banco de dados silenciosamente
+            if (precisaSalvar && typeof saveToStorage === 'function') {
+                saveToStorage();
+                if (mapasCorrigidos > 0) {
+                    console.log(`🧹 Faxina automática concluída: ${mapasCorrigidos} links de mapa foram consertados!`);
+                }
+            }
+
+            // (Se havia mais algum código antigo de filtros aqui embaixo, ele continua normalmente...)
+        }
         // =========================================================================
         // 🚗 MOTOR DE LOGÍSTICA: GERADOR DE ROTA NO GOOGLE MAPS
         // =========================================================================
