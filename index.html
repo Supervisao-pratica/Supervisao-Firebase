@@ -1795,51 +1795,19 @@ window.requestRestore = function() {
                 const rawData = isTec ? DB.tec : DB.quali; 
                 
                 const getVal = id => document.getElementById(id)?.value || ""; 
-                
-                // ==========================================
-                // 🔒 NOVA TRAVA: ANO ABSURDO (VERSÃO SUAVE)
-                // ==========================================
-                let bloqueioAtivado = false; 
-                
-                const getDateSegura = (id, nomeCampoLabel) => { 
-                    const v = getVal(id); 
-                    if (!v) return null;
-                    
-                    let ano = 0;
-                    if (v.includes('-')) {
-                        ano = parseInt(v.split('-')[0]);
-                    } else if (v.includes('/')) {
-                        ano = parseInt(v.split('/')[2]);
-                    }
-
-                    if (ano > 0 && (ano < 2020 || ano > 2035)) {
-                        alert(`⚠️ DATA INVÁLIDA!\n\nNo campo [ ${nomeCampoLabel} ], o ano digitado está incorreto (${ano}).\n\nPor favor, corrija para um ano válido antes de salvar.`);
-                        bloqueioAtivado = true; 
-                        return null;
-                    }
-                    
-                    return new Date(v + "T12:00:00"); 
-                }; 
-                
-                const dataInicioSegura = getDateSegura('editIni', 'Data de Início');
-                const dataFimSegura = getDateSegura('editFim', 'Data de Fim');
+                const getDate = id => { const v = getVal(id); return v ? new Date(v + "T12:00:00") : null; }; 
                 
                 let finalVisits = [];
                 const maxV = isTec ? 6 : 3; 
                 for(let i=1; i<=maxV; i++) {
                     const ck = document.getElementById('checkV' + i);
-                    if(ck) {
-                        const dataVisitaSegura = getDateSegura('dateV' + i, `Data da ${i}ª Visita`);
-                        finalVisits.push({ ok: ck.checked, date: dataVisitaSegura });
-                    }
+                    if(ck) finalVisits.push({ ok: ck.checked, date: getDate('dateV' + i) });
                 }
-
-                // 🛑 SE A TRAVA FOI ACIONADA, ABORTA O SALVAMENTO COM SUAVIDADE!
-                if (bloqueioAtivado) return; 
 
                 let isDesl = !!document.getElementById('editDesligado')?.checked;
                 let obsText = getVal('editObs');
                 
+                // MUDANÇA AQUI: Se a caixa estiver DESMARCADA, apaga as palavras que forçam o desligamento
                 let baseStatus = "Ativo";
                 if (!isDesl) {
                     obsText = obsText.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
@@ -1859,64 +1827,144 @@ window.requestRestore = function() {
                     regiaoSalva = (typeof getRegiaoDaCidade === 'function') ? getRegiaoDaCidade(cidadeSalva) : regiaoSalva;
                 }
 
-                // 👑 INSERÇÃO NOVA 3: CORREÇÃO AUTOMÁTICA DOS LINKS DE MAPA QUEBRADOS
-                let linkMapeamento = getVal('editLink');
-                if (linkMapeamento && linkMapeamento.includes('googleusercontent.com')) {
-                    linkMapeamento = linkMapeamento.replace(/https?:\/\/googleusercontent\.com\/maps\.google\.com/ig, 'https://maps.google.com');
-                }
-
                 const newData = { 
                     id: STATE.editingId || ("NEW_" + Date.now()), 
                     nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'), contraturno: getVal('editContraturno'),
-                    regiao: regiaoSalva, 
+                    regiao: regiaoSalva, // <- Salva a região corrigida
                     cidade: cidadeSalva,
                     teoria: getVal('editTeoria'), pratica: getVal('editPratica'),
                     contraTurno: { 
-                        seg: !!document.getElementById('ctSeg')?.checked, 
-                        ter: !!document.getElementById('ctTer')?.checked, 
-                        qua: !!document.getElementById('ctQua')?.checked, 
-                        qui: !!document.getElementById('ctQui')?.checked, 
+                        seg: !!document.getElementById('ctSeg')?.checked, ter: !!document.getElementById('ctTer')?.checked, 
+                        qua: !!document.getElementById('ctQua')?.checked, qui: !!document.getElementById('ctQui')?.checked, 
                         sex: !!document.getElementById('ctSex')?.checked 
                     },
-                    cnpj: cnpjSalvo, 
-                    empresa: { 
-                        razao: getVal('editEmpresa'), 
-                        endereco: getVal('editEndereco'), 
-                        link: linkMapeamento, 
-                        cnpj: cnpjSalvo 
-                    }, 
+                    cnpj: cnpjSalvo, // <- Salva o CNPJ na raiz do aluno
+                    empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink'), cnpj: cnpjSalvo }, // <- Salva o CNPJ na empresa
                     supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
-                    ini: dataInicioSegura, // ← CORRIGIDO AQUI (Variável certa)
-                    fim: dataFimSegura,    // ← CORRIGIDO AQUI (Variável certa)
+                    ini: getDate('editIni'), fim: getDate('editFim'),
                     visits: finalVisits, 
                     isDesligado: isDesl,
                     status: baseStatus,
-                    obs_origem: obsText    // ← CORRIGIDO AQUI (Variável certa)
+                    obs_origem: obsText
                 }; 
-
+                
                 if(STATE.editingId) { 
                     const idx = rawData.findIndex(s => s.id == STATE.editingId); 
                     if(idx > -1) {
                         Object.assign(rawData[idx], newData);
                         Object.values(DB.planning).forEach(planArr => {
-                            planArr.forEach(pItem => { 
-                                if (pItem.student?.id === STATE.editingId) pItem.student = JSON.parse(JSON.stringify(rawData[idx])); 
-                            });
+                            planArr.forEach(pItem => { if (pItem.student?.id === STATE.editingId) pItem.student = JSON.parse(JSON.stringify(rawData[idx])); });
                         });
                     }
-                } else { 
-                    rawData.unshift(newData); 
-                } 
-
+                } else { rawData.unshift(newData); } 
+                
                 if(typeof saveToStorage === 'function') saveToStorage(); 
                 if(typeof closeStudentModal === 'function') closeStudentModal(); 
                 if(typeof runFilter === 'function') runFilter(); 
                 if(typeof showToast === 'function') showToast("Dados salvos!"); 
-            } catch (err) { 
-                console.error("Erro ao salvar:", err); 
-                alert("Erro ao salvar o cadastro. Detalhe: " + err.message); 
-            }
+            } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
         }
+        window.copiarFichaAluno = function() {
+            // Função rápida para pegar o valor do campo de texto
+            const getVal = (id) => {
+                const el = document.getElementById(id);
+                return (el && el.value) ? el.value.trim() : '-';
+            };
+
+            // 👑 Função rápida para checar as caixinhas de contraturno
+            const getContraTurno = () => {
+                const dias = [];
+                if (document.getElementById('ctSeg')?.checked) dias.push('Segunda');
+                if (document.getElementById('ctTer')?.checked) dias.push('Terça');
+                if (document.getElementById('ctQua')?.checked) dias.push('Quarta');
+                if (document.getElementById('ctQui')?.checked) dias.push('Quinta');
+                if (document.getElementById('ctSex')?.checked) dias.push('Sexta');
+                return dias.length > 0 ? dias.join(', ') : 'Não possui';
+            };
+
+            // Pegando os dados com os SEUS IDs exatos!
+            const nome = getVal('editNome');
+            const cpf = getVal('editCPF');
+            const turma = getVal('editTurma');
+            const regiao = getVal('editRegiao');
+            const cidade = getVal('editCidade');
+            const teoria = getVal('editTeoria');
+            const pratica = getVal('editPratica');
+            const contraturno = getContraTurno(); // <-- Puxa os dias certinhos aqui!
+            
+            const empresa = getVal('editEmpresa');
+            const endereco = getVal('editEndereco');
+            const supervisor = getVal('editSupervisor');
+            const telefone = getVal('editTel');
+            const email = getVal('editEmail');
+            const obs = getVal('editObs');
+
+            // Monta o texto formatado para WhatsApp/Teams (com negritos)
+            const texto = `🎓 *FICHA DO ALUNO*
+Nome: ${nome}
+Turma: ${turma} | CPF: ${cpf}
+Localidade: ${cidade} (${regiao})
+
+🕒 *JORNADA*
+Teórica: ${teoria}
+Prática: ${pratica}
+Contra-Turno: ${contraturno}
+
+🏢 *EMPRESA*
+Razão Social: ${empresa}
+Endereço: ${endereco}
+Supervisor: ${supervisor}
+Contato: ${telefone} | E-mail: ${email}
+
+📝 *OBSERVAÇÕES*
+${obs}`;
+
+            // Copia para o seu computador
+            navigator.clipboard.writeText(texto).then(() => {
+                alert("✅ Ficha copiada com sucesso!\n\nAgora é só abrir o WhatsApp, Teams ou E-mail e colar (Ctrl+V).");
+            }).catch(err => {
+                alert("Erro ao copiar: " + err);
+            });
+        };
+
+        // (A sua função já existente ficará logo aqui abaixo)
+        function exportData() {
+            // ... seu código atual ...
+        }
+
+        function exportData() { 
+            if(!STATE.filter || STATE.filter.length === 0) return alert("Sem dados."); 
+            const dataToExport = STATE.filter.map(s => {
+                const st = analyzeStatus(s);
+                const row = { "Nome": s.nome, "Turma": s.turma, "Status": st.label, "Empresa": s.empresa?.razao, "Supervisor": s.supervisor?.display, "Região": s.regiao, "Cidade": s.cidade, "Início": s.ini ? new Date(s.ini).toLocaleDateString('pt-BR') : '', "Fim": s.fim ? new Date(s.fim).toLocaleDateString('pt-BR') : '' };
+                const maxV = DB.tec.some(t => t.id === s.id) ? 6 : 3;
+                for(let idx=0; idx < maxV; idx++) {
+                    const v = s.visits[idx];
+                    row[`${idx+1}ª Visita`] = (v && v.ok) ? (v.date ? new Date(v.date).toLocaleDateString('pt-BR') : 'OK') : '';
+                }
+                row["Desligado/Encerrado"] = st.status === 'desligado' ? 'Sim' : 'Não';
+                return row;
+            }); 
+            const ws = XLSX.utils.json_to_sheet(dataToExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Relatório"); XLSX.writeFile(wb, "Relatorio_Senac.xlsx"); 
+        }
+
+        function setupFilters() { 
+            // 👑 1. VARREDURA AUTOMÁTICA DE CORREÇÃO (O "Rodo" no Banco de Dados)
+            // Varre todos os alunos e conserta a Região de quem estiver sem, baseado na cidade!
+            if (typeof getRegiaoDaCidade === 'function') {
+                let precisaSalvar = false;
+                [...(DB.quali || []), ...(DB.tec || [])].forEach(s => {
+                    if (!s.regiao || s.regiao.trim() === '' || s.regiao.includes('NÃO INF')) {
+                        const regiaoCerta = getRegiaoDaCidade(s.cidade);
+                        if (regiaoCerta) {
+                            s.regiao = regiaoCerta;
+                            precisaSalvar = true;
+                        }
+                    }
+                });
+                // Se arrumou a região de alguém, salva o banco de dados silenciosamente para ficar definitivo
+                if (precisaSalvar && typeof saveToStorage === 'function') saveToStorage();
+            }
 
             // ==========================================
             // 2. SEU CÓDIGO ORIGINAL MANTIDO INTACTO
@@ -3310,36 +3358,19 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             renderPlanningCandidates(); 
         }
 
-        // --- SISTEMA DE HISTÓRICO DE ROTEIROS COM BUSCA INTELIGENTE ---
+        // --- SISTEMA DE HISTÓRICO DE ROTEIROS ---
         function openHistoryModal() {
             const listContainer = document.getElementById('historyPlanList');
             const plans = Object.keys(DB.planning);
             
-            // Adiciona a caixa de pesquisa no topo da lista se ela ainda não existir
-            let modalBody = listContainer.parentElement;
-            if (!document.getElementById('historySearchInput')) {
-                const searchHtml = `
-                    <div class="mb-4 relative">
-                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
-                        <input type="text" id="historySearchInput" placeholder="Pesquisar roteiro..." class="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-slate-50 focus:bg-white focus:border-senac-blue focus:ring-1 outline-none transition-all" onkeyup="filterHistoryPlans(this.value)">
-                    </div>
-                `;
-                // Insere a caixa de pesquisa antes da lista de roteiros
-                modalBody.insertAdjacentHTML('afterbegin', searchHtml);
-            } else {
-                // Limpa a pesquisa antiga se já existir ao reabrir a janela
-                document.getElementById('historySearchInput').value = '';
-            }
-
             if(plans.length === 0) {
                 listContainer.innerHTML = '<div class="text-center text-sm text-slate-400 py-6">Nenhum roteiro salvo no histórico.</div>';
             } else {
-                // Renderiza a lista de roteiros (agora com a classe history-plan-item)
                 listContainer.innerHTML = plans.map(p => {
                     const count = DB.planning[p] ? DB.planning[p].length : 0;
                     const isActive = p === STATE.planContext;
                     return `
-                    <div class="history-plan-item flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 transition-colors ${isActive ? 'border-senac-blue bg-blue-50/30' : 'border-slate-200'} mb-2" data-name="${p.toLowerCase()}">
+                    <div class="flex justify-between items-center p-3 border rounded-lg hover:bg-slate-50 transition-colors ${isActive ? 'border-senac-blue bg-blue-50/30' : 'border-slate-200'}">
                         <div class="flex-1 cursor-pointer" onclick="loadPlanFromHistory('${p}')">
                             <h4 class="font-bold text-sm text-slate-700 flex items-center gap-2">${p} ${isActive ? '<span class="text-[9px] bg-senac-blue text-white px-1.5 py-0.5 rounded uppercase">Aberto Agora</span>' : ''}</h4>
                             <p class="text-[10px] text-slate-500 mt-0.5">${count} aluno(s) neste roteiro</p>
@@ -3352,34 +3383,9 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                     `;
                 }).join("");
             }
-            if(window.lucide) window.lucide.createIcons();
-            
-            const modal = document.getElementById('historyPlanModal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            
-            // Foca na barra de pesquisa automaticamente para você já sair digitando
-            setTimeout(() => { 
-                const searchInput = document.getElementById('historySearchInput');
-                if(searchInput) searchInput.focus();
-            }, 100);
-        }
-
-        // --- MOTOR DE BUSCA (A LUPA) ---
-        function filterHistoryPlans(query) {
-            const termo = query.toLowerCase().trim();
-            const items = document.querySelectorAll('.history-plan-item');
-            
-            items.forEach(item => {
-                const nomeDoRoteiro = item.getAttribute('data-name');
-                if (nomeDoRoteiro.includes(termo)) {
-                    item.classList.remove('hidden');
-                    item.classList.add('flex'); 
-                } else {
-                    item.classList.add('hidden');
-                    item.classList.remove('flex');
-                }
-            });
+            lucide.createIcons();
+            document.getElementById('historyPlanModal').classList.remove('hidden');
+            document.getElementById('historyPlanModal').classList.add('flex');
         }
 
         function closeHistoryModal() {
@@ -3946,24 +3952,9 @@ window.updateVisitCC = function(idx, val) {
                 const plan = DB.planning[STATE.planContext];
                 const item = plan[idx]; 
                 
+                // --- NOVA TRAVA DE SEGURANÇA: CONTRATURNO (MANTIDA INTACTA) ---
                 if (field === 'date' && val) {
                     const parts = val.split('-');
-                    const ano = parseInt(parts[0]);
-
-                    // ==========================================
-                    // 🔒 NOVA TRAVA: ANO ABSURDO (Erro de digitação)
-                    // ==========================================
-                    if (ano < 2020 || ano > 2035) {
-                        alert(`⚠️ DATA INVÁLIDA!\n\nVocê digitou o ano ${ano}. O sistema bloqueou a ação para proteger as médias do painel.\n\nPor favor, digite um ano real (entre 2020 e 2035).`);
-                        
-                        // Atualiza a tela para apagar a data errada que você acabou de digitar
-                        if(typeof renderPlanningTable === 'function') renderPlanningTable(); 
-                        return; // O 'return' mata o processo aqui e não deixa salvar!
-                    }
-
-                    // ==========================================
-                    // --- TRAVA DE SEGURANÇA: CONTRATURNO (MANTIDA INTACTA) ---
-                    // ==========================================
                     const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
                     const dayOfWeek = dateObj.getDay(); 
                     const ct = item.student.contraTurno || {};
@@ -3980,7 +3971,7 @@ window.updateVisitCC = function(idx, val) {
                 // ---------------------------------------------
 
                 // 1. Atualiza a linha que você acabou de digitar
-                item[field] = val;
+                item[field] = val; 
                 
                 // =========================================================
                 // 🤖 ASSISTENTE INTELIGENTE: FUNCIONA EM QUALQUER LINHA!
@@ -7219,39 +7210,21 @@ window.atualizarAutocompleteGlobal = function() {
                                 
                                 relatorio += blocos.join(" | ");
                                 
-                                // 👑 CORREÇÃO: Busca o aluno na base de dados mestre
-                                let alunoGlobal = null;
-                                if (dbObj.quali) alunoGlobal = dbObj.quali.find(a => a.id === item.student.id);
-                                if (!alunoGlobal && dbObj.tec) alunoGlobal = dbObj.tec.find(a => a.id === item.student.id);
-
-                                // Resgata todo o histórico de onde ele estiver (Roteiro, Banco Global ou Excel Original)
-                                let obsAtual = (item.obs || (alunoGlobal ? (alunoGlobal.obs || alunoGlobal.obs_origem) : "") || item.student.obs_origem || "").trim();
-                                let novaObsFinal = "";
+                                let obsAtual = (item.obs || "").trim();
                                 
-                                // Evita duplicação no mesmo dia
+                                // Verifica se já existe uma leitura HOJE para evitar texto duplicado
                                 if (obsAtual.includes(`[Pedagógico em ${dataHoje}]`)) {
+                                    // Substitui apenas a leitura de hoje, preservando TODO o resto do histórico e anotações manuais
                                     let linhas = obsAtual.split('\n');
                                     let index = linhas.findIndex(l => l.includes(`[Pedagógico em ${dataHoje}]`));
                                     if (index !== -1) {
                                         linhas[index] = relatorio;
-                                        novaObsFinal = linhas.join('\n');
+                                        item.obs = linhas.join('\n');
                                     }
                                 } else {
-                                    // Adiciona o novo texto preservando a cronologia (pula uma linha do texto antigo)
-                                    novaObsFinal = obsAtual !== "" ? obsAtual + "\n\n" + relatorio : relatorio;
+                                    // Adiciona o novo relatório no final (ordem cronológica), pulando linha se já houver texto
+                                    item.obs = obsAtual !== "" ? obsAtual + "\n" + relatorio : relatorio;
                                 }
-                                
-                                // 1. Grava no Roteiro e destrava a visualização na tela
-                                item.obs = novaObsFinal;
-                                item.student.obs = novaObsFinal;
-                                item.student.obs_origem = novaObsFinal; // O Segredo para não ocultar o texto novo!
-                                
-                                // 2. Grava no Quadro Global Mestre
-                                if (alunoGlobal) {
-                                    alunoGlobal.obs = novaObsFinal;
-                                    alunoGlobal.obs_origem = novaObsFinal; 
-                                }
-
                                 alunosAtualizados++;
                             }
                             break; 
@@ -8054,54 +8027,6 @@ window.atualizarAutocompleteGlobal = function() {
                 }
             }, 200);
         };
-        // =================================================================================
-        // 🔎 FUNÇÃO: SETUP FILTERS (Filtros da Tela e Varredura Automática do Banco)
-        // =================================================================================
-        function setupFilters() { 
-            // 👑 1. VARREDURA AUTOMÁTICA DE CORREÇÃO (O "Rodo" no Banco de Dados)
-            let precisaSalvar = false;
-            let mapasCorrigidos = 0;
-
-            [...(DB.quali || []), ...(DB.tec || [])].forEach(s => {
-                
-                // A) Conserto Automático das Regiões
-                if (typeof getRegiaoDaCidade === 'function') {
-                    if (!s.regiao || s.regiao.trim() === '' || s.regiao.includes('NÃO INF')) {
-                        const regiaoCerta = getRegiaoDaCidade(s.cidade);
-                        if (regiaoCerta) {
-                            s.regiao = regiaoCerta;
-                            precisaSalvar = true;
-                        }
-                    }
-                }
-
-                // B) Conserto Automático dos Links de Mapa Quebrados (A Mágica acontece aqui!)
-                if (s.empresa && s.empresa.link && s.empresa.link.includes('googleusercontent.com')) {
-                    // Troca o formato antigo e esquisito pela URL limpa oficial do Google
-                    s.empresa.link = s.empresa.link.replace(/https?:\/\/googleusercontent\.com\/maps\.google\.com/ig, 'https://maps.google.com');
-                    precisaSalvar = true;
-                    mapasCorrigidos++;
-                }
-            });
-
-            // Se arrumou a região de alguém ou consertou mapas, salva o banco de dados silenciosamente
-            if (precisaSalvar && typeof saveToStorage === 'function') {
-                saveToStorage();
-                if (mapasCorrigidos > 0) {
-                    console.log(`🧹 Faxina automática concluída: ${mapasCorrigidos} links de mapa foram consertados!`);
-                }
-            }
-        }
-
-        // =================================================================================
-        // 🟢 LIGANDO O MOTOR: Roda a varredura automática 2 segundos após a página carregar
-        // =================================================================================
-        setTimeout(() => {
-            if (typeof setupFilters === 'function') {
-                console.log("Iniciando faxina automática dos mapas...");
-                setupFilters();
-            }
-        }, 2000);
         // =========================================================================
         // 🚗 MOTOR DE LOGÍSTICA: GERADOR DE ROTA NO GOOGLE MAPS
         // =========================================================================
