@@ -1,11 +1,11 @@
-<!DOCTYPE html> 
-<html lang="pt-BR"> 
+<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Supervisão Senac 2026 (Native v8.8)</title>
     
-    <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Supervisão Senac 2026","short_name":"Supervisão","start_url":".","display":"standalone","background_color":"#f8fafc","theme_color":"#004587","icons":[{"src":"https://upload.wikimedia.org/wikipedia/commons/8/86/Senac_logo.svg","sizes":"192x192","type":"image/svg+xml"}]}'>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -438,7 +438,6 @@ th {
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div><label class="text-[10px] font-bold text-slate-400 uppercase">Razão Social</label><input type="text" id="editEmpresa" class="w-full p-2 border rounded text-sm"></div>
-                            <div><label class="text-[10px] font-bold text-slate-400 uppercase">CNPJ</label><input type="text" id="editCNPJ" class="w-full p-2 border rounded text-sm" placeholder="Somente números"></div>
                             <div><label class="text-[10px] font-bold text-slate-400 uppercase">Endereço</label><input type="text" id="editEndereco" class="w-full p-2 border rounded text-sm"></div>
                             <div><label class="text-[10px] font-bold text-slate-400 uppercase">Link Mapa</label><input type="text" id="editLink" class="w-full p-2 border rounded text-sm"></div>
                             <div><label class="text-[10px] font-bold text-slate-400 uppercase">Supervisor</label><input type="text" id="editSupervisor" class="w-full p-2 border rounded text-sm"></div>
@@ -512,7 +511,7 @@ th {
                     <button onclick="confirmReplace()" class="px-3 py-1.5 bg-white hover:bg-red-50 text-red-500 hover:text-red-600 border border-slate-200 rounded text-[10px] font-bold flex items-center gap-1 shadow-sm transition-colors" title="Apaga tudo e coloca a nova planilha"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Substituir Base</button>
                 </div>
                 <input type="file" id="importMergeInput" accept=".xlsx,.xlsm,.xls" class="hidden" onchange="runMergeImport(this)">
-                <input type="file" id="importReplaceInput" accept=".xlsx,.xlsm,.xls,.json" class="hidden" onchange="runReplaceImport(this)">
+                <input type="file" id="importReplaceInput" accept=".xlsx,.xlsm,.xls" class="hidden" onchange="runReplaceImport(this)">
                 <button onclick="logout()" class="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors" title="Sair"><i data-lucide="log-out" class="w-5 h-5"></i></button>
             </div>
         </header>
@@ -543,7 +542,11 @@ th {
                     <div class="w-full md:w-56"><label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Região</label><select id="filterRegiao" onchange="handleRegionChange()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold"></select></div>
                     <div class="w-full md:w-56"><label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Cidade</label><select id="filterCidade" onchange="runFilter()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600"><option value="">Todas</option></select></div>
                     <div id="filterSubStatusContainer" class="hidden w-full md:w-56"><label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Filtro de Relatório</label><select id="filterSubStatus" onchange="runFilter()" class="w-full p-2.5 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-slate-600"><option value="">Todos (Desl/Enc)</option><option value="contrato">Fim de Contrato (Enc.)</option><option value="manual">Desligamento Manual (Desl.)</option></select></div>
-                   </div>
+                    <div class="flex gap-2">
+                        <button onclick="clearFilters()" class="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-500 rounded-lg text-xs font-bold h-[42px]">Limpar</button>
+                        <button onclick="openReport()" class="px-4 py-2.5 bg-senac-blue hover:bg-blue-800 text-white rounded-lg h-[42px] shadow-sm flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                     <div onclick="setKpi('all')" id="kpi-all" class="glass-panel kpi-card p-4 border-l-senac-blue active"><div class="flex justify-between items-center"><div><p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total (Planilha)</p><h2 class="text-2xl font-black text-slate-700 mt-1" id="valTotal">0</h2></div><div class="p-1.5 bg-blue-50 text-senac-blue rounded-lg"><i data-lucide="users" class="w-5 h-5"></i></div></div></div>
                     
@@ -855,7 +858,6 @@ th {
     <script>
         const REGIONS_FALLBACK = ["APUCARANA", "CAMPO MOURÃO", "CASCAVEL", "CASTRO", "CORNÉLIO PROCÓPIO", "CURITIBA", "FOZ DO IGUAÇU", "FRANCISCO BELTRÃO", "GUARAPUAVA", "IRATI", "IVAIPORÃ", "JACAREZINHO", "LONDRINA", "MARINGÁ", "MATINHOS", "MEDIANEIRA", "PARANAGUÁ", "PARANAVAÍ", "PATO BRANCO", "PONTA GROSSA", "PRUDENTÓPOLIS", "RIO NEGRO", "SANTO ANTÔNIO DA PLATINA", "TOLEDO", "UMUARAMA", "UNIÃO DA VITÓRIA"];
         let DB = { quali: [], tec: [], regioes_map: {}, cc_map: {}, finance_logs: [], custom_passwords: {}, planning: {}, planning_logistics: {}, planning_lunch: {}, planning_admin: {}, doc_template: "" };
-        window.DB = DB;
         let STATE = { scope: 'qualificacao', filter: [], page: 1, perPage: 30, kpi: 'all', userRegion: null, userType: 'guest', editingId: null, planContext: null, emailMode: 'agendamento' };
         const PASS_ADMIN = "supervisao2026"; 
         const LEGACY_VALUE = 122; 
@@ -998,8 +1000,7 @@ th {
             } catch (error) { 
                 console.error("Erro fatal ao salvar:", error); 
                 alert("ERRO DE GRAVAÇÃO: " + error.message); 
-                updateSaveStatus(false);
-                throw error; 
+                updateSaveStatus(false); 
             } 
         }
 
@@ -1718,16 +1719,6 @@ window.requestRestore = function() {
                 
                 const setVal = (elemId, val) => { const el = document.getElementById(elemId); if(el) el.value = val || ''; };
                 const setCheck = (elemId, val) => { const el = document.getElementById(elemId); if(el) el.checked = !!val; };
-                const formatarDataInput = (valor) => {
-                    if (!valor) return '';
-                    const data = new Date(valor);
-                    if (Number.isNaN(data.getTime())) return '';
-                    const ano = data.getFullYear();
-                    const mes = String(data.getMonth() + 1).padStart(2, '0');
-                    const dia = String(data.getDate()).padStart(2, '0');
-                    return `${ano}-${mes}-${dia}`;
-                };
-
 
                 setVal('editNome', s.nome); setVal('editCPF', s.cpf || s.CPF || s.Cpf || s['Apr CPF']); setVal('editTurma', s.turma); setVal('editContraturno', s.contraturno || '');
                 
@@ -1746,8 +1737,8 @@ window.requestRestore = function() {
                 const realStatus = typeof analyzeStatus === 'function' ? analyzeStatus(s) : { status: s.isDesligado ? 'desligado' : 'ativo' };
                 setCheck('editDesligado', realStatus.status === 'desligado');
 
-                if(s.ini) setVal('editIni', formatarDataInput(s.ini));
-                if(s.fim) setVal('editFim', formatarDataInput(s.fim));
+                if(s.ini) setVal('editIni', new Date(s.ini).toISOString().split('T')[0]);
+                if(s.fim) setVal('editFim', new Date(s.fim).toISOString().split('T')[0]);
 
                 const ct = s.contraTurno || {};
                 setCheck('ctSeg', ct.seg); setCheck('ctTer', ct.ter); setCheck('ctQua', ct.qua); setCheck('ctQui', ct.qui); setCheck('ctSex', ct.sex);
@@ -1777,7 +1768,7 @@ window.requestRestore = function() {
                             const vData = s.visits && s.visits[i-1];
                             if (vData) {
                                 check.checked = !!vData.ok;
-                                if(dateInp) dateInp.value = vData.date ? formatarDataInput(vData.date) : '';
+                                if(dateInp) dateInp.value = vData.date ? new Date(vData.date).toISOString().split('T')[0] : '';
                             } else {
                                 check.checked = false;
                                 if(dateInp) dateInp.value = '';
@@ -1798,7 +1789,7 @@ window.requestRestore = function() {
             if(modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
         }
 
-        async function saveStudentData() { 
+        function saveStudentData() { 
             try {
                 const isTec = DB.tec.some(t => t.id == STATE.editingId) || STATE.scope === 'tecnico';
                 const rawData = isTec ? DB.tec : DB.quali; 
@@ -1806,243 +1797,134 @@ window.requestRestore = function() {
                 const getVal = id => document.getElementById(id)?.value || ""; 
                 
                 // ==========================================
-// ==========================================
-// 🔒 TRAVA: VALIDAÇÃO DAS DATAS DO ALUNO
-// ==========================================
-const getDateSegura = (id, nomeCampoLabel) => {
-    const campo = document.getElementById(id);
-
-    // Campo inexistente ou sem valor
-    if (!campo || !campo.value) {
-        return null;
-    }
-
-    const valor = campo.value.trim();
-    const data = new Date(`${valor}T12:00:00`);
-    const ano = data.getFullYear();
-
-    // Verifica se a data e o ano são válidos
-    if (
-        Number.isNaN(data.getTime()) ||
-        ano < 2020 ||
-        ano > 2035
-    ) {
-        alert(
-            `⚠️ DATA INVÁLIDA!\n\n` +
-            `Verifique o campo ${nomeCampoLabel}.\n` +
-            `O sistema aceita datas com anos entre 2020 e 2035.`
-        );
-
-        throw new Error(
-            `Data inválida bloqueada no campo ${nomeCampoLabel}: ${valor}`
-        );
-    }
-
-    return data;
-};
-
-// ==========================================
-// 🔧 COMPATIBILIDADE COM CHAMADAS ANTIGAS
-// Evita o erro: getDate is not defined
-// ==========================================
-const getDate = (id, nomeCampoLabel = 'Data') => {
-    return getDateSegura(id, nomeCampoLabel);
-};
-
-// Datas de início e fim do aluno
-const dataInicioSegura = getDateSegura(
-    'editIni',
-    'Data de Início'
-);
-
-const dataFimSegura = getDateSegura(
-    'editFim',
-    'Data de Fim'
-);
-
-let finalVisits = [];
-
-const maxV = isTec ? 6 : 3;
-
-for (let i = 1; i <= maxV; i++) {
-    const ck = document.getElementById(`checkV${i}`);
-
-    if (ck) {
-        const dataVisitaSegura = getDateSegura(
-            `dateV${i}`,
-            `Data da ${i}ª Visita`
-        );
-
-        finalVisits.push({
-            ok: ck.checked,
-            date: dataVisitaSegura
-        });
-    }
-}
-
-let isDesl = !!document.getElementById('editDesligado')?.checked;
-let obsText = getVal('editObs');
-
-// MUDANÇA AQUI: Se a caixa estiver DESMARCADA,
-// apaga as palavras que forçam o desligamento
-let baseStatus = "Ativo";
-
-if (!isDesl) {
-    obsText = obsText
-        .replace(/desligamento|desligado|cancelado|evasão/gi, "")
-        .trim();
-} else {
-    baseStatus = "Encerrado";
-}
-
-// 👑 INSERÇÃO NOVA 1: GARANTIA DO CNPJ SALVO
-const inputCNPJ = document.getElementById('editCNPJ');
-
-const alunoAntigo = rawData.find(
-    x => x.id === STATE.editingId
-);
-
-const cnpjSalvo = inputCNPJ
-    ? inputCNPJ.value
-    : (alunoAntigo ? alunoAntigo.cnpj : "");
-
-// 👑 INSERÇÃO NOVA 2: CORREÇÃO DE REGIÃO SALVA NO BANCO
-let regiaoSalva = getVal('editRegiao').toUpperCase();
-const cidadeSalva = getVal('editCidade').toUpperCase();
-
-if (!regiaoSalva || regiaoSalva === "") {
-    regiaoSalva = (typeof getRegiaoDaCidade === 'function')
-        ? getRegiaoDaCidade(cidadeSalva)
-        : regiaoSalva;
-}
-
-const newData = {
-    id: STATE.editingId || ("NEW_" + Date.now()),
-
-    nome: getVal('editNome'),
-    cpf: getVal('editCPF'),
-    turma: getVal('editTurma'),
-    contraturno: getVal('editContraturno'),
-
-    regiao: regiaoSalva, // Salva a região corrigida
-    cidade: cidadeSalva,
-
-    teoria: getVal('editTeoria'),
-    pratica: getVal('editPratica'),
-
-    contraTurno: {
-        seg: !!document.getElementById('ctSeg')?.checked,
-        ter: !!document.getElementById('ctTer')?.checked,
-        qua: !!document.getElementById('ctQua')?.checked,
-        qui: !!document.getElementById('ctQui')?.checked,
-        sex: !!document.getElementById('ctSex')?.checked
-    },
-
-    cnpj: cnpjSalvo, // Salva o CNPJ na raiz do aluno
-
-    empresa: {
-        razao: getVal('editEmpresa'),
-        endereco: getVal('editEndereco'),
-        link: getVal('editLink'),
-        cnpj: cnpjSalvo
-    },
-
-    supervisor: {
-        display: getVal('editSupervisor'),
-        tel: getVal('editTel'),
-        email: getVal('editEmail')
-    },
-
-    ini: dataInicioSegura,
-    fim: dataFimSegura,
-    visits: finalVisits,
-
-    isDesligado: isDesl,
-    status: baseStatus,
-    obs_origem: obsText
-};
-
-if (STATE.editingId) {
-    const idx = rawData.findIndex(
-        s => s.id == STATE.editingId
-    );
-
-    if (idx > -1) {
-        Object.assign(rawData[idx], newData);
-
-        Object.values(DB.planning).forEach(planArr => {
-            planArr.forEach(pItem => {
-                if (pItem.student?.id === STATE.editingId) {
-                    pItem.student = JSON.parse(
-                        JSON.stringify(rawData[idx])
-                    );
+                // 🔒 NOVA TRAVA: ANO ABSURDO NAS DATAS DO ALUNO
+                // ==========================================
+                const getDateSegura = (id, nomeCampoLabel) => { 
+                    const v = getVal(id); 
+                    if (!v) return null;
+                    
+                    const ano = parseInt(v.substring(0, 4));
+                    if (ano < 2020 || ano > 2035) {
+                        alert(`⚠️ DATA INVÁLIDA!\n\nNo campo ${nomeCampoLabel}, você digitou o ano ${ano}. O sistema bloqueou a gravação para proteger o painel.\n\nPor favor, corrija a data para um ano válido (entre 2020 e 2035) antes de salvar.`);
+                        throw new Error(`Data inválida bloqueada pelo sistema: ${ano}`); // Interrompe o salvamento
+                    }
+                    
+                    return new Date(v + "T12:00:00"); 
+                }; 
+                
+                // Tenta puxar as datas de Início e Fim passando pela trava
+                const dataInicioSegura = getDateSegura('editIni', 'Data de Início');
+                const dataFimSegura = getDateSegura('editFim', 'Data de Fim');
+                
+                let finalVisits = [];
+                const maxV = isTec ? 6 : 3; // São 6 visitas para Técnica e 3 para Qualificação
+                for(let i=1; i<=maxV; i++) {
+                    const ck = document.getElementById('checkV' + i);
+                    if(ck) {
+                        // O inspetor verifica a V1, depois a V2, depois a V3...
+                        const dataVisitaSegura = getDateSegura('dateV' + i, `Data da ${i}ª Visita`);
+                        finalVisits.push({ ok: ck.checked, date: dataVisitaSegura });
+                    }
                 }
-            });
-        });
-    }
-} else {
-    rawData.unshift(newData);
-}
 
-if (typeof saveToStorage === 'function') {
-    await saveToStorage();
-}
+                let isDesl = !!document.getElementById('editDesligado')?.checked;
+                let obsText = getVal('editObs');
+                
+                // MUDANÇA AQUI: Se a caixa estiver DESMARCADA, apaga as palavras que forçam o desligamento
+                let baseStatus = "Ativo";
+                if (!isDesl) {
+                    obsText = obsText.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
+                } else {
+                    baseStatus = "Encerrado";
+                }
 
-if (typeof closeStudentModal === 'function') {
-    closeStudentModal();
-}
+                // 👑 INSERÇÃO NOVA 1: GARANTIA DO CNPJ SALVO
+                const inputCNPJ = document.getElementById('editCNPJ');
+                const alunoAntigo = rawData.find(x => x.id === STATE.editingId);
+                const cnpjSalvo = inputCNPJ ? inputCNPJ.value : (alunoAntigo ? alunoAntigo.cnpj : "");
 
-if (typeof runFilter === 'function') {
-    runFilter();
-}
+                // 👑 INSERÇÃO NOVA 2: CORREÇÃO DE REGIÃO SALVA NO BANCO
+                let regiaoSalva = getVal('editRegiao').toUpperCase();
+                const cidadeSalva = getVal('editCidade').toUpperCase();
+                if (!regiaoSalva || regiaoSalva === "") {
+                    regiaoSalva = (typeof getRegiaoDaCidade === 'function') ? getRegiaoDaCidade(cidadeSalva) : regiaoSalva;
+                }
 
-if (typeof showToast === 'function') {
-    showToast("Dados salvos!");
-}
+                const newData = { 
+                    id: STATE.editingId || ("NEW_" + Date.now()), 
+                    nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'), contraturno: getVal('editContraturno'),
+                    regiao: regiaoSalva, // <- Salva a região corrigida
+                    cidade: cidadeSalva,
+                    teoria: getVal('editTeoria'), pratica: getVal('editPratica'),
+                    contraTurno: { 
+                        seg: !!document.getElementById('ctSeg')?.checked, ter: !!document.getElementById('ctTer')?.checked, 
+                        qua: !!document.getElementById('ctQua')?.checked, qui: !!document.getElementById('ctQui')?.checked, 
+                        sex: !!document.getElementById('ctSex')?.checked 
+                    },
+                    cnpj: cnpjSalvo, // <- Salva o CNPJ na raiz do aluno
+                    empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink'), cnpj: cnpjSalvo }, // <- Salva o CNPJ na empresa
+                    supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
+                   ini: dataInicioSegura, // <--- USANDO A VARIÁVEL SEGURA CORRETA
+                    fim: dataFimSegura,    // <--- USANDO A VARIÁVEL SEGURA CORRETA
+                    visits: finalVisits, 
+                    isDesligado: isDesl,
+                    status: baseStatus,
+                    obs_origem: obsText
+                }; 
+                
+                if(STATE.editingId) { 
+                    const idx = rawData.findIndex(s => s.id == STATE.editingId); 
+                    if(idx > -1) {
+                        Object.assign(rawData[idx], newData);
+                        Object.values(DB.planning).forEach(planArr => {
+                            planArr.forEach(pItem => { if (pItem.student?.id === STATE.editingId) pItem.student = JSON.parse(JSON.stringify(rawData[idx])); });
+                        });
+                    }
+                } else { rawData.unshift(newData); } 
+                
+                if(typeof saveToStorage === 'function') saveToStorage(); 
+                if(typeof closeStudentModal === 'function') closeStudentModal(); 
+                if(typeof runFilter === 'function') runFilter(); 
+                if(typeof showToast === 'function') showToast("Dados salvos!"); 
+            } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
+        }
+        window.copiarFichaAluno = function() {
+            // Função rápida para pegar o valor do campo de texto
+            const getVal = (id) => {
+                const el = document.getElementById(id);
+                return (el && el.value) ? el.value.trim() : '-';
+            };
 
-} catch (err) {
-    console.error("Erro ao salvar:", err);
+            // 👑 Função rápida para checar as caixinhas de contraturno
+            const getContraTurno = () => {
+                const dias = [];
+                if (document.getElementById('ctSeg')?.checked) dias.push('Segunda');
+                if (document.getElementById('ctTer')?.checked) dias.push('Terça');
+                if (document.getElementById('ctQua')?.checked) dias.push('Quarta');
+                if (document.getElementById('ctQui')?.checked) dias.push('Quinta');
+                if (document.getElementById('ctSex')?.checked) dias.push('Sexta');
+                return dias.length > 0 ? dias.join(', ') : 'Não possui';
+            };
 
-    // Evita mostrar dois alertas quando a própria validação
-    // de data já informou o problema ao usuário
-    if (!err.message.includes("Data inválida bloqueada")) {
-        alert(`Erro ao salvar: ${err.message}`);
-    }
-}
-}
+            // Pegando os dados com os SEUS IDs exatos!
+            const nome = getVal('editNome');
+            const cpf = getVal('editCPF');
+            const turma = getVal('editTurma');
+            const regiao = getVal('editRegiao');
+            const cidade = getVal('editCidade');
+            const teoria = getVal('editTeoria');
+            const pratica = getVal('editPratica');
+            const contraturno = getContraTurno(); // <-- Puxa os dias certinhos aqui!
+            
+            const empresa = getVal('editEmpresa');
+            const endereco = getVal('editEndereco');
+            const supervisor = getVal('editSupervisor');
+            const telefone = getVal('editTel');
+            const email = getVal('editEmail');
+            const obs = getVal('editObs');
 
-window.copiarFichaAluno = function() {
-    const getVal = (id) => {
-        const el = document.getElementById(id);
-        return (el && el.value) ? el.value.trim() : '-';
-    };
-
-    const getContraTurno = () => {
-        const dias = [];
-        if (document.getElementById('ctSeg')?.checked) dias.push('Segunda');
-        if (document.getElementById('ctTer')?.checked) dias.push('Terça');
-        if (document.getElementById('ctQua')?.checked) dias.push('Quarta');
-        if (document.getElementById('ctQui')?.checked) dias.push('Quinta');
-        if (document.getElementById('ctSex')?.checked) dias.push('Sexta');
-        return dias.length > 0 ? dias.join(', ') : 'Não possui';
-    };
-
-    const nome = getVal('editNome');
-    const cpf = getVal('editCPF');
-    const turma = getVal('editTurma');
-    const regiao = getVal('editRegiao');
-    const cidade = getVal('editCidade');
-    const teoria = getVal('editTeoria');
-    const pratica = getVal('editPratica');
-    const contraturno = getContraTurno();
-    const empresa = getVal('editEmpresa');
-    const endereco = getVal('editEndereco');
-    const supervisor = getVal('editSupervisor');
-    const telefone = getVal('editTel');
-    const email = getVal('editEmail');
-    const obs = getVal('editObs');
-
-    const texto = `🎓 *FICHA DO ALUNO*
+            // Monta o texto formatado para WhatsApp/Teams (com negritos)
+            const texto = `🎓 *FICHA DO ALUNO*
 Nome: ${nome}
 Turma: ${turma} | CPF: ${cpf}
 Localidade: ${cidade} (${regiao})
@@ -2061,12 +1943,18 @@ Contato: ${telefone} | E-mail: ${email}
 📝 *OBSERVAÇÕES*
 ${obs}`;
 
-    navigator.clipboard.writeText(texto).then(() => {
-        alert("✅ Ficha copiada com sucesso!\n\nAgora é só abrir o WhatsApp, Teams ou E-mail e colar (Ctrl+V).");
-    }).catch(err => {
-        alert("Erro ao copiar: " + err);
-    });
-};
+            // Copia para o seu computador
+            navigator.clipboard.writeText(texto).then(() => {
+                alert("✅ Ficha copiada com sucesso!\n\nAgora é só abrir o WhatsApp, Teams ou E-mail e colar (Ctrl+V).");
+            }).catch(err => {
+                alert("Erro ao copiar: " + err);
+            });
+        };
+
+        // (A sua função já existente ficará logo aqui abaixo)
+        function exportData() {
+            // ... seu código atual ...
+        }
 
         function exportData() { 
             if(!STATE.filter || STATE.filter.length === 0) return alert("Sem dados."); 
