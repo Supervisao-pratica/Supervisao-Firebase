@@ -543,11 +543,7 @@ th {
                     <div class="w-full md:w-56"><label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Região</label><select id="filterRegiao" onchange="handleRegionChange()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold"></select></div>
                     <div class="w-full md:w-56"><label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Cidade</label><select id="filterCidade" onchange="runFilter()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600"><option value="">Todas</option></select></div>
                     <div id="filterSubStatusContainer" class="hidden w-full md:w-56"><label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Filtro de Relatório</label><select id="filterSubStatus" onchange="runFilter()" class="w-full p-2.5 bg-slate-100 border border-slate-300 rounded-lg text-sm font-bold text-slate-600"><option value="">Todos (Desl/Enc)</option><option value="contrato">Fim de Contrato (Enc.)</option><option value="manual">Desligamento Manual (Desl.)</option></select></div>
-                    <div class="flex gap-2">
-                        <button onclick="clearFilters()" class="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-500 rounded-lg text-xs font-bold h-[42px]">Limpar</button>
-                        <button onclick="openReport()" class="px-4 py-2.5 bg-senac-blue hover:bg-blue-800 text-white rounded-lg h-[42px] shadow-sm flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4"></i></button>
-                    </div>
-                </div>
+                   </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                     <div onclick="setKpi('all')" id="kpi-all" class="glass-panel kpi-card p-4 border-l-senac-blue active"><div class="flex justify-between items-center"><div><p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total (Planilha)</p><h2 class="text-2xl font-black text-slate-700 mt-1" id="valTotal">0</h2></div><div class="p-1.5 bg-blue-50 text-senac-blue rounded-lg"><i data-lucide="users" class="w-5 h-5"></i></div></div></div>
                     
