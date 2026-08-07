@@ -1864,8 +1864,7 @@ window.requestRestore = function() {
                     cnpj: cnpjSalvo, // <- Salva o CNPJ na raiz do aluno
                     empresa: { razao: getVal('editEmpresa'), endereco: getVal('editEndereco'), link: getVal('editLink'), cnpj: cnpjSalvo }, // <- Salva o CNPJ na empresa
                     supervisor: { display: getVal('editSupervisor'), tel: getVal('editTel'), email: getVal('editEmail') },
-                   ini: dataInicioSegura, // <--- USANDO A VARIÁVEL SEGURA CORRETA
-                    fim: dataFimSegura,    // <--- USANDO A VARIÁVEL SEGURA CORRETA
+                    ini: getDate('editIni'), fim: getDate('editFim'),
                     visits: finalVisits, 
                     isDesligado: isDesl,
                     status: baseStatus,
@@ -7291,39 +7290,21 @@ window.atualizarAutocompleteGlobal = function() {
                                 
                                 relatorio += blocos.join(" | ");
                                 
-                                // 👑 CORREÇÃO: Busca o aluno na base de dados mestre
-                                let alunoGlobal = null;
-                                if (dbObj.quali) alunoGlobal = dbObj.quali.find(a => a.id === item.student.id);
-                                if (!alunoGlobal && dbObj.tec) alunoGlobal = dbObj.tec.find(a => a.id === item.student.id);
-
-                                // Resgata todo o histórico de onde ele estiver (Roteiro, Banco Global ou Excel Original)
-                                let obsAtual = (item.obs || (alunoGlobal ? (alunoGlobal.obs || alunoGlobal.obs_origem) : "") || item.student.obs_origem || "").trim();
-                                let novaObsFinal = "";
+                                let obsAtual = (item.obs || "").trim();
                                 
-                                // Evita duplicação no mesmo dia
+                                // Verifica se já existe uma leitura HOJE para evitar texto duplicado
                                 if (obsAtual.includes(`[Pedagógico em ${dataHoje}]`)) {
+                                    // Substitui apenas a leitura de hoje, preservando TODO o resto do histórico e anotações manuais
                                     let linhas = obsAtual.split('\n');
                                     let index = linhas.findIndex(l => l.includes(`[Pedagógico em ${dataHoje}]`));
                                     if (index !== -1) {
                                         linhas[index] = relatorio;
-                                        novaObsFinal = linhas.join('\n');
+                                        item.obs = linhas.join('\n');
                                     }
                                 } else {
-                                    // Adiciona o novo texto preservando a cronologia (pula uma linha do texto antigo)
-                                    novaObsFinal = obsAtual !== "" ? obsAtual + "\n\n" + relatorio : relatorio;
+                                    // Adiciona o novo relatório no final (ordem cronológica), pulando linha se já houver texto
+                                    item.obs = obsAtual !== "" ? obsAtual + "\n" + relatorio : relatorio;
                                 }
-                                
-                                // 1. Grava no Roteiro e destrava a visualização na tela
-                                item.obs = novaObsFinal;
-                                item.student.obs = novaObsFinal;
-                                item.student.obs_origem = novaObsFinal; // O Segredo para não ocultar o texto novo!
-                                
-                                // 2. Grava no Quadro Global Mestre
-                                if (alunoGlobal) {
-                                    alunoGlobal.obs = novaObsFinal;
-                                    alunoGlobal.obs_origem = novaObsFinal; 
-                                }
-
                                 alunosAtualizados++;
                             }
                             break; 
