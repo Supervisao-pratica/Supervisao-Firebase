@@ -2019,20 +2019,18 @@ ${obs}`;
         }
 
         // =================================================================================
-        // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Contratos e Aditivos)
+        // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Contratos e Aditivos) - VERSÃO V2 (4 HORAS)
         // =================================================================================
         async function processarArquivosPDF(event) {
             const files = event.target.files;
             if (!files || files.length === 0) return;
 
-            // Verifica se a biblioteca PDF está ativa
             if (!window.pdfjsLib) {
                 alert("Aguarde um instante, o motor de leitura de PDF ainda está carregando na página.");
                 return;
             }
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-            // Junta as bases para o "Pente Fino" (Global: Qualificação + Técnica)
             const todosAlunos = [...(DB.quali || []), ...(DB.tec || [])];
             let alunosAtualizados = 0;
 
@@ -2042,7 +2040,6 @@ ${obs}`;
                     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                     let textoCompleto = "";
 
-                    // Lê todas as páginas do PDF
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
                         const textContent = await page.getTextContent();
@@ -2050,43 +2047,59 @@ ${obs}`;
                         textoCompleto += strings.join(" ") + " ";
                     }
 
-                    // Limpa o texto (remove quebras e junta os espaços duplos) para o robô não tropeçar
                     const textoLimpo = textoCompleto.replace(/\s+/g, ' ').toUpperCase();
 
-                    // 1. DEDUÇÃO DO ALUNO (Tiro certeiro buscando o nome do banco no texto)
+                    // 1. DEDUÇÃO DO ALUNO
                     let alunoEncontrado = todosAlunos.find(a => a.nome && textoLimpo.includes(a.nome.toUpperCase().trim()));
 
                     if (!alunoEncontrado) {
-                        alert(`⚠️ Alerta: O nome de nenhum aluno cadastrado no sistema foi encontrado no arquivo:\n[ ${file.name} ].\n\nVerifique se o aluno já foi importado do Excel.`);
+                        alert(`⚠️ Alerta: O nome de nenhum aluno cadastrado no sistema foi encontrado no arquivo:\n[ ${file.name} ].`);
                         continue;
                     }
 
-                    // 2. DEDUÇÃO DOS HORÁRIOS (Matemática da Jornada)
-                    // Ele acha qualquer coisa no padrão "00:00 às 00:00" ou "00:00 as 00:00"
+                    // 2. DEDUÇÃO DOS HORÁRIOS (Nova Lógica Inteligente de 4 Horas)
                     const regexHorario = /(\d{2}:\d{2})\s*(?:[AÀ]S|[-])\s*(\d{2}:\d{2})/gi;
-                    let horarios = [];
+                    let todosHorarios = [];
                     let match;
                     
                     while ((match = regexHorario.exec(textoLimpo)) !== null) {
-                        horarios.push({ inicio: match[1], fim: match[2] });
+                        // Evita duplicatas na lista
+                        if (!todosHorarios.some(h => h.inicio === match[1] && h.fim === match[2])) {
+                            todosHorarios.push({ inicio: match[1], fim: match[2] });
+                        }
                     }
 
                     let horarioTotal = "Não detectado";
-                    let jornadaTeorica = "Não detectada";
-                    let jornadaPratica = "Não detectada";
+                    let achouDividido = false;
 
-                    if (horarios.length >= 2) {
-                        // Presume que o 1º horário citado no documento é Teoria e o 2º é Prática (Padrão Senac)
-                        jornadaTeorica = `${horarios[0].inicio} às ${horarios[0].fim}`;
-                        jornadaPratica = `${horarios[1].inicio} às ${horarios[1].fim}`;
-
-                        // Calcula a jornada total cruzando a primeira entrada com a última saída
-                        let horasInicio = horarios.map(h => h.inicio).sort();
-                        let horasFim = horarios.map(h => h.fim).sort();
-                        horarioTotal = `${horasInicio[0]} às ${horasFim[horasFim.length - 1]}`;
+                    // A) Busca blocos contíguos (ex: 07:30 às 09:30 e 09:30 às 11:30)
+                    for (let i = 0; i < todosHorarios.length; i++) {
+                        for (let j = 0; j < todosHorarios.length; j++) {
+                            if (i !== j && todosHorarios[i].fim === todosHorarios[j].inicio) {
+                                horarioTotal = `${todosHorarios[i].inicio} às ${todosHorarios[j].fim}`;
+                                achouDividido = true;
+                                break;
+                            }
+                        }
+                        if (achouDividido) break;
                     }
 
-                    // 3. DEDUÇÃO DO ENDEREÇO DA PRÁTICA (Baseado no termo "estabelecida na")
+                    // B) Se não for dividido, pega o último bloco de exatas 4 horas mencionado no texto
+                    if (!achouDividido && todosHorarios.length > 0) {
+                        const calcHoras = (ini, fim) => {
+                            let [h1, m1] = ini.split(':').map(Number);
+                            let [h2, m2] = fim.split(':').map(Number);
+                            return (h2 + m2/60) - (h1 + m1/60);
+                        };
+                        
+                        let blocos4h = todosHorarios.filter(h => calcHoras(h.inicio, h.fim) === 4);
+                        if (blocos4h.length > 0) {
+                            let hFixo = blocos4h[blocos4h.length - 1]; // Pega o último (que costuma ser o horário novo do aditivo)
+                            horarioTotal = `${hFixo.inicio} às ${hFixo.fim}`;
+                        }
+                    }
+
+                    // 3. DEDUÇÃO DO ENDEREÇO DA PRÁTICA
                     let enderecoExtraido = "";
                     const regexEndereco = /ESTABELECIDA NA (.*?), (?:INSCRITA|BAIRRO|NA CIDADE)/i;
                     const matchEndereco = textoLimpo.match(regexEndereco);
@@ -2099,28 +2112,29 @@ ${obs}`;
                         `📄 DOCUMENTO LIDO: ${file.name}\n\n` +
                         `👤 Aluno Identificado: ${alunoEncontrado.nome}\n` +
                         `🏢 Empresa Atual: ${alunoEncontrado.empresa?.razao || "Não informada"}\n\n` +
-                        `🕒 DEDUÇÃO DE JORNADA:\n` +
-                        `   - Teoria: ${jornadaTeorica}\n` +
-                        `   - Prática: ${jornadaPratica}\n` +
-                        `   => JORNADA TOTAL NA EMPRESA: ${horarioTotal}\n\n` +
+                        `🕒 NOVA JORNADA TOTAL DETECTADA:\n` +
+                        `   => ${horarioTotal} (Ignorando históricos antigos)\n` +
+                        `   (Este horário será salvo nos campos Teórica e Prática)\n\n` +
                         `📍 NOVO ENDEREÇO IDENTIFICADO:\n` +
                         `   - ${enderecoExtraido || "Não detectado de forma exata"}\n\n` +
                         `Deseja APLICAR essas alterações na ficha do aluno e salvar no banco?`
                     );
 
                     if (confirmacao) {
-                        // Aplica as alterações no bloco mestre do aluno
-                        alunoEncontrado.teoria = jornadaTeorica;
-                        alunoEncontrado.pratica = jornadaPratica;
+                        // Substitui a informação velha pelo bloco novo de 4 horas em ambos os campos!
+                        if (horarioTotal !== "Não detectado") {
+                            alunoEncontrado.teoria = horarioTotal;
+                            alunoEncontrado.pratica = horarioTotal;
+                        }
                         
                         if (enderecoExtraido && enderecoExtraido.length > 5) {
                             if (!alunoEncontrado.empresa) alunoEncontrado.empresa = {};
                             alunoEncontrado.empresa.endereco = enderecoExtraido;
                         }
 
-                        // Carimba a anotação na ordem cronológica (sem apagar as velhas)
+                        // Carimba a anotação
                         const dataHoje = new Date().toLocaleDateString('pt-BR');
-                        const relatorioPDF = `[Contrato/Aditivo processado em ${dataHoje}]: Horário atualizado para ${horarioTotal} (T: ${jornadaTeorica} / P: ${jornadaPratica}).`;
+                        const relatorioPDF = `[Aditivo processado em ${dataHoje}]: Horário atualizado para ${horarioTotal}. Endereço ajustado.`;
                         
                         let obsAtual = (alunoEncontrado.obs_origem || alunoEncontrado.obs || "").trim();
                         alunoEncontrado.obs_origem = obsAtual !== "" ? obsAtual + "\n\n" + relatorioPDF : relatorioPDF;
@@ -2134,14 +2148,13 @@ ${obs}`;
                 }
             }
             
-            // 5. SALVA NO BANCO GERAL E ATUALIZA A TELA (Se alterou alguém)
+            // 5. SALVA NO BANCO GERAL E ATUALIZA A TELA
             if (alunosAtualizados > 0) {
                 if (typeof saveToStorage === 'function') saveToStorage();
                 if (typeof runFilter === 'function') runFilter();
                 alert(`✅ Leitura Concluída! Fichas de ${alunosAtualizados} aluno(s) foram atualizadas de forma global no sistema.`);
             }
             
-            // Limpa a memória do leitor para o próximo uso
             event.target.value = "";
         }
         
