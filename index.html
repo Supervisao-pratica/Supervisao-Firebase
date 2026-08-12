@@ -8823,5 +8823,261 @@ const __saveOriginal=saveToStorage;
 saveToStorage=async function(){try{DB.backups=DB.backups||[];DB.backups.push({data:new Date().toISOString(),quali:JSON.parse(JSON.stringify(DB.quali||[])),tec:JSON.parse(JSON.stringify(DB.tec||[])),planning:JSON.parse(JSON.stringify(DB.planning||{}))});if(DB.backups.length>20)DB.backups=DB.backups.slice(-20);}catch(e){} return __saveOriginal.apply(this,arguments);};
 </script>
 
+
+
+<script>
+/* v9.5.1 - Correção cirúrgica: conflito de contraturno por DATA EXATA da visita */
+(() => {
+'use strict';
+window.APP_VERSION='9.5.1-CONTRATURNO-POR-DATA-EXATA';
+
+function normTxt(v){
+  return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+function parseDataLocal(v){
+  if(!v) return null;
+  if(v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  const s=String(v).trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1]);
+  const d=new Date(s);
+  return isNaN(d)?null:new Date(d.getFullYear(),d.getMonth(),d.getDate());
+}
+const diaKeyPorGetDay={0:'dom',1:'seg',2:'ter',3:'qua',4:'qui',5:'sex',6:'sab'};
+const diaNomePorKey={dom:'Domingo',seg:'Segunda',ter:'Terça',qua:'Quarta',qui:'Quinta',sex:'Sexta',sab:'Sábado'};
+function keysContraturno(aluno){
+  const out=new Set();
+  const a=aluno||{};
+  const ctObj=a.contraTurno||{};
+  ['seg','ter','qua','qui','sex','sab','dom'].forEach(k=>{ if(ctObj[k]) out.add(k); });
+  const raw=[a.contraturno,a.contra_turno,a.contraTurnoTexto,a.contraturnoTexto].filter(Boolean).join(' ');
+  const n=normTxt(raw);
+  if(/segunda|\bseg\b/.test(n)) out.add('seg');
+  if(/terca|\bter\b/.test(n)) out.add('ter');
+  if(/quarta|\bqua\b/.test(n)) out.add('qua');
+  if(/quinta|\bqui\b/.test(n)) out.add('qui');
+  if(/sexta|\bsex\b/.test(n)) out.add('sex');
+  if(/sabado|\bsab\b/.test(n)) out.add('sab');
+  if(/domingo|\bdom\b/.test(n)) out.add('dom');
+  return out;
+}
+function temConflitoContraturnoNaData(aluno,dataVisita){
+  const d=parseDataLocal(dataVisita);
+  if(!d) return {conflito:false,key:null,nome:''};
+  const key=diaKeyPorGetDay[d.getDay()];
+  const keys=keysContraturno(aluno);
+  return {conflito:keys.has(key),key,nome:diaNomePorKey[key]||''};
+}
+function dataFimAluno(aluno){
+  const a=aluno||{};
+  return parseDataLocal(a.fim || a.data_fim || a.termino || a.fim_contrato || a.dataFim || a.dtFim);
+}
+function limparAlertasObs(obs){
+  return String(obs||'')
+    .replace(/(?:🚨|🔴)\s*ALERTA:.*?(?:\n|$)/g,'')
+    .replace(/(?:🚨|🔴)\s*ATENÇÃO:.*?(?:\n|$)/g,'')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+}
+window.temConflitoContraturnoNaData=temConflitoContraturnoNaData;
+window.verificarChoquesContraturno=function(){
+  const ctx=window.STATE?.planContext;
+  const roteiro=ctx && window.DB?.planning?.[ctx];
+  if(!Array.isArray(roteiro)) return;
+  const nomesCT=[], nomesFim=[];
+  let alterou=false;
+  roteiro.forEach(item=>{
+    if(!item?.student || !item.date) return;
+    const vis=parseDataLocal(item.date);
+    if(!vis) return;
+    const ct=temConflitoContraturnoNaData(item.student,item.date);
+    const fim=dataFimAluno(item.student);
+    const fimConflito=!!(fim && vis>fim);
+    const obsLimpa=limparAlertasObs(item.obs);
+    const alertas=[];
+    if(ct.conflito){
+      alertas.push(`🚨 ALERTA: CHOQUE DE AGENDA (Contraturno na ${ct.nome})!`);
+      nomesCT.push(item.student.nome||'(sem nome)');
+    }
+    if(fimConflito){
+      alertas.push(`🚨 ALERTA: Visita agendada APÓS o fim do contrato (${fim.toLocaleDateString('pt-BR')})!`);
+      nomesFim.push(item.student.nome||'(sem nome)');
+    }
+    const novaObs=(alertas.length? alertas.join('\n')+'\n\n'+obsLimpa : obsLimpa).trim();
+    if((item.obs||'')!==novaObs){ item.obs=novaObs; alterou=true; }
+  });
+  if(alterou && typeof renderPlanningTable==='function') renderPlanningTable();
+  if(alterou && (nomesCT.length||nomesFim.length)){
+    let msg='⚠️ Conflitos de agenda atualizados com base na DATA EXATA da visita.\n';
+    if(nomesCT.length) msg+='\nAlunos com contraturno no mesmo dia da visita:\n- '+[...new Set(nomesCT)].join('\n- ');
+    if(nomesFim.length) msg+='\n\nAlunos com visita após fim de contrato:\n- '+[...new Set(nomesFim)].join('\n- ');
+    setTimeout(()=>alert(msg),100);
+  }
+};
+
+// Revalida também quando uma data é digitada na linha, sem bloquear segunda por contraturno de terça.
+const updatePlanItemOriginalV951=window.updatePlanItem;
+window.updatePlanItem=function(idx,field,val){
+  if(field==='date' && window.STATE?.planContext && window.DB?.planning?.[window.STATE.planContext]?.[idx]){
+    const item=window.DB.planning[window.STATE.planContext][idx];
+    const chk=temConflitoContraturnoNaData(item.student,val);
+    if(chk.conflito){
+      alert(`❌ BLOQUEIO DE AGENDAMENTO:\n\nO(a) aprendiz ${item.student.nome} possui contraturno na prática toda ${chk.nome}.\n\nA visita não pode ser agendada para esta data. Por favor, escolha outro dia.`);
+      if(typeof renderPlanningTable==='function') renderPlanningTable();
+      return;
+    }
+  }
+  const r=updatePlanItemOriginalV951.apply(this,arguments);
+  if(field==='date') setTimeout(()=>{ try{ window.verificarChoquesContraturno(); }catch(e){ console.warn(e); } },250);
+  return r;
+};
+
+// Função de simulação para validação rápida no console.
+window.simularTesteContraturnoV951=function(){
+  return {
+    segundaComTerca: temConflitoContraturnoNaData({contraturno:'Terça'},'2026-08-17'),
+    tercaComTerca: temConflitoContraturnoNaData({contraturno:'Terça'},'2026-08-18'),
+    segundaComObjetoTer: temConflitoContraturnoNaData({contraTurno:{ter:true}},'2026-08-17'),
+    tercaComObjetoTer: temConflitoContraturnoNaData({contraTurno:{ter:true}},'2026-08-18')
+  };
+};
+})();
+</script>
+
+
+
+<script>
+/* v9.5.2 - SharePoint/Excel: importação robusta de deslocamento, horários, almoço e data da aba */
+(() => {
+'use strict';
+window.APP_VERSION='9.5.2-SHAREPOINT-IMPORT-ROBUSTO';
+function U2(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim().toUpperCase();}
+function S2(v){return String(v??'').replace(/\u00a0/g,' ').trim();}
+function rowsMatrix2(ws){return XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});}
+function parseTime2(v){
+ if(v===undefined||v===null||v==='')return'';
+ if(typeof v==='number'){
+   if(v>=0&&v<1.5){const t=Math.round(v*86400);return `${String(Math.floor(t/3600)%24).padStart(2,'0')}:${String(Math.floor((t%3600)/60)).padStart(2,'0')}`;}
+ }
+ if(v instanceof Date&&!isNaN(v))return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+ const s=String(v).replace(/\u00a0/g,' ').trim();
+ const m=s.match(/(\d{1,2})\s*[:hH]\s*(\d{2})/);return m?`${m[1].padStart(2,'0')}:${m[2]}`:'';
+}
+function parseDate2(v){
+ if(!v)return'';
+ if(typeof v==='number'){const d=new Date(Math.round((v-25569)*86400*1000));d.setMinutes(d.getMinutes()+d.getTimezoneOffset());return d.toISOString().slice(0,10);}
+ if(v instanceof Date&&!isNaN(v))return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+ const s=String(v).replace(/\u00a0/g,' ').trim();
+ if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+ let m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+ if(m){let a=+m[1],b=+m[2],y=m[3].length===2?'20'+m[3]:m[3];let dia,mes;if(a>12){dia=a;mes=b}else if(b>12){dia=b;mes=a}else{dia=a;mes=b}return `${y}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;}
+ return'';
+}
+function dateFromSheetName2(name){
+ const s=String(name||'');
+ let m=s.match(/(\d{1,2})[\.\/-](\d{1,2})[\.\/-](\d{4})/);
+ if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+ m=s.match(/(\d{1,2})[\.\/-](\d{1,2})(?!\d)/);
+ if(m){const year=(new Date()).getFullYear();return `${year}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;}
+ return'';
+}
+function findRow2(matrix,label,start=0){const L=U2(label);for(let r=start;r<matrix.length;r++)if((matrix[r]||[]).some(v=>U2(v).includes(L)))return r;return-1;}
+function findLogHeader2(matrix){
+ const title=findRow2(matrix,'TEMPO DE DESLOCAMENTO'); if(title<0)return null;
+ for(let r=title;r<=Math.min(title+10,matrix.length-1);r++){
+   const h=(matrix[r]||[]).map(U2);
+   const data=h.findIndex(x=>x.includes('DATA')&&x.includes('VISITA'));
+   const origem=h.findIndex(x=>x.includes('SAIDA'));
+   const destino=h.findIndex(x=>(x.includes('CHEGADA')||x.includes('DESTINO'))&&x.includes('CIDADE'));
+   const pedagio=h.findIndex(x=>x.includes('PEDAGIO'));
+   const horarios=h.map((x,i)=>x.includes('HORARIO')?i:-1).filter(i=>i>=0);
+   const kms=h.map((x,i)=>(x==='KM'||x.includes(' KM')||x==='KMS'||x.includes('QUILOMETR'))?i:-1).filter(i=>i>=0);
+   if(data>=0&&origem>=0&&(destino>=0||horarios.length>=2)){
+     const origemHora=horarios.find(i=>i>origem&&(destino<0||i<destino))??horarios[0]??-1;
+     const destinoHora=horarios.find(i=>(destino>=0?i>destino:i>origemHora))??(horarios.length>1?horarios.at(-1):-1);
+     const kmSaida=kms.find(i=>i>origem&&(destino<0||i<destino))??-1;
+     const kmChegada=kms.find(i=>(destino>=0?i>destino:i>origemHora))??(kms.length?kms.at(-1):-1);
+     return {title,header:r,map:{data,origem,origemHora,destino,destinoHora,kmSaida,kmChegada,pedagio}};
+   }
+ }
+ return null;
+}
+window.extractLogistics=function(ws,fallbackDate=''){
+ const matrix=rowsMatrix2(ws), found=findLogHeader2(matrix), out=[]; if(!found){out.sectionFound=false;return out;}
+ const m=found.map; let lastDate=fallbackDate||'', lastToll=''; out.sectionFound=true;
+ for(let r=found.header+1;r<matrix.length;r++){
+   const row=matrix[r]||[], all=row.map(U2).join('|');
+   if(all.includes('TOTAL DE KM')||all.includes('HORARIO DE ALMOCO')||all.includes('HORÁRIO DE ALMOÇO'))break;
+   const d=parseDate2(row[m.data]); if(d)lastDate=d;
+   const ped=m.pedagio>=0?S2(row[m.pedagio]):''; if(ped)lastToll=ped;
+   const origin=S2(row[m.origem]), dest=m.destino>=0?S2(row[m.destino]):'';
+   const originTime=parseTime2(row[m.origemHora]), destTime=parseTime2(row[m.destinoHora]);
+   const kmStart=m.kmSaida>=0?S2(row[m.kmSaida]):''; const kmEnd=m.kmChegada>=0?S2(row[m.kmChegada]):'';
+   if(!origin&&!dest&&!originTime&&!destTime&&!kmStart&&!kmEnd)continue;
+   out.push({date:lastDate,origin,originTime,dest,destTime,kmStart,kmEnd,km:kmEnd||kmStart,toll:ped||lastToll,hospedagem:false});
+ }
+ out.emptySection=out.length===0;
+ return out;
+};
+window.extractLunch=function(ws,fallbackDate=''){
+ const matrix=rowsMatrix2(ws), title=findRow2(matrix,'HORARIO DE ALMOCO'); if(title<0)return[];
+ let header=-1,saida=-1,retorno=-1;
+ for(let r=title;r<=Math.min(title+8,matrix.length-1);r++){
+   const h=(matrix[r]||[]).map(U2); saida=h.findIndex(x=>x.includes('SAIDA')); retorno=h.findIndex(x=>x.includes('RETORNO'));
+   if(saida>=0||retorno>=0){header=r;break;}
+ }
+ if(header<0)return[]; const out=[];
+ for(let r=header+1;r<=Math.min(header+12,matrix.length-1);r++){
+   const row=matrix[r]||[], st=saida>=0?parseTime2(row[saida]):'', en=retorno>=0?parseTime2(row[retorno]):'';
+   if(st||en)out.push({date:fallbackDate,start:st,end:en});
+ }
+ return out;
+};
+const previewOriginal952=window.previewSheet;
+window.previewSheet=function(wb,sheet){
+ const ws=wb.Sheets[sheet], logs=window.extractLogistics(ws,dateFromSheetName2(sheet)), lunch=window.extractLunch(ws,(logs[0]?.date)||dateFromSheetName2(sheet));
+ let alunos=0,data=(logs[0]?.date)||dateFromSheetName2(sheet)||''; const matrix=rowsMatrix2(ws);
+ matrix.forEach(row=>{const all=(row||[]).map(U2).join('|'); if(!all.includes('TEMPO DE DESLOCAMENTO')&&S2(row[4])&&!/APR\. NOME|CHEGADA|DESTINO|RAZAO/.test(String(row[4])))alunos++;});
+ return {alunos,desloc:logs.length,almoco:lunch.length>0,data,deslocSection:!!logs.sectionFound,deslocEmpty:!!logs.emptySection};
+};
+const parsePlanOriginal952=window.parsePlan;
+window.parsePlan=function(wb,sheet){
+ const ws=wb.Sheets[sheet], hp=planHeaders(ws), matrix=hp.matrix, header=hp.header, col=hp.col;
+ const logs=window.extractLogistics(ws,dateFromSheetName2(sheet)); const data=(logs[0]?.date)||dateFromSheetName2(sheet)||'';
+ const todos=[...(DB.quali||[]),...(DB.tec||[])]; const byName=new Map(todos.map(a=>[cleanName(a.nome),a]));
+ const roteiro=[],fantasmas=[],inconform=[];let statusCount=0,obsCount=0;
+ const get=(row,idx)=>idx>=0?row[idx]:'';
+ for(let r=header+1;r<matrix.length;r++){
+   const row=matrix[r]||[], all=row.map(U2).join('|');
+   if(all.includes('TEMPO DE DESLOCAMENTO')||all.includes('HORARIO DE ALMOCO')||all.includes('HORÁRIO DE ALMOÇO'))break;
+   const nome=S2(get(row,col.nome)); if(!nome||U2(nome).includes('APR. NOME')||U2(nome).includes('NOME'))continue;
+   const aluno=byName.get(cleanName(nome)); if(!aluno){if(parseTime2(get(row,col.hrAtend))||S2(get(row,col.turma)).length>=4)fantasmas.push(nome);continue;}
+   const turmaPlan=S2(get(row,col.turma)), empPlan=S2(get(row,col.empresa)), cidPlan=S2(get(row,col.cidade)); const erros=[];
+   if(turmaPlan&&U2(aluno.turma)!==U2(turmaPlan))erros.push(`Turma sistema ${aluno.turma||'-'} / planilha ${turmaPlan}`);
+   if(empPlan&&aluno.empresa&&U2(aluno.empresa.razao)!==U2(empPlan))erros.push('Empresa divergente');
+   if(cidPlan&&U2(aluno.cidade)!==U2(cidPlan))erros.push('Cidade divergente');
+   if(erros.length)inconform.push(`${nome}: ${erros.join(', ')}`);
+   let visita=S2(get(row,col.visita)); if(!visita){visita='1ª Visita'; if(aluno.visits?.[0]?.ok)visita='2ª Visita'; if(aluno.visits?.[1]?.ok)visita='3ª Visita';}
+   let status=S2(get(row,col.status))||'Realizar'; if(status)statusCount++;
+   let obs=S2(get(row,col.obs))||aluno.obs_origem||''; if(obs)obsCount++;
+   roteiro.push({ordem:roteiro.length+1,student:aluno,date:data,hrAtend:parseTime2(get(row,col.hrAtend)),hrFim:'',hrTeoria:aluno.teoria||parseTime2(get(row,col.teoria))||'',hrPratica:aluno.pratica||'',visitaTipo:visita,status,obs,cc_override:''});
+ }
+ return {roteiro,fantasmas,inconform,statusCount,obsCount,deslocSection:!!logs.sectionFound,deslocEmpty:!!logs.emptySection};
+};
+const confirmarOriginal952=window.confirmarImportacaoAbaExcel;
+window.confirmarImportacaoAbaExcel=async function(sheet){
+ const wb=window.__senacExcelWb||window.__roteiroImportWb; if(!wb||!wb.Sheets?.[sheet])return alert('Planilha/aba não carregada. Importe novamente.');
+ const ws=wb.Sheets[sheet]; const preview=window.previewSheet(wb,sheet); const r=await confirmarOriginal952.apply(this,arguments);
+ if(preview.deslocSection&&preview.deslocEmpty){
+   setTimeout(()=>alert(`⚠️ Atenção: a aba "${sheet}" possui o bloco de deslocamento, mas as linhas de dados estão vazias.\n\nImportei os alunos e usei a data da aba quando possível, mas não há horários/KM/cidades de deslocamento preenchidos para importar.`),400);
+ }
+ return r;
+};
+window.simularImportacaoAba952=function(wb,sheet){const ws=wb.Sheets[sheet];const logs=window.extractLogistics(ws,dateFromSheetName2(sheet));const lunch=window.extractLunch(ws,(logs[0]?.date)||dateFromSheetName2(sheet));const prev=window.previewSheet(wb,sheet);return {sheet,preview:prev,logs,lunch};};
+})();
+</script>
+
 </body>
 </html>
