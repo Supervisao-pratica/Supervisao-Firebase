@@ -2019,7 +2019,7 @@ ${obs}`;
         }
 
         // =================================================================================
-        // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Contratos e Aditivos) - VERSÃO V2 (4 HORAS)
+        // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Aditivos) - VERSÃO V3 (Foco em Dias e Horas)
         // =================================================================================
         async function processarArquivosPDF(event) {
             const files = event.target.files;
@@ -2057,22 +2057,34 @@ ${obs}`;
                         continue;
                     }
 
-                    // 2. DEDUÇÃO DOS HORÁRIOS (Nova Lógica Inteligente de 4 Horas)
+                    // 2. DEDUÇÃO DE DIAS DA SEMANA (Contraturno / Prática)
+                    let diasDetectados = [];
+                    // Busca padrões típicos de contratos do Senac
+                    if (textoLimpo.match(/SEGUNDA A SEXTA|2[Aª]\s*A\s*6[Aª]|2[Aª],\s*3[Aª],\s*4[Aª],\s*5[Aª]\s*E\s*6[Aª]/i)) {
+                        diasDetectados = ["Segunda a Sexta"];
+                    } else {
+                        if (textoLimpo.match(/SEGUNDA|2[Aª]/i)) diasDetectados.push("Seg");
+                        if (textoLimpo.match(/TER[CÇ]A|3[Aª]/i)) diasDetectados.push("Ter");
+                        if (textoLimpo.match(/QUARTA|4[Aª]/i)) diasDetectados.push("Qua");
+                        if (textoLimpo.match(/QUINTA|5[Aª]/i)) diasDetectados.push("Qui");
+                        if (textoLimpo.match(/SEXTA|6[Aª]/i)) diasDetectados.push("Sex");
+                    }
+                    let diasStr = diasDetectados.length > 0 ? diasDetectados.join(", ") : "";
+
+                    // 3. DEDUÇÃO DOS HORÁRIOS (Lógica matemática das 4 Horas Contíguas)
                     const regexHorario = /(\d{2}:\d{2})\s*(?:[AÀ]S|[-])\s*(\d{2}:\d{2})/gi;
                     let todosHorarios = [];
                     let match;
                     
                     while ((match = regexHorario.exec(textoLimpo)) !== null) {
-                        // Evita duplicatas na lista
                         if (!todosHorarios.some(h => h.inicio === match[1] && h.fim === match[2])) {
                             todosHorarios.push({ inicio: match[1], fim: match[2] });
                         }
                     }
 
-                    let horarioTotal = "Não detectado";
+                    let horarioTotal = "";
                     let achouDividido = false;
 
-                    // A) Busca blocos contíguos (ex: 07:30 às 09:30 e 09:30 às 11:30)
                     for (let i = 0; i < todosHorarios.length; i++) {
                         for (let j = 0; j < todosHorarios.length; j++) {
                             if (i !== j && todosHorarios[i].fim === todosHorarios[j].inicio) {
@@ -2084,7 +2096,6 @@ ${obs}`;
                         if (achouDividido) break;
                     }
 
-                    // B) Se não for dividido, pega o último bloco de exatas 4 horas mencionado no texto
                     if (!achouDividido && todosHorarios.length > 0) {
                         const calcHoras = (ini, fim) => {
                             let [h1, m1] = ini.split(':').map(Number);
@@ -2094,47 +2105,64 @@ ${obs}`;
                         
                         let blocos4h = todosHorarios.filter(h => calcHoras(h.inicio, h.fim) === 4);
                         if (blocos4h.length > 0) {
-                            let hFixo = blocos4h[blocos4h.length - 1]; // Pega o último (que costuma ser o horário novo do aditivo)
+                            let hFixo = blocos4h[blocos4h.length - 1]; 
                             horarioTotal = `${hFixo.inicio} às ${hFixo.fim}`;
                         }
                     }
 
-                    // 3. DEDUÇÃO DO ENDEREÇO DA PRÁTICA
-                    let enderecoExtraido = "";
-                    const regexEndereco = /ESTABELECIDA NA (.*?), (?:INSCRITA|BAIRRO|NA CIDADE)/i;
-                    const matchEndereco = textoLimpo.match(regexEndereco);
-                    if (matchEndereco) {
-                        enderecoExtraido = matchEndereco[1].trim();
+                    // Formata a string que vai para o campo "Teórica (Dias/Hr)" e "Prática (Dias/Hr)"
+                    let jornadaFinal = "";
+                    if (diasStr && horarioTotal) jornadaFinal = `${diasStr} - ${horarioTotal}`;
+                    else if (horarioTotal) jornadaFinal = horarioTotal;
+                    else if (diasStr) jornadaFinal = diasStr;
+                    else jornadaFinal = "Não detectado";
+
+                    // 4. VALIDAÇÃO INTELIGENTE DE MUDANÇAS
+                    if (jornadaFinal === "Não detectado") {
+                        alert(`📄 Arquivo: ${file.name}\n\nNão foi possível identificar com clareza a jornada de 4 horas ou os dias de trabalho neste documento.`);
+                        continue;
                     }
 
-                    // 4. CONFIRMAÇÃO DO SUPERVISOR
+                    let teoriaAtual = alunoEncontrado.teoria || "";
+                    let praticaAtual = alunoEncontrado.pratica || "";
+                    
+                    // Compara o que achou no PDF com o que está no banco
+                    let temMudanca = (teoriaAtual !== jornadaFinal || praticaAtual !== jornadaFinal);
+
+                    if (!temMudanca) {
+                        alert(`📄 DOCUMENTO: ${file.name}\n👤 Aluno: ${alunoEncontrado.nome}\n\nNenhuma alteração necessária! ✅\nA jornada detectada (${jornadaFinal}) já é exatamente a que está salva no sistema.`);
+                        continue; // Interrompe o processo deste aluno e pula pro próximo PDF
+                    }
+
+                    // 5. CONFIRMAÇÃO DE MUDANÇA
                     const confirmacao = confirm(
-                        `📄 DOCUMENTO LIDO: ${file.name}\n\n` +
-                        `👤 Aluno Identificado: ${alunoEncontrado.nome}\n` +
-                        `🏢 Empresa Atual: ${alunoEncontrado.empresa?.razao || "Não informada"}\n\n` +
-                        `🕒 NOVA JORNADA TOTAL DETECTADA:\n` +
-                        `   => ${horarioTotal} (Ignorando históricos antigos)\n` +
-                        `   (Este horário será salvo nos campos Teórica e Prática)\n\n` +
-                        `📍 NOVO ENDEREÇO IDENTIFICADO:\n` +
-                        `   - ${enderecoExtraido || "Não detectado de forma exata"}\n\n` +
-                        `Deseja APLICAR essas alterações na ficha do aluno e salvar no banco?`
+                        `📄 DOCUMENTO LIDO: ${file.name}\n` +
+                        `👤 Aluno Identificado: ${alunoEncontrado.nome}\n\n` +
+                        `🔄 MUDANÇA DE JORNADA DETECTADA!\n` +
+                        `   - Como está no sistema agora: [ ${teoriaAtual || "Vazio"} ]\n` +
+                        `   - Como está no PDF (NOVO): [ ${jornadaFinal} ]\n\n` +
+                        `Deseja APLICAR essa nova jornada nos campos de Teórica e Prática do aluno?`
                     );
 
                     if (confirmacao) {
-                        // Substitui a informação velha pelo bloco novo de 4 horas em ambos os campos!
-                        if (horarioTotal !== "Não detectado") {
-                            alunoEncontrado.teoria = horarioTotal;
-                            alunoEncontrado.pratica = horarioTotal;
-                        }
-                        
-                        if (enderecoExtraido && enderecoExtraido.length > 5) {
-                            if (!alunoEncontrado.empresa) alunoEncontrado.empresa = {};
-                            alunoEncontrado.empresa.endereco = enderecoExtraido;
+                        alunoEncontrado.teoria = jornadaFinal;
+                        alunoEncontrado.pratica = jornadaFinal;
+
+                        // Atualiza silenciosamente os checkboxes de "Contra-Turno"
+                        if (diasStr.includes("Segunda a Sexta")) {
+                             alunoEncontrado.contraTurno = { seg: true, ter: true, qua: true, qui: true, sex: true };
+                        } else if (diasStr !== "") {
+                             if (!alunoEncontrado.contraTurno) alunoEncontrado.contraTurno = { seg:false, ter:false, qua:false, qui:false, sex:false };
+                             alunoEncontrado.contraTurno.seg = diasStr.includes("Seg");
+                             alunoEncontrado.contraTurno.ter = diasStr.includes("Ter");
+                             alunoEncontrado.contraTurno.qua = diasStr.includes("Qua");
+                             alunoEncontrado.contraTurno.qui = diasStr.includes("Qui");
+                             alunoEncontrado.contraTurno.sex = diasStr.includes("Sex");
                         }
 
                         // Carimba a anotação
                         const dataHoje = new Date().toLocaleDateString('pt-BR');
-                        const relatorioPDF = `[Aditivo processado em ${dataHoje}]: Horário atualizado para ${horarioTotal}. Endereço ajustado.`;
+                        const relatorioPDF = `[Aditivo processado em ${dataHoje}]: Jornada atualizada de "${teoriaAtual}" para "${jornadaFinal}".`;
                         
                         let obsAtual = (alunoEncontrado.obs_origem || alunoEncontrado.obs || "").trim();
                         alunoEncontrado.obs_origem = obsAtual !== "" ? obsAtual + "\n\n" + relatorioPDF : relatorioPDF;
@@ -2148,13 +2176,14 @@ ${obs}`;
                 }
             }
             
-            // 5. SALVA NO BANCO GERAL E ATUALIZA A TELA
+            // 6. SALVA NO BANCO GERAL E ATUALIZA A TELA
             if (alunosAtualizados > 0) {
                 if (typeof saveToStorage === 'function') saveToStorage();
                 if (typeof runFilter === 'function') runFilter();
-                alert(`✅ Leitura Concluída! Fichas de ${alunosAtualizados} aluno(s) foram atualizadas de forma global no sistema.`);
+                alert(`✅ Leitura Concluída! Fichas de ${alunosAtualizados} aluno(s) foram atualizadas no sistema.`);
             }
             
+            // Limpa a memória para o próximo clique
             event.target.value = "";
         }
         
