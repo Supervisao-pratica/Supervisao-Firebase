@@ -21,6 +21,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     
     <script>
         
@@ -562,11 +563,51 @@ th {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div class="glass-panel p-4 flex flex-col"><h3 class="text-[10px] font-bold text-slate-400 uppercase mb-3 flex items-center gap-2"><i data-lucide="bar-chart-2" class="w-3 h-3"></i> Funil de Visitas</h3><div class="chart-wrapper"><canvas id="chartVisitas" style="width:100%; height:100%;"></canvas></div></div><div class="glass-panel p-4 flex flex-col"><h3 class="text-[10px] font-bold text-slate-400 uppercase mb-3 flex items-center gap-2"><i data-lucide="pie-chart" class="w-3 h-3"></i> Status Geral</h3><div class="chart-wrapper flex justify-center"><canvas id="chartStatus" style="width:100%; height:100%;"></canvas></div></div></div>
                 <div class="glass-panel p-4 flex flex-col mt-4"><h3 class="text-[10px] font-bold text-slate-400 uppercase mb-3 flex items-center gap-2"><i data-lucide="map" class="w-3 h-3"></i> Top Regiões</h3><div class="chart-wrapper" style="height: 250px;"><canvas id="chartRegioes" style="width:100%; height:100%;"></canvas></div></div>
                 <div class="glass-panel flex flex-col overflow-hidden min-h-[400px]">
-                    <div class="p-3 border-b border-slate-100 bg-white flex justify-between items-center"><div class="flex items-center gap-2"><div class="bg-slate-100 p-1.5 rounded"><i data-lucide="list" class="w-4 h-4 text-slate-500"></i></div><span class="text-xs font-bold text-slate-600 uppercase" id="listTitle">Listagem</span></div><button onclick="exportData()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-bold uppercase flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-200"><i data-lucide="download" class="w-3 h-3"></i> Relatório</button></div>
-                    <div class="overflow-x-auto flex-1 bg-white"><table class="w-full text-left border-collapse"><thead class="sticky-header"><tr><th>Aluno / Turma</th><th>Empresa / Endereço</th><th>Supervisor / Contatos</th><th class="text-center">Período</th><th class="text-center">Visitas</th><th class="text-center">Ações</th></tr></thead><tbody id="tableBody" class="text-slate-600"></tbody></table></div>
-                    <div class="p-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center"><span class="text-[10px] font-bold text-slate-400 uppercase" id="pageInfo">Página 1</span><div class="flex gap-2"><button id="btnPrev" onclick="changePage(-1)" class="px-3 py-1 bg-white border border-slate-200 rounded text-xs font-bold hover:bg-slate-100 disabled:opacity-50">Anterior</button><button id="btnNext" onclick="changePage(1)" class="px-3 py-1 bg-white border border-slate-200 rounded text-xs font-bold hover:bg-slate-100 disabled:opacity-50">Próxima</button></div></div>
-                </div>
-            </div>
+                    <div class="p-3 border-b border-slate-100 bg-white flex justify-between items-center">
+    <div class="flex items-center gap-2">
+        <div class="bg-slate-100 p-1.5 rounded"><i data-lucide="list" class="w-4 h-4 text-slate-500"></i></div>
+        <span class="text-xs font-bold text-slate-600 uppercase" id="listTitle">Listagem</span>
+    </div>
+    
+    <!-- AGRUPAMENTO DOS BOTÕES NO CANTO DIREITO -->
+    <div class="flex items-center gap-2">
+        <input type="file" id="leitorPDF" accept="application/pdf" style="display: none;" onchange="processarArquivosPDF(event)" multiple>
+        
+        <button onclick="document.getElementById('leitorPDF').click()" class="bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold uppercase flex items-center gap-1 px-3 py-1.5 rounded-lg border border-blue-200">
+            <i data-lucide="file-text" class="w-3 h-3"></i> Ler PDF
+        </button>
+
+        <button onclick="exportData()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-bold uppercase flex items-center gap-1 px-3 py-1.5 rounded-lg border border-emerald-200">
+            <i data-lucide="download" class="w-3 h-3"></i> Relatório
+        </button>
+    </div>
+</div>
+
+<div class="overflow-x-auto flex-1 bg-white">
+    <table class="w-full text-left border-collapse">
+        <thead class="sticky-header">
+            <tr>
+                <th>Aluno / Turma</th>
+                <th>Empresa / Endereço</th>
+                <th>Supervisor / Contatos</th>
+                <th class="text-center">Período</th>
+                <th class="text-center">Visitas</th>
+                <th class="text-center">Ações</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody" class="text-slate-600"></tbody>
+    </table>
+</div>
+
+<div class="p-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+    <span class="text-[10px] font-bold text-slate-400 uppercase" id="pageInfo">Página 1</span>
+    <div class="flex gap-2">
+        <button id="btnPrev" onclick="changePage(-1)" class="px-3 py-1 bg-white border border-slate-200 rounded text-xs font-bold hover:bg-slate-100 disabled:opacity-50">Anterior</button>
+        <button id="btnNext" onclick="changePage(1)" class="px-3 py-1 bg-white border border-slate-200 rounded text-xs font-bold hover:bg-slate-100 disabled:opacity-50">Próxima</button>
+    </div>
+</div>
+</div>
+</div>
 
             <!-- VIEW PLANEJAMENTO -->
 <div id="viewControleRateio" class="hidden w-full max-w-[1800px] mx-auto flex-col gap-6 pb-10">
@@ -1977,6 +2018,133 @@ ${obs}`;
             const ws = XLSX.utils.json_to_sheet(dataToExport); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Relatório"); XLSX.writeFile(wb, "Relatorio_Senac.xlsx"); 
         }
 
+        // =================================================================================
+        // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Contratos e Aditivos)
+        // =================================================================================
+        async function processarArquivosPDF(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            // Verifica se a biblioteca PDF está ativa
+            if (!window.pdfjsLib) {
+                alert("Aguarde um instante, o motor de leitura de PDF ainda está carregando na página.");
+                return;
+            }
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+            // Junta as bases para o "Pente Fino" (Global: Qualificação + Técnica)
+            const todosAlunos = [...(DB.quali || []), ...(DB.tec || [])];
+            let alunosAtualizados = 0;
+
+            for (let file of files) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let textoCompleto = "";
+
+                    // Lê todas as páginas do PDF
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const strings = textContent.items.map(item => item.str);
+                        textoCompleto += strings.join(" ") + " ";
+                    }
+
+                    // Limpa o texto (remove quebras e junta os espaços duplos) para o robô não tropeçar
+                    const textoLimpo = textoCompleto.replace(/\s+/g, ' ').toUpperCase();
+
+                    // 1. DEDUÇÃO DO ALUNO (Tiro certeiro buscando o nome do banco no texto)
+                    let alunoEncontrado = todosAlunos.find(a => a.nome && textoLimpo.includes(a.nome.toUpperCase().trim()));
+
+                    if (!alunoEncontrado) {
+                        alert(`⚠️ Alerta: O nome de nenhum aluno cadastrado no sistema foi encontrado no arquivo:\n[ ${file.name} ].\n\nVerifique se o aluno já foi importado do Excel.`);
+                        continue;
+                    }
+
+                    // 2. DEDUÇÃO DOS HORÁRIOS (Matemática da Jornada)
+                    // Ele acha qualquer coisa no padrão "00:00 às 00:00" ou "00:00 as 00:00"
+                    const regexHorario = /(\d{2}:\d{2})\s*(?:[AÀ]S|[-])\s*(\d{2}:\d{2})/gi;
+                    let horarios = [];
+                    let match;
+                    
+                    while ((match = regexHorario.exec(textoLimpo)) !== null) {
+                        horarios.push({ inicio: match[1], fim: match[2] });
+                    }
+
+                    let horarioTotal = "Não detectado";
+                    let jornadaTeorica = "Não detectada";
+                    let jornadaPratica = "Não detectada";
+
+                    if (horarios.length >= 2) {
+                        // Presume que o 1º horário citado no documento é Teoria e o 2º é Prática (Padrão Senac)
+                        jornadaTeorica = `${horarios[0].inicio} às ${horarios[0].fim}`;
+                        jornadaPratica = `${horarios[1].inicio} às ${horarios[1].fim}`;
+
+                        // Calcula a jornada total cruzando a primeira entrada com a última saída
+                        let horasInicio = horarios.map(h => h.inicio).sort();
+                        let horasFim = horarios.map(h => h.fim).sort();
+                        horarioTotal = `${horasInicio[0]} às ${horasFim[horasFim.length - 1]}`;
+                    }
+
+                    // 3. DEDUÇÃO DO ENDEREÇO DA PRÁTICA (Baseado no termo "estabelecida na")
+                    let enderecoExtraido = "";
+                    const regexEndereco = /ESTABELECIDA NA (.*?), (?:INSCRITA|BAIRRO|NA CIDADE)/i;
+                    const matchEndereco = textoLimpo.match(regexEndereco);
+                    if (matchEndereco) {
+                        enderecoExtraido = matchEndereco[1].trim();
+                    }
+
+                    // 4. CONFIRMAÇÃO DO SUPERVISOR
+                    const confirmacao = confirm(
+                        `📄 DOCUMENTO LIDO: ${file.name}\n\n` +
+                        `👤 Aluno Identificado: ${alunoEncontrado.nome}\n` +
+                        `🏢 Empresa Atual: ${alunoEncontrado.empresa?.razao || "Não informada"}\n\n` +
+                        `🕒 DEDUÇÃO DE JORNADA:\n` +
+                        `   - Teoria: ${jornadaTeorica}\n` +
+                        `   - Prática: ${jornadaPratica}\n` +
+                        `   => JORNADA TOTAL NA EMPRESA: ${horarioTotal}\n\n` +
+                        `📍 NOVO ENDEREÇO IDENTIFICADO:\n` +
+                        `   - ${enderecoExtraido || "Não detectado de forma exata"}\n\n` +
+                        `Deseja APLICAR essas alterações na ficha do aluno e salvar no banco?`
+                    );
+
+                    if (confirmacao) {
+                        // Aplica as alterações no bloco mestre do aluno
+                        alunoEncontrado.teoria = jornadaTeorica;
+                        alunoEncontrado.pratica = jornadaPratica;
+                        
+                        if (enderecoExtraido && enderecoExtraido.length > 5) {
+                            if (!alunoEncontrado.empresa) alunoEncontrado.empresa = {};
+                            alunoEncontrado.empresa.endereco = enderecoExtraido;
+                        }
+
+                        // Carimba a anotação na ordem cronológica (sem apagar as velhas)
+                        const dataHoje = new Date().toLocaleDateString('pt-BR');
+                        const relatorioPDF = `[Contrato/Aditivo processado em ${dataHoje}]: Horário atualizado para ${horarioTotal} (T: ${jornadaTeorica} / P: ${jornadaPratica}).`;
+                        
+                        let obsAtual = (alunoEncontrado.obs_origem || alunoEncontrado.obs || "").trim();
+                        alunoEncontrado.obs_origem = obsAtual !== "" ? obsAtual + "\n\n" + relatorioPDF : relatorioPDF;
+                        alunoEncontrado.obs = alunoEncontrado.obs_origem;
+
+                        alunosAtualizados++;
+                    }
+                } catch (erro) {
+                    console.error("Erro ao ler PDF: ", erro);
+                    alert(`Não foi possível processar o arquivo: ${file.name}`);
+                }
+            }
+            
+            // 5. SALVA NO BANCO GERAL E ATUALIZA A TELA (Se alterou alguém)
+            if (alunosAtualizados > 0) {
+                if (typeof saveToStorage === 'function') saveToStorage();
+                if (typeof runFilter === 'function') runFilter();
+                alert(`✅ Leitura Concluída! Fichas de ${alunosAtualizados} aluno(s) foram atualizadas de forma global no sistema.`);
+            }
+            
+            // Limpa a memória do leitor para o próximo uso
+            event.target.value = "";
+        }
+        
         function setupFilters() { 
             // 👑 1. VARREDURA AUTOMÁTICA DE CORREÇÃO (O "Rodo" no Banco de Dados)
             // Varre todos os alunos e conserta a Região de quem estiver sem, baseado na cidade!
