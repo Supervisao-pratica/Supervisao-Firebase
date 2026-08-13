@@ -2021,275 +2021,55 @@ ${obs}`;
         // =================================================================================
         // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Aditivos) - VERSÃO V3 (Foco em Dias e Horas)
         // =================================================================================
-        // =================================================================================
-        // 📄 LEITOR INTELIGENTE DE PDF (Aditivos) - V9.5.5
-        // Prioridade: contraturno explícito > dedução segura por exatamente 1 dia útil ausente.
-        // Se houver mais de 1 dia de contraturno, o sistema exibe alerta destacado.
-        // =================================================================================
+        // PDF ADITIVOS V9.5.7: lê horários atuais, mudança de turno e contraturno.
         async function processarArquivosPDF(event) {
             const files = event?.target?.files;
-            if (!files || files.length === 0) return;
-
-            if (!window.pdfjsLib) {
-                alert("Aguarde um instante, o motor de leitura de PDF ainda está carregando.");
-                return;
-            }
-            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-
-            const todosAlunos = [...(DB.quali || []), ...(DB.tec || [])];
-            const DIAS = [
-                { key: 'seg', nome: 'Segunda', curto: 'Seg', re: /(?:SEGUNDA(?:-FEIRA)?|\b2\s*[Aªº]\b)/i },
-                { key: 'ter', nome: 'Terça',   curto: 'Ter', re: /(?:TER[CÇ]A(?:-FEIRA)?|\b3\s*[Aªº]\b)/i },
-                { key: 'qua', nome: 'Quarta',  curto: 'Qua', re: /(?:QUARTA(?:-FEIRA)?|\b4\s*[Aªº]\b)/i },
-                { key: 'qui', nome: 'Quinta',  curto: 'Qui', re: /(?:QUINTA(?:-FEIRA)?|\b5\s*[Aªº]\b)/i },
-                { key: 'sex', nome: 'Sexta',   curto: 'Sex', re: /(?:SEXTA(?:-FEIRA)?|\b6\s*[Aªº]\b)/i }
+            if (!files?.length) return;
+            if (!window.pdfjsLib) return alert('Aguarde o motor de leitura de PDF carregar.');
+            pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+            const alunos=[...(DB.quali||[]),...(DB.tec||[])];
+            const DIAS=[
+                {k:'seg',n:'Segunda',r:/(?:SEGUNDA(?:-FEIRA)?|\b2\s*[Aªº]\b)/i},
+                {k:'ter',n:'Terça',r:/(?:TER[CÇ]A(?:-FEIRA)?|\b3\s*[Aªº]\b)/i},
+                {k:'qua',n:'Quarta',r:/(?:QUARTA(?:-FEIRA)?|\b4\s*[Aªº]\b)/i},
+                {k:'qui',n:'Quinta',r:/(?:QUINTA(?:-FEIRA)?|\b5\s*[Aªº]\b)/i},
+                {k:'sex',n:'Sexta',r:/(?:SEXTA(?:-FEIRA)?|\b6\s*[Aªº]\b)/i}
             ];
-            let alunosAtualizados = 0;
-
-            const normalizar = (v) => String(v || '')
-                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                .replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').toUpperCase().trim();
-
-            const diasNoTrecho = (trecho) => {
-                const t = normalizar(trecho);
-                const encontrados = new Set();
-                DIAS.forEach(d => { if (d.re.test(t)) encontrados.add(d.key); });
-                return encontrados;
+            let atualizados=0;
+            const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').toUpperCase().trim();
+            const diasEm=t=>{const z=new Set(),x=norm(t);DIAS.forEach(d=>{if(d.r.test(x))z.add(d.k)});return z};
+            const nomes=z=>DIAS.filter(d=>z.has(d.k)).map(d=>d.n);
+            const ctObj=z=>({seg:z.has('seg'),ter:z.has('ter'),qua:z.has('qua'),qui:z.has('qui'),sex:z.has('sex')});
+            const periodo=h=>{const n=Number(String(h||'').split(':')[0]);return !Number.isFinite(n)?'não identificado':n<12?'manhã':n<18?'tarde':'noite'};
+            const horarios=t=>{const a=[];let m,re=/(\d{1,2})\s*[:hH]\s*(\d{2})\s*(?:AS|A|[-–—])\s*(\d{1,2})\s*[:hH]\s*(\d{2})/g;while((m=re.exec(t))){const i=`${String(+m[1]).padStart(2,'0')}:${m[2]}`,f=`${String(+m[3]).padStart(2,'0')}:${m[4]}`;if(!a.some(x=>x.i===i&&x.f===f))a.push({i,f,p:m.index})}return a};
+            const minutos=h=>{const[a,b]=h.i.split(':').map(Number),[c,d]=h.f.split(':').map(Number);return c*60+d-a*60-b};
+            const somar=(h,m)=>{const[a,b]=h.split(':').map(Number),t=(a*60+b+m)%1440;return`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`};
+            const bloco=(texto,tipo)=>{
+                const marks=tipo==='t'?[ 'A APRENDIZAGEM TEORICA DO CONTRATADO SERA REALIZADA','HORARIO DO ESTUDO TEORICO AVA','AS AULAS TEORICAS SERAO REALIZADAS']:[ 'A APRENDIZAGEM PRATICA PROFISSIONAL SERA REALIZADA','HORARIO DA PRATICA PROFISSIONAL','AS AULAS PRATICAS SERAO REALIZADAS'];
+                const cs=[];marks.forEach((mk,pri)=>{let p=texto.indexOf(mk);while(p>=0){const tr=texto.slice(p,p+650),hs=horarios(tr),ds=diasEm(tr.slice(0,420));if(hs.length||ds.size)cs.push({pri,p,tr,hs,ds});p=texto.indexOf(mk,p+mk.length)}});if(!cs.length)return null;cs.sort((a,b)=>a.pri-b.pri||b.p-a.p);const c=cs[0];const h2=c.hs.filter(x=>minutos(x)===120);c.h=(tipo==='p'&&h2.length?h2[h2.length-1]:h2[0])||c.hs.find(x=>minutos(x)===240)||c.hs[0]||null;return c
             };
-
-            const nomesDias = (keys) => DIAS.filter(d => keys.has(d.key)).map(d => d.nome);
-            const objetoCT = (keys) => ({
-                seg: keys.has('seg'), ter: keys.has('ter'), qua: keys.has('qua'),
-                qui: keys.has('qui'), sex: keys.has('sex')
-            });
-
-            // Busca dias perto de termos que realmente indicam contraturno/escola.
-            const detectarContraturnoExplicito = (texto) => {
-                const padroes = [
-                    /CONTRA\s*-?\s*TURNO/g,
-                    /ENSINO\s+MEDIO/g,
-                    /HORARIO\s+ESCOLAR/g,
-                    /AUSENTAR[^.]{0,80}ESCOLA/g,
-                    /NAO\s+(?:REALIZA|TRABALHA|COMPARECE)[^.]{0,100}(?:EMPRESA|PRATICA)[^.]{0,100}(?:ESCOLA|COLEGIO)/g
-                ];
-                const encontrados = new Set();
-                for (const padrao of padroes) {
-                    let m;
-                    while ((m = padrao.exec(texto)) !== null) {
-                        const ini = Math.max(0, m.index - 100);
-                        const fim = Math.min(texto.length, m.index + m[0].length + 240);
-                        diasNoTrecho(texto.slice(ini, fim)).forEach(k => encontrados.add(k));
-                    }
-                }
-                return encontrados;
-            };
-
-            // Isola trechos prováveis da jornada prática. Não usa o PDF inteiro para evitar datas históricas.
-            const detectarDiasPratica = (texto) => {
-                const encontrados = new Set();
-                const marcadores = [
-                    /PRATICA/g, /JORNADA\s+DE\s+TRABALHO/g, /DIAS\s+DE\s+TRABALHO/g,
-                    /TRABALHA/g, /ATIVIDADES\s+NA\s+EMPRESA/g
-                ];
-                for (const marcador of marcadores) {
-                    let m;
-                    while ((m = marcador.exec(texto)) !== null) {
-                        const ini = Math.max(0, m.index - 80);
-                        const fim = Math.min(texto.length, m.index + m[0].length + 500);
-                        const trecho = texto.slice(ini, fim);
-                        if (/SEGUNDA\s+(?:A|ATE)\s+SEXTA|2\s*[Aªº]\s+(?:A|ATE)\s+6\s*[Aªº]/i.test(trecho)) {
-                            DIAS.forEach(d => encontrados.add(d.key));
-                        } else {
-                            diasNoTrecho(trecho).forEach(k => encontrados.add(k));
-                        }
-                    }
-                }
-                return encontrados;
-            };
-
-            const extrairHorarios = (texto) => {
-                const regexHorario = /(\d{1,2})\s*[:hH]\s*(\d{2})\s*(?:AS|A|[-–—])\s*(\d{1,2})\s*[:hH]\s*(\d{2})/g;
-                const lista = [];
-                let m;
-                while ((m = regexHorario.exec(texto)) !== null) {
-                    const inicio = `${String(+m[1]).padStart(2,'0')}:${m[2]}`;
-                    const fim = `${String(+m[3]).padStart(2,'0')}:${m[4]}`;
-                    if (!lista.some(h => h.inicio === inicio && h.fim === fim)) lista.push({inicio, fim, pos:m.index});
-                }
-                return lista;
-            };
-
-            const escolherJornadaPratica = (texto, horarios) => {
-                if (!horarios.length) return null;
-                const calcMin = (h) => {
-                    const [h1,m1] = h.inicio.split(':').map(Number), [h2,m2] = h.fim.split(':').map(Number);
-                    return (h2*60+m2)-(h1*60+m1);
-                };
-                // Prefere horário próximo de PRÁTICA/JORNADA/EMPRESA.
-                const posMarcadores = [];
-                for (const re of [/PRATICA/g,/JORNADA\s+DE\s+TRABALHO/g,/ATIVIDADES\s+NA\s+EMPRESA/g]) {
-                    let m; while ((m=re.exec(texto))!==null) posMarcadores.push(m.index);
-                }
-                const candidatos = horarios.filter(h => {
-                    const min=calcMin(h); return min > 0 && min <= 8*60;
-                }).map(h => ({...h, distancia:posMarcadores.length?Math.min(...posMarcadores.map(p=>Math.abs(h.pos-p))):999999}));
-                const blocos4h=candidatos.filter(h=>calcMin(h)===240).sort((a,b)=>a.distancia-b.distancia);
-                if (blocos4h.length) return blocos4h[0];
-                candidatos.sort((a,b)=>a.distancia-b.distancia);
-                return candidatos[0] || null;
-            };
-
-            for (const file of files) {
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                    let textoCompleto = '';
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const textContent = await page.getTextContent();
-                        textoCompleto += textContent.items.map(item => item.str).join(' ') + ' ';
-                    }
-                    const textoLimpo = normalizar(textoCompleto);
-
-                    const alunoEncontrado = todosAlunos.find(a => a.nome && textoLimpo.includes(normalizar(a.nome)));
-                    if (!alunoEncontrado) {
-                        alert(`⚠️ Nenhum aluno cadastrado foi identificado no arquivo:\n${file.name}`);
-                        continue;
-                    }
-
-                    // 1) Contraturno explícito tem prioridade.
-                    let diasCT = detectarContraturnoExplicito(textoLimpo);
-                    let origemCT = diasCT.size ? 'informado explicitamente no documento' : '';
-
-                    // 2) Sem informação explícita, deduz apenas quando há EXATAMENTE 1 dia útil ausente.
-                    if (!diasCT.size) {
-                        const diasPratica = detectarDiasPratica(textoLimpo);
-                        const faltantes = new Set(DIAS.map(d=>d.key).filter(k => !diasPratica.has(k)));
-
-                        if (diasPratica.size === 4 && faltantes.size === 1) {
-                            diasCT = faltantes;
-                            origemCT = 'deduzido pelo único dia ausente da jornada prática';
-                        } else if (diasPratica.size > 0 && faltantes.size > 1) {
-                            alert(
-                                `⚠️ ALERTA DE CONTRATURNO INCONCLUSIVO\n\n` +
-                                `Arquivo: ${file.name}\nAluno: ${alunoEncontrado.nome}\n\n` +
-                                `O documento permitiu identificar somente ${diasPratica.size} dia(s) de prática: ${nomesDias(diasPratica).join(', ')}.\n` +
-                                `Ficaram ${faltantes.size} dias úteis ausentes: ${nomesDias(faltantes).join(', ')}.\n\n` +
-                                `Como há mais de um dia possível, o sistema NÃO alterou o contraturno deste aluno. Verifique o PDF ou ajuste manualmente.`
-                            );
-                            continue;
-                        }
-                    }
-
-                    if (diasCT.size > 1) {
-                        alert(
-                            `🚨 ALERTA: MAIS DE UM DIA DE CONTRATURNO IDENTIFICADO\n\n` +
-                            `Arquivo: ${file.name}\nAluno: ${alunoEncontrado.nome}\n` +
-                            `Dias encontrados: ${nomesDias(diasCT).join(', ')}\n` +
-                            `Origem: ${origemCT || 'documento'}\n\n` +
-                            `Confira cuidadosamente antes de confirmar a atualização.`
-                        );
-                    }
-
-                    const horarios = extrairHorarios(textoLimpo);
-                    const jornada = escolherJornadaPratica(textoLimpo, horarios);
-
-                    // Regra dos campos: a jornada total na empresa tem 4 horas.
-                    // Teórica guarda somente o INÍCIO da primeira metade (2h).
-                    // Prática guarda somente o INÍCIO da segunda metade (2h).
-                    const somarMinutos = (hhmm, minutos) => {
-                        const [h,m] = String(hhmm || '').split(':').map(Number);
-                        if (!Number.isFinite(h) || !Number.isFinite(m)) return '';
-                        const total = (h * 60 + m + minutos) % (24 * 60);
-                        return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
-                    };
-                    const teoriaNova = jornada ? jornada.inicio : String(alunoEncontrado.teoria || '');
-                    const praticaNova = jornada ? somarMinutos(jornada.inicio, 120) : String(alunoEncontrado.pratica || '');
-                    const jornadaTexto = jornada ? `${jornada.inicio} às ${jornada.fim}` : 'não identificada';
-
-                    if (!diasCT.size && !jornada) {
-                        alert(`📄 Arquivo: ${file.name}\n\nNão foi possível identificar com segurança contraturno nem jornada. Nenhuma alteração foi aplicada.`);
-                        continue;
-                    }
-
-                    const ctNovo = objetoCT(diasCT);
-                    const ctAtual = alunoEncontrado.contraTurno || {seg:false,ter:false,qua:false,qui:false,sex:false};
-                    // Contraturno só entra na comparação quando foi realmente identificado no documento.
-                    const mudouCT = diasCT.size > 0 && DIAS.some(d => !!ctAtual[d.key] !== !!ctNovo[d.key]);
-                    const teoriaAtual = String(alunoEncontrado.teoria || '');
-                    const praticaAtual = String(alunoEncontrado.pratica || '');
-                    const mudouTeoria = !!jornada && teoriaAtual !== teoriaNova;
-                    const mudouPratica = !!jornada && praticaAtual !== praticaNova;
-
-                    if (!mudouCT && !mudouTeoria && !mudouPratica) {
-                        alert(`📄 ${file.name}\n👤 ${alunoEncontrado.nome}\n\nNenhuma alteração necessária. Os dados já estão atualizados.`);
-                        continue;
-                    }
-
-                    const diasTexto = diasCT.size ? nomesDias(diasCT).join(', ') : 'Não identificado';
-                    const ctAtualTexto = DIAS.filter(d => !!ctAtual[d.key]).map(d => d.nome).join(', ') || 'Não informado';
-                    const confirmacao = confirm(
-                        `📄 DOCUMENTO LIDO: ${file.name}\n`+
-                        `👤 Aluno: ${alunoEncontrado.nome}\n\n`+
-                        `ALTERAÇÕES PROPOSTAS\n\n`+
-                        `Teórica (início):\n  Como estava: ${teoriaAtual || 'Vazio'}\n  Como ficará: ${jornada ? teoriaNova : 'Sem alteração'}\n\n`+
-                        `Prática (início):\n  Como estava: ${praticaAtual || 'Vazio'}\n  Como ficará: ${jornada ? praticaNova : 'Sem alteração'}\n\n`+
-                        `Jornada encontrada no documento: ${jornadaTexto}\n\n`+
-                        `Contraturno:\n  Como estava: ${ctAtualTexto}\n  Como ficará: ${diasCT.size ? diasTexto : 'Sem alteração, não identificado no documento'}\n`+
-                        `  Identificação: ${origemCT || 'não identificada'}\n\n`+
-                        `${diasCT.size > 1 ? '⚠️ ATENÇÃO: foram identificados vários dias de contraturno.\n\n' : ''}`+
-                        `Deseja aplicar essas alterações?`
-                    );
-                    if (!confirmacao) continue;
-
-                    if (jornada) {
-                        alunoEncontrado.teoria = teoriaNova;
-                        alunoEncontrado.pratica = praticaNova;
-                    }
-                    if (diasCT.size) {
-                        alunoEncontrado.contraTurno = ctNovo;
-                        alunoEncontrado.contraturno = nomesDias(diasCT).join(', ');
-                    }
-
-                    if (typeof STATE !== 'undefined' && STATE.editingId === alunoEncontrado.id) {
-                        if (jornada && document.getElementById('editTeoria')) document.getElementById('editTeoria').value = teoriaNova;
-                        if (jornada && document.getElementById('editPratica')) document.getElementById('editPratica').value = praticaNova;
-                        if (diasCT.size) DIAS.forEach(d => { const el=document.getElementById('ct'+d.curto); if(el) el.checked=!!ctNovo[d.key]; });
-                    }
-
-                    // Substitui somente o bloco anterior de aditivo e preserva anotações manuais.
-                    // Registra claramente o antes e o depois. Sem repetir "não identificado".
-                    const mudancasRegistro = [];
-                    if (jornada) {
-                        mudancasRegistro.push(`Teórica: ${teoriaAtual || 'Vazio'} → ${teoriaNova}`);
-                        mudancasRegistro.push(`Prática: ${praticaAtual || 'Vazio'} → ${praticaNova}`);
-                        mudancasRegistro.push(`Jornada do documento: ${jornadaTexto}`);
-                    }
-                    if (diasCT.size) mudancasRegistro.push(`Contraturno: ${ctAtualTexto} → ${diasTexto} (${origemCT})`);
-                    else mudancasRegistro.push('Contraturno: não identificado; mantido sem alteração');
-                    const relatorioPDF = `[ADITIVO PDF] ${mudancasRegistro.join(' | ')}.`;
-                    let obsAtual = String(alunoEncontrado.obs_origem || alunoEncontrado.obs || '').trim();
-                    const normLinha = v => normalizar(v);
-                    const ehAditivo = linha => {
-                        const n=normLinha(linha);
-                        return n.startsWith('[ADITIVO PDF]') || /^\[ADITIVO (?:PROCESSADO )?EM \d{2}\/\d{2}\/\d{4}\]/.test(n);
-                    };
-                    const obsSemAditivo = obsAtual.split(/\n+/).filter(l => !ehAditivo(l)).join('\n').replace(/\n{3,}/g,'\n\n').trim();
-                    alunoEncontrado.obs_origem = obsSemAditivo ? `${obsSemAditivo}\n\n${relatorioPDF}` : relatorioPDF;
-                    alunoEncontrado.obs = alunoEncontrado.obs_origem;
-                    alunosAtualizados++;
-                } catch (erro) {
-                    console.error('Erro ao ler PDF:', erro);
-                    alert(`Não foi possível processar o arquivo: ${file.name}\n${erro.message || erro}`);
-                }
+            const explicito=texto=>{const z=new Set(),rs=[/CONTRA\s*-?\s*TURNO/g,/NAO\s+(?:REALIZA|TRABALHA|COMPARECE)[^.]{0,120}(?:EMPRESA|PRATICA)[^.]{0,100}(?:ESCOLA|COLEGIO)/g];for(const r of rs){let m;while((m=r.exec(texto))){diasEm(texto.slice(Math.max(0,m.index-80),m.index+m[0].length+220)).forEach(k=>z.add(k))}}return z};
+            for(const file of files){
+                try{
+                    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let raw='';for(let p=1;p<=pdf.numPages;p++){const pg=await pdf.getPage(p),tc=await pg.getTextContent();raw+=tc.items.map(x=>x.str).join(' ')+' '};const text=norm(raw);
+                    const aluno=alunos.find(a=>a.nome&&text.includes(norm(a.nome)));if(!aluno){alert(`⚠️ Aluno não identificado em:\n${file.name}`);continue}
+                    const bt=bloco(text,'t'),bp=bloco(text,'p');
+                    let ct=explicito(text),origem=ct.size?'informado explicitamente no documento':'';
+                    if(!ct.size&&bp?.ds?.size){const falt=new Set(DIAS.map(d=>d.k).filter(k=>!bp.ds.has(k)));if(bp.ds.size===4&&falt.size===1){ct=falt;origem='deduzido pelo único dia ausente da prática atual'}else if(falt.size>1){alert(`⚠️ CONTRATURNO INCONCLUSIVO\n\nArquivo: ${file.name}\nAluno: ${aluno.nome}\nPrática atual: ${nomes(bp.ds).join(', ')}\nDias ausentes: ${nomes(falt).join(', ')}\n\nNenhum contraturno foi alterado.`)}}
+                    if(ct.size>1)alert(`🚨 MAIS DE UM DIA DE CONTRATURNO\n\nAluno: ${aluno.nome}\nDias: ${nomes(ct).join(', ')}\n\nRevise antes de confirmar.`);
+                    const all=horarios(text),geral=all.find(x=>minutos(x)===240)||null;
+                    const separados=!!(bt?.h&&bp?.h),teoriaNova=separados?bt.h.i:(geral?geral.i:String(aluno.teoria||'')),praticaNova=separados?bp.h.i:(geral?somar(geral.i,120):String(aluno.pratica||''));
+                    const jornada=separados?`Teórica ${bt.h.i} às ${bt.h.f}; Prática ${bp.h.i} às ${bp.h.f}`:(geral?`${geral.i} às ${geral.f}`:'não identificada');
+                    const ta=String(aluno.teoria||''),pa=String(aluno.pratica||''),cta=aluno.contraTurno||{},ctaTxt=DIAS.filter(d=>cta[d.k]).map(d=>d.n).join(', ')||'Não informado',ctTxt=ct.size?nomes(ct).join(', '):'Não identificado';
+                    const mudouH=(teoriaNova&&teoriaNova!==ta)||(praticaNova&&praticaNova!==pa),mudouCT=ct.size&&DIAS.some(d=>!!cta[d.k]!==ct.has(d.k));if(!mudouH&&!mudouCT){alert(`📄 ${file.name}\n👤 ${aluno.nome}\n\nNenhuma alteração necessária.`);continue}
+                    const ok=confirm(`📄 DOCUMENTO: ${file.name}\n👤 Aluno: ${aluno.nome}\n\nALTERAÇÕES PROPOSTAS\n\nTeórica (início):\n  Antes: ${ta||'Vazio'}\n  Depois: ${teoriaNova||'Sem alteração'}\n\nPrática (início):\n  Antes: ${pa||'Vazio'}\n  Depois: ${praticaNova||'Sem alteração'}\n\nJornada atual do documento: ${jornada}\nTurno: ${periodo(teoriaNova)}\n\nContraturno:\n  Antes: ${ctaTxt}\n  Depois: ${ct.size?ctTxt:'Sem alteração, não identificado'}\n  Origem: ${origem||'não identificada'}\n\n${ct.size>1?'⚠️ Há vários dias de contraturno.\n\n':''}Aplicar alterações?`);if(!ok)continue;
+                    if(teoriaNova)aluno.teoria=teoriaNova;if(praticaNova)aluno.pratica=praticaNova;if(ct.size){aluno.contraTurno=ctObj(ct);aluno.contraturno=ctTxt}
+                    if(STATE?.editingId===aluno.id){const et=document.getElementById('editTeoria'),ep=document.getElementById('editPratica');if(et)et.value=teoriaNova;if(ep)ep.value=praticaNova;if(ct.size)DIAS.forEach(d=>{const e=document.getElementById('ct'+d.n.slice(0,3));if(e)e.checked=ct.has(d.k)})}
+                    const parts=[];if(teoriaNova)parts.push(`Teórica: ${ta||'Vazio'} → ${teoriaNova}`);if(praticaNova)parts.push(`Prática: ${pa||'Vazio'} → ${praticaNova}`);parts.push(`Jornada atual: ${jornada}`);if(ta&&periodo(ta)!==periodo(teoriaNova))parts.push(`Mudança de turno: ${periodo(ta)} → ${periodo(teoriaNova)}`);parts.push(ct.size?`Contraturno: ${ctaTxt} → ${ctTxt} (${origem})`:'Contraturno: não identificado; mantido sem alteração');
+                    const reg=`[ADITIVO PDF] ${parts.join(' | ')}.`,obs=String(aluno.obs_origem||aluno.obs||'').split(/\n+/).filter(l=>{const n=norm(l);return!n.startsWith('[ADITIVO PDF]')&&!/^\[ADITIVO (?:PROCESSADO )?EM \d{2}\/\d{2}\/\d{4}\]/.test(n)}).join('\n').trim();aluno.obs_origem=obs?`${obs}\n\n${reg}`:reg;aluno.obs=aluno.obs_origem;atualizados++;
+                }catch(e){console.error(e);alert(`Erro ao processar ${file.name}: ${e.message||e}`)}
             }
-
-            if (alunosAtualizados > 0) {
-                if (typeof saveToStorage === 'function') await saveToStorage();
-                if (typeof runFilter === 'function') runFilter();
-                alert(`✅ Leitura concluída. ${alunosAtualizados} ficha(s) atualizada(s).`);
-            }
-            if (event?.target) event.target.value = '';
+            if(atualizados){if(typeof saveToStorage==='function')await saveToStorage();if(typeof runFilter==='function')runFilter();alert(`✅ ${atualizados} ficha(s) atualizada(s).`)}if(event?.target)event.target.value='';
         }
 
         function setupFilters() { 
@@ -4008,6 +3788,24 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             selectAll.checked = (checkboxes.length > 0 && checkboxes.length === checkedBoxes.length);
         }
 
+       // Observações geradas pela leitura de contratos/aditivos ficam somente na ficha do aluno.
+       // Elas não são exibidas nem copiadas para o campo Observação do Planejamento.
+       function ehObservacaoAditivoPDF(linha) {
+           const n = String(linha || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+           return n.startsWith('[ADITIVO PDF]') || /^\[ADITIVO (?:PROCESSADO )?EM \d{2}\/\d{2}\/\d{4}\]/.test(n);
+       }
+       function limparAditivoDaObservacaoPlanejamento(texto) {
+           return String(texto || '').split(/\n+/).filter(l => !ehObservacaoAditivoPDF(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+       }
+       function extrairObservacoesAditivoPDF(texto) {
+           return String(texto || '').split(/\n+/).filter(ehObservacaoAditivoPDF).join('\n').trim();
+       }
+       function juntarObservacaoAlunoComAditivo(obsPlanejamento, obsAlunoAtual) {
+           const manual = limparAditivoDaObservacaoPlanejamento(obsPlanejamento);
+           const aditivo = extrairObservacoesAditivoPDF(obsAlunoAtual);
+           return [manual, aditivo].filter(Boolean).join('\n\n').trim();
+       }
+
        function addToPlan() { 
             if (!STATE.planContext) return alert("Crie ou selecione um Roteiro no topo da tela antes de adicionar alunos."); 
             
@@ -4043,7 +3841,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                         hrPratica: student.pratica || '', 
                         visitaTipo: nextVisit, 
                         status: 'Realizar', 
-                        obs: student.obs_origem || '' 
+                        obs: limparAditivoDaObservacaoPlanejamento(student.obs_origem || '') 
                     }); 
                     addedCount++; 
                 } 
@@ -4202,7 +4000,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 
                 const isTec = (DB.tec || []).some(t => t.id === s.id);
                 const cursoLabel = isTec ? 'Técnica' : 'Qualificação';
-                const currentObs = s.obs_origem || item.obs || '';
+                const currentObs = limparAditivoDaObservacaoPlanejamento(item.obs || s.obs_origem || '');
 
                 let statusClass = "text-slate-600"; 
                 if(item.status === "Realizar") statusClass = "text-amber-500 font-bold bg-amber-50"; 
@@ -4437,11 +4235,18 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 
                 if (field === 'obs') {
                     const studentId = item.student.id;
+                    const obsPlanejamentoLimpa = limparAditivoDaObservacaoPlanejamento(val);
+                    item.obs = obsPlanejamentoLimpa;
                     const sQuali = DB.quali.find(s => s.id === studentId);
-                    if (sQuali) sQuali.obs_origem = val;
                     const sTec = DB.tec.find(s => s.id === studentId);
-                    if (sTec) sTec.obs_origem = val;
-                    item.student.obs_origem = val;
+                    const alunoMestre = sQuali || sTec;
+                    // Preserva no cadastro o histórico do aditivo, mesmo quando a observação do planejamento for editada.
+                    const obsMestreAtual = alunoMestre ? (alunoMestre.obs_origem || alunoMestre.obs || '') : (item.student.obs_origem || '');
+                    const obsMestreNova = juntarObservacaoAlunoComAditivo(obsPlanejamentoLimpa, obsMestreAtual);
+                    if (sQuali) { sQuali.obs_origem = obsMestreNova; sQuali.obs = obsMestreNova; }
+                    if (sTec) { sTec.obs_origem = obsMestreNova; sTec.obs = obsMestreNova; }
+                    item.student.obs_origem = obsMestreNova;
+                    item.student.obs = obsMestreNova;
                 }
                 
                 if(typeof window.saveToStorage === 'function') window.saveToStorage(); 
@@ -7024,7 +6829,7 @@ window.atualizarAutocompleteGlobal = function() {
                             hrPratica: alunoSistema.pratica || '', 
                             visitaTipo: nextVisit, 
                             status: 'Realizar', 
-                            obs: obsPlanilha || alunoSistema.obs_origem || '', 
+                            obs: limparAditivoDaObservacaoPlanejamento(obsPlanilha || alunoSistema.obs_origem || ''), 
                             cc_override: obterCentroCustoTurma(alunoSistema.turma) !== '-' ? obterCentroCustoTurma(alunoSistema.turma) : (valorPareceCentroCusto(ccPlanilha) ? ccPlanilha : '') 
                         });
                     });
@@ -8766,7 +8571,7 @@ window.confirmarImportacaoAbaExcel = async function(sheetName){
             if(cidadePlanilha && normImp(aluno.cidade)!==normImp(cidadePlanilha)) erros.push('Cidade divergente');
             if(erros.length) inconform.push(`${nome}: ${erros.join(', ')}`);
             let visita='1ª Visita'; if(aluno.visits?.[0]?.ok) visita='2ª Visita'; if(aluno.visits?.[1]?.ok) visita='3ª Visita';
-            roteiro.push({ordem:roteiro.length+1, student:aluno, date:dataGlobal, hrAtend:parseTimeImp(r.A), hrFim:'', hrTeoria:aluno.teoria||'', hrPratica:aluno.pratica||'', visitaTipo:visita, status:'Realizar', obs:obs||aluno.obs_origem||'', cc_override:''});
+            roteiro.push({ordem:roteiro.length+1, student:aluno, date:dataGlobal, hrAtend:parseTimeImp(r.A), hrFim:'', hrTeoria:aluno.teoria||'', hrPratica:aluno.pratica||'', visitaTipo:visita, status:'Realizar', obs:limparAditivoDaObservacaoPlanejamento(obs||aluno.obs_origem||''), cc_override:''});
         });
         if(!roteiro.length) { if(loader){loader.classList.add('hidden');loader.classList.remove('flex');} return alert('Nenhum aluno da base foi encontrado na aba selecionada.'); }
         let base=(window.__roteiroImportFileName||'ROTEIRO').toUpperCase().replace(/[^A-Z0-9_ -]/g,'').trim();
@@ -8910,7 +8715,7 @@ function cleanName(n){return U(String(n||'').replace(/\((DESLIGADA|DESLIGADO)\)/
 function planHeaders(ws){const matrix=rowsMatrix(ws);let header=-1;for(let r=0;r<Math.min(25,matrix.length);r++){const all=(matrix[r]||[]).map(U).join('|');if(all.includes('APR. NOME')||all.includes('APRENDIZ')){header=r;break;}}if(header<0)header=1;const h=(matrix[header]||[]).map(U);const find=tests=>h.findIndex(x=>tests.some(t=>x.includes(t)));return{matrix,header,col:{hrAtend:find(['HORARIO DE ATENDIMENTO','ATENDIMENTO']),teoria:find(['TEORIA HR INI','HORARIO DO JOVEM']),turma:find(['TURMA']),cc:find(['CC','CENTRO DE CUSTO']),nome:find(['APR. NOME','APRENDIZ']),curso:find(['CURSO']),empresa:find(['RAZAO SOCIAL','RAZÃO SOCIAL']),endereco:find(['ENDERECO','ENDEREÇO']),link:find(['LINK MAPA','LINK GOOGLE']),cidade:find(['EMP. CIDADE','CIDADE']),sup:find(['SUP. CADASTRADO','SUP. NA EMPRESA','SUPERVISOR']),tel:find(['SUP CELULAR','SUP. CELULAR','TELEFONE','CELULAR']),email:find(['SUP. EMAIL','EMAIL']),visita:find(['SELECIONE A VISITA','VISITA']),status:find(['STATUS']),obs:find(['OBSERVACAO VISITA','OBSERVAÇÃO VISITA'])}};}
 function get(row,idx){return idx>=0?row[idx]:'';}
 function parsePlan(wb,sheet){const ws=wb.Sheets[sheet], {matrix,header,col}=planHeaders(ws);const logs=extractLogistics(ws);const data=logs[0]?.date||'';const todos=[...(DB.quali||[]),...(DB.tec||[])];const byName=new Map(todos.map(a=>[cleanName(a.nome),a]));const roteiro=[],fantasmas=[],inconform=[];let statusCount=0,obsCount=0;
- for(let r=header+1;r<matrix.length;r++){const row=matrix[r]||[],all=row.map(U).join('|');if(all.includes('TEMPO DE DESLOCAMENTO')||all.includes('HORARIO DE ALMOCO'))break;const nome=S(get(row,col.nome));if(!nome||U(nome).includes('APR. NOME')||U(nome).includes('NOME'))continue;const aluno=byName.get(cleanName(nome));if(!aluno){if(parseTime(get(row,col.hrAtend))||S(get(row,col.turma)).length>=4)fantasmas.push(nome);continue;}const turmaPlan=S(get(row,col.turma));const empPlan=S(get(row,col.empresa));const cidPlan=S(get(row,col.cidade));const erros=[];if(turmaPlan&&U(aluno.turma)!==U(turmaPlan))erros.push(`Turma sistema ${aluno.turma||'-'} / planilha ${turmaPlan}`);if(empPlan&&aluno.empresa&&U(aluno.empresa.razao)!==U(empPlan))erros.push('Empresa divergente');if(cidPlan&&U(aluno.cidade)!==U(cidPlan))erros.push('Cidade divergente');if(erros.length)inconform.push(`${nome}: ${erros.join(', ')}`);let visita=S(get(row,col.visita));if(!visita){visita='1ª Visita';if(aluno.visits?.[0]?.ok)visita='2ª Visita';if(aluno.visits?.[1]?.ok)visita='3ª Visita';}let status=S(get(row,col.status))||'Realizar';if(status)statusCount++;let obs=S(get(row,col.obs))||aluno.obs_origem||'';if(obs)obsCount++;roteiro.push({ordem:roteiro.length+1,student:aluno,date:data,hrAtend:parseTime(get(row,col.hrAtend)),hrFim:'',hrTeoria:aluno.teoria||parseTime(get(row,col.teoria))||'',hrPratica:aluno.pratica||'',visitaTipo:visita,status,obs,cc_override:''});}
+ for(let r=header+1;r<matrix.length;r++){const row=matrix[r]||[],all=row.map(U).join('|');if(all.includes('TEMPO DE DESLOCAMENTO')||all.includes('HORARIO DE ALMOCO'))break;const nome=S(get(row,col.nome));if(!nome||U(nome).includes('APR. NOME')||U(nome).includes('NOME'))continue;const aluno=byName.get(cleanName(nome));if(!aluno){if(parseTime(get(row,col.hrAtend))||S(get(row,col.turma)).length>=4)fantasmas.push(nome);continue;}const turmaPlan=S(get(row,col.turma));const empPlan=S(get(row,col.empresa));const cidPlan=S(get(row,col.cidade));const erros=[];if(turmaPlan&&U(aluno.turma)!==U(turmaPlan))erros.push(`Turma sistema ${aluno.turma||'-'} / planilha ${turmaPlan}`);if(empPlan&&aluno.empresa&&U(aluno.empresa.razao)!==U(empPlan))erros.push('Empresa divergente');if(cidPlan&&U(aluno.cidade)!==U(cidPlan))erros.push('Cidade divergente');if(erros.length)inconform.push(`${nome}: ${erros.join(', ')}`);let visita=S(get(row,col.visita));if(!visita){visita='1ª Visita';if(aluno.visits?.[0]?.ok)visita='2ª Visita';if(aluno.visits?.[1]?.ok)visita='3ª Visita';}let status=S(get(row,col.status))||'Realizar';if(status)statusCount++;let obs=limparAditivoDaObservacaoPlanejamento(S(get(row,col.obs))||aluno.obs_origem||'');if(obs)obsCount++;roteiro.push({ordem:roteiro.length+1,student:aluno,date:data,hrAtend:parseTime(get(row,col.hrAtend)),hrFim:'',hrTeoria:aluno.teoria||parseTime(get(row,col.teoria))||'',hrPratica:aluno.pratica||'',visitaTipo:visita,status,obs,cc_override:''});}
  return{roteiro,fantasmas,inconform,statusCount,obsCount};}
 function chooseName(sheet,roteiro){const current=STATE.planContext;if(current&&DB.planning?.[current]?.length){const names=new Set(DB.planning[current].map(x=>cleanName(x.student?.nome)));const overlap=roteiro.filter(x=>names.has(cleanName(x.student?.nome))).length;if(overlap>0)return{name:current,mode:'updated'};}let base=(sheet+' - '+(window.__senacExcelFileName||'ROTEIRO')).toUpperCase().slice(0,80),name=base,n=2;while(DB.planning?.[name])name=`${base} (${n++})`;return{name,mode:'created'};}
 window.processarPlanilhaInstrutor=async function(event){const file=event?.target?.files?.[0];if(!file)return;try{if(typeof XLSX==='undefined')return alert('Motor XLSX não carregado.');const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Lendo abas da planilha...';const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true,bookVBA:true});if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}openSheetModal(wb,file.name.replace(/\.[^.]+$/,''));}catch(e){alert('Erro ao ler planilha: '+e.message);}finally{if(event?.target)event.target.value='';}};
@@ -9163,11 +8968,7 @@ saveToStorage=async function(){try{DB.backups=DB.backups||[];DB.backups.push({da
 window.APP_VERSION = '9.5.4-PEDAGOGICO-SUBSTITUI-BLOCO';
 </script>
 
-
-<script>
-/* v9.5.6 - PDF/Aditivos: contraturno explícito ou dedução segura por único dia ausente; alerta para múltiplos dias. */
-window.APP_VERSION = '9.5.6-PDF-HORARIOS-CAMPOS';
-</script>
-
+<script>window.APP_VERSION='9.5.7-PDF-TURNO-CONTRATURNO';</script>
+<script>window.APP_VERSION='9.5.8-ADITIVO-FORA-PLANEJAMENTO';</script>
 </body>
 </html>
