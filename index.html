@@ -2019,10 +2019,15 @@ ${obs}`;
         }
 
         // =================================================================================
-        // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Aditivos) - VERSÃO PRO (Contraturno Corrigido)
+        // 📄 FUNÇÃO: LEITOR INTELIGENTE DE PDF (Aditivos) - VERSÃO V3 (Foco em Dias e Horas)
+        // =================================================================================
+        // =================================================================================
+        // 📄 LEITOR INTELIGENTE DE PDF (Aditivos) - V9.5.5
+        // Prioridade: contraturno explícito > dedução segura por exatamente 1 dia útil ausente.
+        // Se houver mais de 1 dia de contraturno, o sistema exibe alerta destacado.
         // =================================================================================
         async function processarArquivosPDF(event) {
-            const files = event.target.files;
+            const files = event?.target?.files;
             if (!files || files.length === 0) return;
 
             if (!window.pdfjsLib) {
@@ -2032,193 +2037,261 @@ ${obs}`;
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
             const todosAlunos = [...(DB.quali || []), ...(DB.tec || [])];
+            const DIAS = [
+                { key: 'seg', nome: 'Segunda', curto: 'Seg', re: /(?:SEGUNDA(?:-FEIRA)?|\b2\s*[Aªº]\b)/i },
+                { key: 'ter', nome: 'Terça',   curto: 'Ter', re: /(?:TER[CÇ]A(?:-FEIRA)?|\b3\s*[Aªº]\b)/i },
+                { key: 'qua', nome: 'Quarta',  curto: 'Qua', re: /(?:QUARTA(?:-FEIRA)?|\b4\s*[Aªº]\b)/i },
+                { key: 'qui', nome: 'Quinta',  curto: 'Qui', re: /(?:QUINTA(?:-FEIRA)?|\b5\s*[Aªº]\b)/i },
+                { key: 'sex', nome: 'Sexta',   curto: 'Sex', re: /(?:SEXTA(?:-FEIRA)?|\b6\s*[Aªº]\b)/i }
+            ];
             let alunosAtualizados = 0;
 
-            for (let file of files) {
+            const normalizar = (v) => String(v || '')
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').toUpperCase().trim();
+
+            const diasNoTrecho = (trecho) => {
+                const t = normalizar(trecho);
+                const encontrados = new Set();
+                DIAS.forEach(d => { if (d.re.test(t)) encontrados.add(d.key); });
+                return encontrados;
+            };
+
+            const nomesDias = (keys) => DIAS.filter(d => keys.has(d.key)).map(d => d.nome);
+            const objetoCT = (keys) => ({
+                seg: keys.has('seg'), ter: keys.has('ter'), qua: keys.has('qua'),
+                qui: keys.has('qui'), sex: keys.has('sex')
+            });
+
+            // Busca dias perto de termos que realmente indicam contraturno/escola.
+            const detectarContraturnoExplicito = (texto) => {
+                const padroes = [
+                    /CONTRA\s*-?\s*TURNO/g,
+                    /ENSINO\s+MEDIO/g,
+                    /HORARIO\s+ESCOLAR/g,
+                    /AUSENTAR[^.]{0,80}ESCOLA/g,
+                    /NAO\s+(?:REALIZA|TRABALHA|COMPARECE)[^.]{0,100}(?:EMPRESA|PRATICA)[^.]{0,100}(?:ESCOLA|COLEGIO)/g
+                ];
+                const encontrados = new Set();
+                for (const padrao of padroes) {
+                    let m;
+                    while ((m = padrao.exec(texto)) !== null) {
+                        const ini = Math.max(0, m.index - 100);
+                        const fim = Math.min(texto.length, m.index + m[0].length + 240);
+                        diasNoTrecho(texto.slice(ini, fim)).forEach(k => encontrados.add(k));
+                    }
+                }
+                return encontrados;
+            };
+
+            // Isola trechos prováveis da jornada prática. Não usa o PDF inteiro para evitar datas históricas.
+            const detectarDiasPratica = (texto) => {
+                const encontrados = new Set();
+                const marcadores = [
+                    /PRATICA/g, /JORNADA\s+DE\s+TRABALHO/g, /DIAS\s+DE\s+TRABALHO/g,
+                    /TRABALHA/g, /ATIVIDADES\s+NA\s+EMPRESA/g
+                ];
+                for (const marcador of marcadores) {
+                    let m;
+                    while ((m = marcador.exec(texto)) !== null) {
+                        const ini = Math.max(0, m.index - 80);
+                        const fim = Math.min(texto.length, m.index + m[0].length + 500);
+                        const trecho = texto.slice(ini, fim);
+                        if (/SEGUNDA\s+(?:A|ATE)\s+SEXTA|2\s*[Aªº]\s+(?:A|ATE)\s+6\s*[Aªº]/i.test(trecho)) {
+                            DIAS.forEach(d => encontrados.add(d.key));
+                        } else {
+                            diasNoTrecho(trecho).forEach(k => encontrados.add(k));
+                        }
+                    }
+                }
+                return encontrados;
+            };
+
+            const extrairHorarios = (texto) => {
+                const regexHorario = /(\d{1,2})\s*[:hH]\s*(\d{2})\s*(?:AS|A|[-–—])\s*(\d{1,2})\s*[:hH]\s*(\d{2})/g;
+                const lista = [];
+                let m;
+                while ((m = regexHorario.exec(texto)) !== null) {
+                    const inicio = `${String(+m[1]).padStart(2,'0')}:${m[2]}`;
+                    const fim = `${String(+m[3]).padStart(2,'0')}:${m[4]}`;
+                    if (!lista.some(h => h.inicio === inicio && h.fim === fim)) lista.push({inicio, fim, pos:m.index});
+                }
+                return lista;
+            };
+
+            const escolherJornadaPratica = (texto, horarios) => {
+                if (!horarios.length) return null;
+                const calcMin = (h) => {
+                    const [h1,m1] = h.inicio.split(':').map(Number), [h2,m2] = h.fim.split(':').map(Number);
+                    return (h2*60+m2)-(h1*60+m1);
+                };
+                // Prefere horário próximo de PRÁTICA/JORNADA/EMPRESA.
+                const posMarcadores = [];
+                for (const re of [/PRATICA/g,/JORNADA\s+DE\s+TRABALHO/g,/ATIVIDADES\s+NA\s+EMPRESA/g]) {
+                    let m; while ((m=re.exec(texto))!==null) posMarcadores.push(m.index);
+                }
+                const candidatos = horarios.filter(h => {
+                    const min=calcMin(h); return min > 0 && min <= 8*60;
+                }).map(h => ({...h, distancia:posMarcadores.length?Math.min(...posMarcadores.map(p=>Math.abs(h.pos-p))):999999}));
+                const blocos4h=candidatos.filter(h=>calcMin(h)===240).sort((a,b)=>a.distancia-b.distancia);
+                if (blocos4h.length) return blocos4h[0];
+                candidatos.sort((a,b)=>a.distancia-b.distancia);
+                return candidatos[0] || null;
+            };
+
+            for (const file of files) {
                 try {
                     const arrayBuffer = await file.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                    let textoCompleto = "";
-
+                    let textoCompleto = '';
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
                         const textContent = await page.getTextContent();
-                        const strings = textContent.items.map(item => item.str);
-                        textoCompleto += strings.join(" ") + " ";
+                        textoCompleto += textContent.items.map(item => item.str).join(' ') + ' ';
                     }
+                    const textoLimpo = normalizar(textoCompleto);
 
-                    const textoLimpo = textoCompleto.replace(/\s+/g, ' ').toUpperCase();
-
-                    // 1. DEDUÇÃO DO ALUNO
-                    let alunoEncontrado = todosAlunos.find(a => a.nome && textoLimpo.includes(a.nome.toUpperCase().trim()));
-
+                    const alunoEncontrado = todosAlunos.find(a => a.nome && textoLimpo.includes(normalizar(a.nome)));
                     if (!alunoEncontrado) {
-                        alert(`⚠️ Alerta: O nome de nenhum aluno cadastrado no sistema foi encontrado no arquivo:\n[ ${file.name} ].`);
+                        alert(`⚠️ Nenhum aluno cadastrado foi identificado no arquivo:\n${file.name}`);
                         continue;
                     }
 
-                    // 2. DEDUÇÃO DOS HORÁRIOS (Ignorando Históricos Antigos)
-                    const regexHorario = /(\d{2}:\d{2})\s*(?:[AÀ]S|[-])\s*(\d{2}:\d{2})/gi;
-                    let todosHorarios = [];
-                    let match;
-                    
-                    while ((match = regexHorario.exec(textoLimpo)) !== null) {
-                        if (!todosHorarios.some(h => h.inicio === match[1] && h.fim === match[2])) {
-                            todosHorarios.push({ inicio: match[1], fim: match[2] });
+                    // 1) Contraturno explícito tem prioridade.
+                    let diasCT = detectarContraturnoExplicito(textoLimpo);
+                    let origemCT = diasCT.size ? 'informado explicitamente no documento' : '';
+
+                    // 2) Sem informação explícita, deduz apenas quando há EXATAMENTE 1 dia útil ausente.
+                    if (!diasCT.size) {
+                        const diasPratica = detectarDiasPratica(textoLimpo);
+                        const faltantes = new Set(DIAS.map(d=>d.key).filter(k => !diasPratica.has(k)));
+
+                        if (diasPratica.size === 4 && faltantes.size === 1) {
+                            diasCT = faltantes;
+                            origemCT = 'deduzido pelo único dia ausente da jornada prática';
+                        } else if (diasPratica.size > 0 && faltantes.size > 1) {
+                            alert(
+                                `⚠️ ALERTA DE CONTRATURNO INCONCLUSIVO\n\n` +
+                                `Arquivo: ${file.name}\nAluno: ${alunoEncontrado.nome}\n\n` +
+                                `O documento permitiu identificar somente ${diasPratica.size} dia(s) de prática: ${nomesDias(diasPratica).join(', ')}.\n` +
+                                `Ficaram ${faltantes.size} dias úteis ausentes: ${nomesDias(faltantes).join(', ')}.\n\n` +
+                                `Como há mais de um dia possível, o sistema NÃO alterou o contraturno deste aluno. Verifique o PDF ou ajuste manualmente.`
+                            );
+                            continue;
                         }
                     }
 
-                    let novaTeoria = "";
-                    let novaPratica = "";
-
-                    // A) Tenta achar blocos colados (ex: 07:30 às 09:30 e 09:30 às 11:30)
-                    for (let i = 0; i < todosHorarios.length; i++) {
-                        for (let j = 0; j < todosHorarios.length; j++) {
-                            if (i !== j && todosHorarios[i].fim === todosHorarios[j].inicio) {
-                                novaTeoria = todosHorarios[i].inicio; 
-                                novaPratica = todosHorarios[j].inicio; 
-                                break;
-                            }
-                        }
-                        if (novaTeoria) break;
+                    if (diasCT.size > 1) {
+                        alert(
+                            `🚨 ALERTA: MAIS DE UM DIA DE CONTRATURNO IDENTIFICADO\n\n` +
+                            `Arquivo: ${file.name}\nAluno: ${alunoEncontrado.nome}\n` +
+                            `Dias encontrados: ${nomesDias(diasCT).join(', ')}\n` +
+                            `Origem: ${origemCT || 'documento'}\n\n` +
+                            `Confira cuidadosamente antes de confirmar a atualização.`
+                        );
                     }
 
-                    // B) Se não achar, procura bloco de 4 horas exatas
-                    if (!novaTeoria && todosHorarios.length > 0) {
-                        const calcHoras = (ini, fim) => {
-                            let [h1, m1] = ini.split(':').map(Number);
-                            let [h2, m2] = fim.split(':').map(Number);
-                            return (h2 + m2/60) - (h1 + m1/60);
-                        };
-                        let blocos4h = todosHorarios.filter(h => calcHoras(h.inicio, h.fim) === 4);
-                        if (blocos4h.length > 0) {
-                            let hFixo = blocos4h[blocos4h.length - 1]; 
-                            novaTeoria = hFixo.inicio;
-                            
-                            let [h, m] = hFixo.inicio.split(':').map(Number);
-                            h = (h + 2) % 24;
-                            novaPratica = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                        }
-                    }
+                    const horarios = extrairHorarios(textoLimpo);
+                    const jornada = escolherJornadaPratica(textoLimpo, horarios);
 
-                    if (!novaTeoria) {
-                        alert(`📄 Arquivo: ${file.name}\n\nNão foi possível identificar a jornada neste documento.`);
+                    // Regra dos campos: a jornada total na empresa tem 4 horas.
+                    // Teórica guarda somente o INÍCIO da primeira metade (2h).
+                    // Prática guarda somente o INÍCIO da segunda metade (2h).
+                    const somarMinutos = (hhmm, minutos) => {
+                        const [h,m] = String(hhmm || '').split(':').map(Number);
+                        if (!Number.isFinite(h) || !Number.isFinite(m)) return '';
+                        const total = (h * 60 + m + minutos) % (24 * 60);
+                        return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
+                    };
+                    const teoriaNova = jornada ? jornada.inicio : String(alunoEncontrado.teoria || '');
+                    const praticaNova = jornada ? somarMinutos(jornada.inicio, 120) : String(alunoEncontrado.pratica || '');
+                    const jornadaTexto = jornada ? `${jornada.inicio} às ${jornada.fim}` : 'não identificada';
+
+                    if (!diasCT.size && !jornada) {
+                        alert(`📄 Arquivo: ${file.name}\n\nNão foi possível identificar com segurança contraturno nem jornada. Nenhuma alteração foi aplicada.`);
                         continue;
                     }
 
-                    // 3. DEDUÇÃO DO CONTRATURNO (A Matemática da Ausência)
-                    let ctSeg = false, ctTer = false, ctQua = false, ctQui = false, ctSex = false;
-                    
-                    // PASSO A: Procura menção explícita da palavra "CONTRATURNO"
-                    if (textoLimpo.includes("CONTRATURNO")) {
-                        let idxCT = textoLimpo.indexOf("CONTRATURNO");
-                        let trechoCT = textoLimpo.substring(idxCT, idxCT + 100);
-                        if (trechoCT.match(/SEGUNDA|2[Aª]/i)) ctSeg = true;
-                        if (trechoCT.match(/TER[CÇ]A|3[Aª]/i)) ctTer = true;
-                        if (trechoCT.match(/QUARTA|4[Aª]/i)) ctQua = true;
-                        if (trechoCT.match(/QUINTA|5[Aª]/i)) ctQui = true;
-                        if (trechoCT.match(/SEXTA|6[Aª]/i)) ctSex = true;
-                    } 
-                    
-                    // PASSO B: Se não achou explícito, usa a DEDUÇÃO (Os dias que FALTAM na prática da empresa)
-                    if (!ctSeg && !ctTer && !ctQua && !ctQui && !ctSex) {
-                        let trabSeg = false, trabTer = false, trabQua = false, trabQui = false, trabSex = false;
-                        
-                        // Tenta isolar o trecho que fala da Prática
-                        let matchPratica = textoLimpo.match(/PR[ÁA]TICA(?:.{0,80})/i);
-                        let textoBusca = matchPratica ? matchPratica[0] : textoLimpo;
-                        
-                        if (textoBusca.match(/SEGUNDA A SEXTA|2[Aª]\s*A\s*6[Aª]/i) || (textoBusca.match(/2[Aª]/) && textoBusca.match(/6[Aª]/) && textoBusca.match(/5[Aª]/))) {
-                            trabSeg = trabTer = trabQua = trabQui = trabSex = true;
-                        } else {
-                            if (textoBusca.match(/SEGUNDA|2[Aª]/i)) trabSeg = true;
-                            if (textoBusca.match(/TER[CÇ]A|3[Aª]/i)) trabTer = true;
-                            if (textoBusca.match(/QUARTA|4[Aª]/i)) trabQua = true;
-                            if (textoBusca.match(/QUINTA|5[Aª]/i)) trabQui = true;
-                            if (textoBusca.match(/SEXTA|6[Aª]/i)) trabSex = true;
-                        }
-                        
-                        // Se identificou dias de trabalho, o Contraturno é a INVERSÃO (o dia que faltou)
-                        if (trabSeg || trabTer || trabQua || trabQui || trabSex) {
-                            ctSeg = !trabSeg;
-                            ctTer = !trabTer;
-                            ctQua = !trabQua;
-                            ctQui = !trabQui;
-                            ctSex = !trabSex;
-                        }
+                    const ctNovo = objetoCT(diasCT);
+                    const ctAtual = alunoEncontrado.contraTurno || {seg:false,ter:false,qua:false,qui:false,sex:false};
+                    // Contraturno só entra na comparação quando foi realmente identificado no documento.
+                    const mudouCT = diasCT.size > 0 && DIAS.some(d => !!ctAtual[d.key] !== !!ctNovo[d.key]);
+                    const teoriaAtual = String(alunoEncontrado.teoria || '');
+                    const praticaAtual = String(alunoEncontrado.pratica || '');
+                    const mudouTeoria = !!jornada && teoriaAtual !== teoriaNova;
+                    const mudouPratica = !!jornada && praticaAtual !== praticaNova;
+
+                    if (!mudouCT && !mudouTeoria && !mudouPratica) {
+                        alert(`📄 ${file.name}\n👤 ${alunoEncontrado.nome}\n\nNenhuma alteração necessária. Os dados já estão atualizados.`);
+                        continue;
                     }
 
-                    let diasIdentificados = [ctSeg?"Seg":"", ctTer?"Ter":"", ctQua?"Qua":"", ctQui?"Qui":"", ctSex?"Sex":""].filter(Boolean).join(", ");
-                    if (diasIdentificados === "") diasIdentificados = "Nenhum (Trabalha M-F)";
-
-                    // 4. VALIDAÇÃO INTELIGENTE DE MUDANÇAS
-                    let teoriaAtual = alunoEncontrado.teoria || "";
-                    let praticaAtual = alunoEncontrado.pratica || "";
-                    let ctAtual = alunoEncontrado.contraTurno || { seg: false, ter: false, qua: false, qui: false, sex: false };
-                    
-                    let mudouDias = (ctSeg !== ctAtual.seg) || (ctTer !== ctAtual.ter) || (ctQua !== ctAtual.qua) || (ctQui !== ctAtual.qui) || (ctSex !== ctAtual.sex);
-                    let temMudanca = (teoriaAtual !== novaTeoria || praticaAtual !== novaPratica || mudouDias);
-
-                    if (!temMudanca) {
-                        alert(`📄 DOCUMENTO: ${file.name}\n👤 Aluno: ${alunoEncontrado.nome}\n\nNenhuma alteração necessária! ✅\nOs horários (${novaTeoria}) e os dias de Contraturno já estão corretos no sistema.`);
-                        continue; 
-                    }
-
-                    // 5. CONFIRMAÇÃO DE MUDANÇA
+                    const diasTexto = diasCT.size ? nomesDias(diasCT).join(', ') : 'Não identificado';
+                    const ctAtualTexto = DIAS.filter(d => !!ctAtual[d.key]).map(d => d.nome).join(', ') || 'Não informado';
                     const confirmacao = confirm(
-                        `📄 DOCUMENTO LIDO: ${file.name}\n` +
-                        `👤 Aluno Identificado: ${alunoEncontrado.nome}\n\n` +
-                        `🔄 NOVOS HORÁRIOS E DIAS:\n` +
-                        `   - Início Teórica: [ ${novaTeoria} ] (Anterior: ${teoriaAtual || "Vazio"})\n` +
-                        `   - Início Prática: [ ${novaPratica} ] (Anterior: ${praticaAtual || "Vazio"})\n` +
-                        `   - Dia(s) de CONTRATURNO (Na Escola): [ ${diasIdentificados} ]\n\n` +
-                        `Deseja APLICAR essas alterações na ficha do aluno?`
+                        `📄 DOCUMENTO LIDO: ${file.name}\n`+
+                        `👤 Aluno: ${alunoEncontrado.nome}\n\n`+
+                        `ALTERAÇÕES PROPOSTAS\n\n`+
+                        `Teórica (início):\n  Como estava: ${teoriaAtual || 'Vazio'}\n  Como ficará: ${jornada ? teoriaNova : 'Sem alteração'}\n\n`+
+                        `Prática (início):\n  Como estava: ${praticaAtual || 'Vazio'}\n  Como ficará: ${jornada ? praticaNova : 'Sem alteração'}\n\n`+
+                        `Jornada encontrada no documento: ${jornadaTexto}\n\n`+
+                        `Contraturno:\n  Como estava: ${ctAtualTexto}\n  Como ficará: ${diasCT.size ? diasTexto : 'Sem alteração, não identificado no documento'}\n`+
+                        `  Identificação: ${origemCT || 'não identificada'}\n\n`+
+                        `${diasCT.size > 1 ? '⚠️ ATENÇÃO: foram identificados vários dias de contraturno.\n\n' : ''}`+
+                        `Deseja aplicar essas alterações?`
                     );
+                    if (!confirmacao) continue;
 
-                    if (confirmacao) {
-                        // Atualiza o banco
-                        alunoEncontrado.teoria = novaTeoria;
-                        alunoEncontrado.pratica = novaPratica;
-
-                        alunoEncontrado.contraTurno = { seg: ctSeg, ter: ctTer, qua: ctQua, qui: ctQui, sex: ctSex };
-
-                        // Atualiza as caixas e campos na TELA se o modal estiver aberto no fundo
-                        if (typeof STATE !== 'undefined' && STATE.editingId === alunoEncontrado.id) {
-                            if(document.getElementById('editTeoria')) document.getElementById('editTeoria').value = novaTeoria;
-                            if(document.getElementById('editPratica')) document.getElementById('editPratica').value = novaPratica;
-                            if(document.getElementById('ctSeg')) document.getElementById('ctSeg').checked = ctSeg;
-                            if(document.getElementById('ctTer')) document.getElementById('ctTer').checked = ctTer;
-                            if(document.getElementById('ctQua')) document.getElementById('ctQua').checked = ctQua;
-                            if(document.getElementById('ctQui')) document.getElementById('ctQui').checked = ctQui;
-                            if(document.getElementById('ctSex')) document.getElementById('ctSex').checked = ctSex;
-                        }
-
-                        // Carimba no histórico
-                        const dataHoje = new Date().toLocaleDateString('pt-BR');
-                        const relatorioPDF = `[Aditivo em ${dataHoje}]: Horários ajustados (T: ${novaTeoria} / P: ${novaPratica}). Contraturno: ${diasIdentificados}.`;
-                        
-                        let obsAtual = (alunoEncontrado.obs_origem || alunoEncontrado.obs || "").trim();
-                        alunoEncontrado.obs_origem = obsAtual !== "" ? obsAtual + "\n\n" + relatorioPDF : relatorioPDF;
-                        alunoEncontrado.obs = alunoEncontrado.obs_origem;
-
-                        alunosAtualizados++;
+                    if (jornada) {
+                        alunoEncontrado.teoria = teoriaNova;
+                        alunoEncontrado.pratica = praticaNova;
                     }
+                    if (diasCT.size) {
+                        alunoEncontrado.contraTurno = ctNovo;
+                        alunoEncontrado.contraturno = nomesDias(diasCT).join(', ');
+                    }
+
+                    if (typeof STATE !== 'undefined' && STATE.editingId === alunoEncontrado.id) {
+                        if (jornada && document.getElementById('editTeoria')) document.getElementById('editTeoria').value = teoriaNova;
+                        if (jornada && document.getElementById('editPratica')) document.getElementById('editPratica').value = praticaNova;
+                        if (diasCT.size) DIAS.forEach(d => { const el=document.getElementById('ct'+d.curto); if(el) el.checked=!!ctNovo[d.key]; });
+                    }
+
+                    // Substitui somente o bloco anterior de aditivo e preserva anotações manuais.
+                    // Registra claramente o antes e o depois. Sem repetir "não identificado".
+                    const mudancasRegistro = [];
+                    if (jornada) {
+                        mudancasRegistro.push(`Teórica: ${teoriaAtual || 'Vazio'} → ${teoriaNova}`);
+                        mudancasRegistro.push(`Prática: ${praticaAtual || 'Vazio'} → ${praticaNova}`);
+                        mudancasRegistro.push(`Jornada do documento: ${jornadaTexto}`);
+                    }
+                    if (diasCT.size) mudancasRegistro.push(`Contraturno: ${ctAtualTexto} → ${diasTexto} (${origemCT})`);
+                    else mudancasRegistro.push('Contraturno: não identificado; mantido sem alteração');
+                    const relatorioPDF = `[ADITIVO PDF] ${mudancasRegistro.join(' | ')}.`;
+                    let obsAtual = String(alunoEncontrado.obs_origem || alunoEncontrado.obs || '').trim();
+                    const normLinha = v => normalizar(v);
+                    const ehAditivo = linha => {
+                        const n=normLinha(linha);
+                        return n.startsWith('[ADITIVO PDF]') || /^\[ADITIVO (?:PROCESSADO )?EM \d{2}\/\d{2}\/\d{4}\]/.test(n);
+                    };
+                    const obsSemAditivo = obsAtual.split(/\n+/).filter(l => !ehAditivo(l)).join('\n').replace(/\n{3,}/g,'\n\n').trim();
+                    alunoEncontrado.obs_origem = obsSemAditivo ? `${obsSemAditivo}\n\n${relatorioPDF}` : relatorioPDF;
+                    alunoEncontrado.obs = alunoEncontrado.obs_origem;
+                    alunosAtualizados++;
                 } catch (erro) {
-                    console.error("Erro ao ler PDF: ", erro);
-                    alert(`Não foi possível processar o arquivo: ${file.name}`);
+                    console.error('Erro ao ler PDF:', erro);
+                    alert(`Não foi possível processar o arquivo: ${file.name}\n${erro.message || erro}`);
                 }
             }
-            
-            // 6. SALVA NO BANCO GERAL E ATUALIZA A TELA
+
             if (alunosAtualizados > 0) {
-                if (typeof saveToStorage === 'function') saveToStorage();
+                if (typeof saveToStorage === 'function') await saveToStorage();
                 if (typeof runFilter === 'function') runFilter();
-                alert(`✅ Leitura Concluída! Fichas de ${alunosAtualizados} aluno(s) foram atualizadas no sistema.`);
+                alert(`✅ Leitura concluída. ${alunosAtualizados} ficha(s) atualizada(s).`);
             }
-            
-            event.target.value = "";
+            if (event?.target) event.target.value = '';
         }
-        
+
         function setupFilters() { 
             // 👑 1. VARREDURA AUTOMÁTICA DE CORREÇÃO (O "Rodo" no Banco de Dados)
             // Varre todos os alunos e conserta a Região de quem estiver sem, baseado na cidade!
@@ -9088,6 +9161,12 @@ saveToStorage=async function(){try{DB.backups=DB.backups||[];DB.backups.push({da
 <script>
 /* v9.5.4 - Pedagógico substitui bloco antigo: remove [PEDAGÓGICO] e [Pedagógico em dd/mm/aaaa], preservando anotações manuais. */
 window.APP_VERSION = '9.5.4-PEDAGOGICO-SUBSTITUI-BLOCO';
+</script>
+
+
+<script>
+/* v9.5.6 - PDF/Aditivos: contraturno explícito ou dedução segura por único dia ausente; alerta para múltiplos dias. */
+window.APP_VERSION = '9.5.6-PDF-HORARIOS-CAMPOS';
 </script>
 
 </body>
