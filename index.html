@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (Teste v9.3 - Original Preservado)</title>
+    <title>Supervisão Senac 2026 (v9.6.8 - Botão Novo Aluno)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -171,6 +171,7 @@ th {
             input, select, textarea { border: none !important; background: transparent !important; appearance: none; padding: 0 !important; resize: none; overflow: visible !important; }
         }
     </style>
+<!-- V9.6.8: Botao Novo Aluno Manual ativado no cabecalho. -->
 </head>
 <body class="text-slate-800">
 
@@ -509,6 +510,7 @@ th {
                 <button onclick="downloadBackup()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2" title="Backup"><i data-lucide="hard-drive" class="w-4 h-4"></i> BACKUP</button>
                 <button onclick="iniciarSuperBuscaEnderecos()" class="bg-senac-blue hover:bg-blue-800 text-white px-3 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-2"><i data-lucide="map-pin" class="w-4 h-4"></i> Atualizar Endereços</button>
                 <div class="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 ml-2">
+                    <button id="btnNovoAlunoManual" onclick="openAddModal()" class="px-3 py-1.5 bg-senac-blue hover:bg-blue-800 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-sm transition-transform active:scale-95" title="Cadastrar um aluno individualmente sem importar planilha"><i data-lucide="user-plus-2" class="w-3 h-3"></i> Novo Aluno</button>
                     <button onclick="document.getElementById('importMergeInput').click()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-sm transition-transform active:scale-95" title="Adiciona apenas alunos que não existem"><i data-lucide="user-plus" class="w-3 h-3"></i> Adicionar Novos</button>
                     <button onclick="confirmReplace()" class="px-3 py-1.5 bg-white hover:bg-red-50 text-red-500 hover:text-red-600 border border-slate-200 rounded text-[10px] font-bold flex items-center gap-1 shadow-sm transition-colors" title="Apaga tudo e coloca a nova planilha"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Substituir Base</button>
                 </div>
@@ -3102,6 +3104,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             if(typeof lucide !== 'undefined') lucide.createIcons(); 
             
             // Oculta botões administrativos do CABEÇALHO se for espectador
+            const btnNovoAlunoManual = document.getElementById('btnNovoAlunoManual');
             const btnAddNovos = document.querySelector('button[onclick="document.getElementById(\'importMergeInput\').click()"]');
             const btnSubstituir = document.querySelector('button[onclick="confirmReplace()"]');
             const btnBuscarEnderecos = document.querySelector('button[onclick="buscarEnderecosLote()"]');
@@ -3111,6 +3114,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const btnLixeiraRoteiro = document.getElementById('btnDeletePlan');
             
             if (STATE.userType === 'espectador') {
+                if(btnNovoAlunoManual) btnNovoAlunoManual.style.display = 'none';
                 if(btnAddNovos) btnAddNovos.style.display = 'none';
                 if(btnSubstituir) btnSubstituir.style.display = 'none';
                 if(btnBuscarEnderecos) btnBuscarEnderecos.style.display = 'none';
@@ -3119,6 +3123,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if(btnLixeiraRoteiro) btnLixeiraRoteiro.style.display = 'none';
                 if(inputImportRoteiro && inputImportRoteiro.nextElementSibling) inputImportRoteiro.nextElementSibling.style.display = 'none';
             } else {
+                if(btnNovoAlunoManual) btnNovoAlunoManual.style.display = 'flex';
                 if(btnAddNovos) btnAddNovos.style.display = 'flex';
                 if(btnSubstituir) btnSubstituir.style.display = 'flex';
                 if(btnBuscarEnderecos) btnBuscarEnderecos.style.display = 'flex';
