@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.13 - Rateio e Recuperação)</title>
+    <title>Supervisão Senac 2026 (v9.6.14 - Ordem de Visita pelo Sistema)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -172,7 +172,7 @@ th {
         }
     </style>
 <!-- V9.6.8: Botao Novo Aluno Manual ativado no cabecalho. -->
-<!-- V9.6.13: mantem rateio estrito e adiciona botao de correcao inicial das visitas perdidas. -->
+<!-- V9.6.14: preserva rateio estrito, recuperacao de visitas e define a visita importada conforme a ficha mestre. -->
 </head>
 <body class="text-slate-800">
 
@@ -551,7 +551,7 @@ th {
                         <button onclick="corrigirTodosLinksMapa()" class="px-3 py-2.5 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-lg text-[10px] font-black uppercase flex items-center gap-1" title="Corrigir links de mapa dos alunos e planejamentos"><i data-lucide="map-pin" class="w-3 h-3"></i> Corrigir Mapas</button>
                         <button onclick="auditarCentrosCusto()" class="px-3 py-2.5 bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 rounded-lg text-[10px] font-black uppercase flex items-center gap-1" title="Verificar CCs divergentes ou ausentes"><i data-lucide="badge-check" class="w-3 h-3"></i> CC</button>
                         <button onclick="verHistoricoLocal()" class="px-3 py-2.5 bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg text-[10px] font-black uppercase flex items-center gap-1" title="Histórico de segurança"><i data-lucide="history" class="w-3 h-3"></i> Hist.</button>
-                        <button id="btnCorrigirVisitasPerdidas" onclick="corrigirVisitasPerdidasPrimeiraVez()" class="px-3 py-2.5 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 rounded-lg text-[10px] font-black uppercase flex items-center gap-1" title="Executar uma varredura segura para recuperar visitas apagadas pelo bug"><i data-lucide="shield-plus" class="w-3 h-3"></i> Corrigir Visitas</button>
+                        <button id="btnCorrigirVisitasPerdidas" onclick="corrigirVisitasPerdidasPrimeiraVez()" class="px-3 py-2.5 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 rounded-lg text-[10px] font-black uppercase flex items-center gap-1" title="Recuperar visitas apagadas pelo bug"><i data-lucide="shield-plus" class="w-3 h-3"></i> Corrigir Visitas</button>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -3778,6 +3778,17 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             selectAll.checked = (checkboxes.length > 0 && checkboxes.length === checkedBoxes.length);
         }
 
+       window.calcularProximaVisitaDoSistema = function(aluno) {
+            if (!aluno) return '1ª Visita';
+            const isTec = (DB.tec || []).some(t => String(t.id) === String(aluno.id));
+            const limite = isTec ? 6 : 3;
+            const visitas = Array.isArray(aluno.visits) ? aluno.visits : [];
+            let indice = 0;
+            while (indice < limite && visitas[indice]?.ok === true) indice++;
+            if (indice >= limite) indice = limite - 1;
+            return `${indice + 1}ª Visita`;
+        };
+
        function limparAditivoPlanejamento(t){return String(t||'').split(/\n+/).filter(l=>!String(l).trim().toUpperCase().startsWith('[ADITIVO PDF]')).join('\n').trim();}
 
        function addToPlan() { 
@@ -3799,9 +3810,7 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 const student = allStudents.find(s => String(s.id).trim() === id); 
                 if(student) { 
                     // 🔥 A BLINDAGEM CONTRA O ERRO: Só verifica se a visita está ok se ela de fato existir!
-                    let nextVisit = '1ª Visita'; 
-                    if (student.visits && student.visits[0] && student.visits[0].ok) nextVisit = '2ª Visita'; 
-                    if (student.visits && student.visits[1] && student.visits[1].ok) nextVisit = '3ª Visita'; 
+                    let nextVisit = window.calcularProximaVisitaDoSistema(student);
                     
                     const nextOrder = DB.planning[STATE.planContext].length + 1;
 
@@ -4256,8 +4265,8 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     student.visits.push({ok:false, date:null});
                 }
                 
-                const syncStatus = String(planItem.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
-                if (syncStatus === 'REALIZADA' || syncStatus === 'VISITADO') {
+                const statusSync=String(planItem.status||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+                if (statusSync === 'REALIZADA' || statusSync === 'VISITADO') {
                     let syncDate = new Date(); 
                     if (planItem.date) { 
                         const parts = planItem.date.split('-'); 
@@ -4281,99 +4290,24 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             } 
         }
         
-        // V9.6.13 - Recuperacao unica e protecao permanente do historico de visitas.
-        window.corrigirVisitasPerdidasPrimeiraVez = async function() {
-            const FLAG='senac_correcao_visitas_v9613_aplicada';
-            const alunos=[...(DB.quali||[]),...(DB.tec||[])];
-            const porId=new Map(alunos.filter(a=>a?.id).map(a=>[String(a.id),a]));
-            const evidencias=new Map();
-            const dataISO=valor=>{
-                if(!valor)return '';
-                const d=new Date(valor);if(isNaN(d.getTime()))return '';
-                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-            };
-            const registrar=(id,indice,data,fonte)=>{
-                id=String(id||'');indice=Number(indice);data=dataISO(data);
-                if(!porId.has(id)||indice<0||indice>5||!data)return;
-                const chave=`${id}|${indice}`;
-                if(!evidencias.has(chave))evidencias.set(chave,new Map());
-                const datas=evidencias.get(chave);
-                if(!datas.has(data))datas.set(data,new Set());
-                datas.get(data).add(fonte);
-            };
-
-            // Snapshots internos: recupera somente visitas que estavam ok e tinham data.
-            (DB.backups||[]).forEach((backup,bi)=>{
-                [...(backup.quali||[]),...(backup.tec||[])].forEach(a=>(a.visits||[]).forEach((v,i)=>{
-                    if(v?.ok&&v?.date)registrar(a.id,i,v.date,`backup interno ${bi+1}`);
-                }));
-            });
-            // Roteiros historicos: somente linhas comprovadamente Realizada/Visitado.
-            Object.entries(DB.planning||{}).forEach(([nome,itens])=>(itens||[]).forEach(item=>{
-                const status=String(item?.status||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
-                if(!['REALIZADA','VISITADO'].includes(status))return;
-                const m=String(item.visitaTipo||'').match(/([1-6])/);
-                registrar(item.student?.id,m?Number(m[1])-1:0,item.date,`roteiro ${nome}`);
-            }));
-
-            const seguros=[],conflitos=[];
-            evidencias.forEach((datas,chave)=>{
-                const [id,idxTxt]=chave.split('|'),idx=Number(idxTxt),aluno=porId.get(id);
-                const atual=aluno?.visits?.[idx];
-                if(atual?.ok&&atual?.date)return;
-                if(datas.size===1){const [data,fontes]=[...datas.entries()][0];seguros.push({aluno,idx,data,fontes:[...fontes]});}
-                else conflitos.push({aluno,idx,datas:[...datas.keys()]});
-            });
-
-            const jaAplicada=localStorage.getItem(FLAG)==='1';
-            const amostra=seguros.slice(0,15).map(c=>`- ${c.aluno.nome}: ${c.idx+1}ª visita em ${c.data.split('-').reverse().join('/')} (${c.fontes.join(', ')})`).join('\n');
-            if(!seguros.length){
-                localStorage.setItem(FLAG,'1');atualizarBotaoCorrecaoVisitas();
-                alert(`VARREDURA CONCLUIDA\n\nNenhuma visita ausente com evidencia unica foi encontrada.\nConflitos mantidos para conferencia manual: ${conflitos.length}.\nNenhum dado foi inventado ou sobrescrito.`);
-                return {recuperadas:0,conflitos:conflitos.length};
-            }
-            const confirma=confirm(`${jaAplicada?'NOVA VARREDURA':'CORRECAO INICIAL'} DE VISITAS\n\nEncontradas ${seguros.length} visita(s) apagada(s) com evidencia segura.\nConflitos nao automaticos: ${conflitos.length}.\n\n${amostra}${seguros.length>15?'\n...':''}\n\nAntes de restaurar, o sistema criara um snapshot interno. Continuar?`);
-            if(!confirma)return {cancelado:true};
-
-            // Snapshot de seguranca anterior a qualquer alteracao.
-            DB.backups=DB.backups||[];
-            DB.backups.push({data:new Date().toISOString(),motivo:'Antes da correcao de visitas v9.6.13',quali:JSON.parse(JSON.stringify(DB.quali||[])),tec:JSON.parse(JSON.stringify(DB.tec||[])),planning:JSON.parse(JSON.stringify(DB.planning||{}))});
-            if(DB.backups.length>20)DB.backups=DB.backups.slice(-20);
-
-            seguros.forEach(c=>{
-                if(!c.aluno.visits)c.aluno.visits=[];
-                while(c.aluno.visits.length<=c.idx)c.aluno.visits.push({ok:false,date:null});
-                const [y,m,d]=c.data.split('-').map(Number);
-                c.aluno.visits[c.idx]={...(c.aluno.visits[c.idx]||{}),ok:true,date:new Date(y,m-1,d,12,0,0),protected:true,recovered:true,recoveredAt:Date.now(),recoverySources:c.fontes};
-                Object.values(DB.planning||{}).forEach(arr=>(arr||[]).forEach(item=>{
-                    if(String(item?.student?.id)===String(c.aluno.id))item.student.visits=JSON.parse(JSON.stringify(c.aluno.visits));
-                }));
-            });
-            localStorage.setItem(FLAG,'1');
-            RATEIO_DATA=[];
-            if(typeof saveToStorage==='function')await saveToStorage();
-            if(typeof runFilter==='function')runFilter();
-            if(typeof renderPlanningTable==='function')renderPlanningTable();
-            atualizarBotaoCorrecaoVisitas();
-            alert(`CORRECAO CONCLUIDA\n\n${seguros.length} visita(s) restaurada(s) e protegida(s).\n${conflitos.length} conflito(s) nao foram alterados.\nUm snapshot de seguranca foi criado antes da recuperacao.`);
-            return {recuperadas:seguros.length,conflitos:conflitos.length};
+        window.corrigirVisitasPerdidasPrimeiraVez = async function(){
+            const alunos=[...(DB.quali||[]),...(DB.tec||[])],porId=new Map(alunos.map(a=>[String(a.id),a])),ev=new Map();
+            const iso=v=>{const d=new Date(v);return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+            const add=(id,i,d,f)=>{id=String(id||'');d=iso(d);if(!porId.has(id)||i<0||i>5||!d)return;const k=`${id}|${i}`;if(!ev.has(k))ev.set(k,new Map());if(!ev.get(k).has(d))ev.get(k).set(d,new Set());ev.get(k).get(d).add(f)};
+            (DB.backups||[]).forEach((b,n)=>[...(b.quali||[]),...(b.tec||[])].forEach(a=>(a.visits||[]).forEach((v,i)=>{if(v?.ok&&v?.date)add(a.id,i,v.date,`backup ${n+1}`)})));
+            Object.entries(DB.planning||{}).forEach(([ctx,arr])=>(arr||[]).forEach(x=>{const st=String(x.status||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();if(!['REALIZADA','VISITADO'].includes(st))return;const m=String(x.visitaTipo||'').match(/([1-6])/);add(x.student?.id,m?+m[1]-1:0,x.date,`roteiro ${ctx}`)}));
+            const seguros=[],conflitos=[];ev.forEach((datas,k)=>{const[id,ix]=k.split('|'),a=porId.get(id),i=+ix;if(a?.visits?.[i]?.ok&&a.visits[i].date)return;if(datas.size===1){const[d,f]=[...datas][0];seguros.push({a,i,d,f:[...f]})}else conflitos.push(k)});
+            if(!seguros.length){localStorage.setItem('senac_correcao_visitas_v9614','1');alert(`Varredura concluída. Nenhuma visita segura para recuperar. Conflitos: ${conflitos.length}.`);return;}
+            const lista=seguros.slice(0,12).map(x=>`- ${x.a.nome}: ${x.i+1}ª em ${x.d.split('-').reverse().join('/')}`).join('\n');if(!confirm(`Foram encontradas ${seguros.length} visita(s) com data única comprovada.\nConflitos não alterados: ${conflitos.length}.\n\n${lista}\n\nCriar backup e restaurar?`))return;
+            DB.backups=DB.backups||[];DB.backups.push({data:new Date().toISOString(),motivo:'Antes da correção v9.6.14',quali:JSON.parse(JSON.stringify(DB.quali||[])),tec:JSON.parse(JSON.stringify(DB.tec||[])),planning:JSON.parse(JSON.stringify(DB.planning||{}))});if(DB.backups.length>20)DB.backups=DB.backups.slice(-20);
+            seguros.forEach(x=>{x.a.visits=x.a.visits||[];while(x.a.visits.length<=x.i)x.a.visits.push({ok:false,date:null});const[y,m,d]=x.d.split('-').map(Number);x.a.visits[x.i]={...(x.a.visits[x.i]||{}),ok:true,date:new Date(y,m-1,d,12),protected:true,recovered:true,recoverySources:x.f};Object.values(DB.planning||{}).forEach(arr=>(arr||[]).forEach(p=>{if(String(p.student?.id)===String(x.a.id))p.student.visits=JSON.parse(JSON.stringify(x.a.visits))}))});
+            localStorage.setItem('senac_correcao_visitas_v9614','1');RATEIO_DATA=[];if(typeof saveToStorage==='function')await saveToStorage();if(typeof runFilter==='function')runFilter();if(typeof renderPlanningTable==='function')renderPlanningTable();alert(`${seguros.length} visita(s) recuperada(s) e protegida(s). Conflitos não alterados: ${conflitos.length}.`);
         };
-
-        window.atualizarBotaoCorrecaoVisitas = function(){
-            const btn=document.getElementById('btnCorrigirVisitasPerdidas');if(!btn)return;
-            if(localStorage.getItem('senac_correcao_visitas_v9613_aplicada')==='1'){
-                btn.innerHTML='<i data-lucide="shield-check" class="w-3 h-3"></i> Correção Aplicada';
-                btn.title='A correção inicial já foi aplicada. Clique novamente apenas para executar nova varredura.';
-                btn.className='px-3 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-lg text-[10px] font-black uppercase flex items-center gap-1';
-                if(typeof lucide!=='undefined')lucide.createIcons();
-            }
-        };
-        document.addEventListener('DOMContentLoaded',()=>setTimeout(atualizarBotaoCorrecaoVisitas,1200));
 
         function removeFromPlan(idx) { 
             if(!confirm("Remover este aluno do roteiro atual?")) return; 
             if(STATE.planContext) { 
-                DB.planning[STATE.planContext].splice(idx, 1); RATEIO_DATA = []; 
+                DB.planning[STATE.planContext].splice(idx, 1); RATEIO_DATA=[]; 
                 saveToStorage(); 
                 renderPlanningTable(); 
                 renderPlanningCandidates(); 
@@ -4989,18 +4923,17 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
 
         function generateRateio() {
             const context = STATE.planContext;
-            const normalizarStatusRateio = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
-            const statusVisitadoRateio = valor => ['REALIZADA', 'VISITADO'].includes(normalizarStatusRateio(valor));
-            const visits = (DB.planning[context] || []).filter(item => item?.student?.id && item.date && statusVisitadoRateio(item.status));
-            const datasVisitadas = new Set(visits.map(item => item.date));
-            const turmasVisitadas = new Set(visits.flatMap(item => String(item.student?.turma || '').split(/[,;/]+/).map(t => t.trim()).filter(Boolean)));
-            const lunches = (DB.planning_lunch[context] || []).filter(item => datasVisitadas.has(item.date));
-            const logistics = (DB.planning_logistics[context] || []).filter(item => datasVisitadas.has(item.date));
-            const admins = (DB.planning_admin[context] || []).filter(item => datasVisitadas.has(item.date) && (!item.turma || item.turma === '-' || String(item.turma).split(/[,;/]+/).some(t => turmasVisitadas.has(t.trim()))));
+            const normStatus = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+            const visits = (DB.planning[context] || []).filter(item => item?.student?.id && item.date && ['REALIZADA','VISITADO'].includes(normStatus(item.status)));
+            const datasVisitadas = new Set(visits.map(v => v.date));
+            const turmasVisitadas = new Set(visits.flatMap(v => String(v.student?.turma || '').split(/[,;/]+/).map(t=>t.trim()).filter(Boolean)));
+            const lunches = (DB.planning_lunch[context] || []).filter(x => datasVisitadas.has(x.date));
+            const logistics = (DB.planning_logistics[context] || []).filter(x => datasVisitadas.has(x.date));
+            const admins = (DB.planning_admin[context] || []).filter(x => datasVisitadas.has(x.date) && (!x.turma || x.turma==='-' || String(x.turma).split(/[,;/]+/).some(t=>turmasVisitadas.has(t.trim()))));
             const warnings = [];
             const allEvents = [];
             const turmasUsadasNoDeslocamento = new Set();
-            if (visits.length === 0) { RATEIO_DATA=[]; warnings.push('Nenhum aluno Visitado/Realizada existe no roteiro atual.'); if(typeof renderRateioTable==='function')renderRateioTable([],warnings); const e=document.getElementById('rateioStatusText');if(e)e.innerHTML='<span class="text-red-600 font-bold">Rateio vazio: nenhum aluno visitado no planejamento atual.</span>'; return; }
+            if (!visits.length) { RATEIO_DATA=[]; warnings.push('Nenhum aluno Realizada/Visitado no planejamento atual.'); if(typeof renderRateioTable==='function')renderRateioTable([],warnings); const e=document.getElementById('rateioStatusText');if(e)e.innerText='Rateio vazio: nenhum aluno visitado no planejamento atual.'; return; }
 
             if (logistics.length === 0 && visits.length > 0) {
                 warnings.push("Adicione o Deslocamento para que o sistema consiga calcular os intervalos de Atendimento!");
@@ -6909,11 +6842,7 @@ window.atualizarAutocompleteGlobal = function() {
                         }
                         if(errosAluno.length > 0) inconformidades.push(`- ${nomePlanilha}: ${errosAluno.join(", ")}`);
 
-                        let nextVisit = '1ª Visita'; 
-                        if (alunoSistema.visits && alunoSistema.visits.length > 0) {
-                            if (alunoSistema.visits[0] && alunoSistema.visits[0].ok) nextVisit = '2ª Visita'; 
-                            if (alunoSistema.visits[1] && alunoSistema.visits[1].ok) nextVisit = '3ª Visita'; 
-                        }
+                        let nextVisit = window.calcularProximaVisitaDoSistema(alunoSistema);
 
                         roteiroItens.push({ 
                             ordem: roteiroItens.length + 1, 
@@ -8822,7 +8751,7 @@ function cleanName(n){return U(String(n||'').replace(/\((DESLIGADA|DESLIGADO)\)/
 function planHeaders(ws){const matrix=rowsMatrix(ws);let header=-1;for(let r=0;r<Math.min(25,matrix.length);r++){const all=(matrix[r]||[]).map(U).join('|');if(all.includes('APR. NOME')||all.includes('APRENDIZ')){header=r;break;}}if(header<0)header=1;const h=(matrix[header]||[]).map(U);const find=tests=>h.findIndex(x=>tests.some(t=>x.includes(t)));return{matrix,header,col:{hrAtend:find(['HORARIO DE ATENDIMENTO','ATENDIMENTO']),teoria:find(['TEORIA HR INI','HORARIO DO JOVEM']),turma:find(['TURMA']),cc:find(['CC','CENTRO DE CUSTO']),nome:find(['APR. NOME','APRENDIZ']),curso:find(['CURSO']),empresa:find(['RAZAO SOCIAL','RAZÃO SOCIAL']),endereco:find(['ENDERECO','ENDEREÇO']),link:find(['LINK MAPA','LINK GOOGLE']),cidade:find(['EMP. CIDADE','CIDADE']),sup:find(['SUP. CADASTRADO','SUP. NA EMPRESA','SUPERVISOR']),tel:find(['SUP CELULAR','SUP. CELULAR','TELEFONE','CELULAR']),email:find(['SUP. EMAIL','EMAIL']),visita:find(['SELECIONE A VISITA','VISITA']),status:find(['STATUS']),obs:find(['OBSERVACAO VISITA','OBSERVAÇÃO VISITA'])}};}
 function get(row,idx){return idx>=0?row[idx]:'';}
 function parsePlan(wb,sheet){const ws=wb.Sheets[sheet], {matrix,header,col}=planHeaders(ws);const logs=extractLogistics(ws);const data=logs[0]?.date||'';const todos=[...(DB.quali||[]),...(DB.tec||[])];const byName=new Map(todos.map(a=>[cleanName(a.nome),a]));const roteiro=[],fantasmas=[],inconform=[];let statusCount=0,obsCount=0;
- for(let r=header+1;r<matrix.length;r++){const row=matrix[r]||[],all=row.map(U).join('|');if(all.includes('TEMPO DE DESLOCAMENTO')||all.includes('HORARIO DE ALMOCO'))break;const nome=S(get(row,col.nome));if(!nome||U(nome).includes('APR. NOME')||U(nome).includes('NOME'))continue;const aluno=byName.get(cleanName(nome));if(!aluno){if(parseTime(get(row,col.hrAtend))||S(get(row,col.turma)).length>=4)fantasmas.push(nome);continue;}const turmaPlan=S(get(row,col.turma));const empPlan=S(get(row,col.empresa));const cidPlan=S(get(row,col.cidade));const erros=[];if(turmaPlan&&U(aluno.turma)!==U(turmaPlan))erros.push(`Turma sistema ${aluno.turma||'-'} / planilha ${turmaPlan}`);if(empPlan&&aluno.empresa&&U(aluno.empresa.razao)!==U(empPlan))erros.push('Empresa divergente');if(cidPlan&&U(aluno.cidade)!==U(cidPlan))erros.push('Cidade divergente');if(erros.length)inconform.push(`${nome}: ${erros.join(', ')}`);let visita=S(get(row,col.visita));if(!visita){visita='1ª Visita';if(aluno.visits?.[0]?.ok)visita='2ª Visita';if(aluno.visits?.[1]?.ok)visita='3ª Visita';}let statusBruto=S(get(row,col.status));let statusNorm=U(statusBruto);let status=(statusNorm==='VISITADO'||statusNorm==='VISITADA'||statusNorm==='REALIZADA'||statusNorm==='REALIZADO')?'Realizada':((statusNorm.includes('NAO')||statusNorm.includes('NÃO')||statusNorm.includes('CANCEL'))?'Não realizada':'Realizar');if(statusBruto)statusCount++;let obs=S(get(row,col.obs))||aluno.obs_origem||'';if(obs)obsCount++;roteiro.push({ordem:roteiro.length+1,student:aluno,date:data,hrAtend:parseTime(get(row,col.hrAtend)),hrFim:'',hrTeoria:aluno.teoria||parseTime(get(row,col.teoria))||'',hrPratica:aluno.pratica||'',visitaTipo:visita,status,obs,cc_override:''});}
+ for(let r=header+1;r<matrix.length;r++){const row=matrix[r]||[],all=row.map(U).join('|');if(all.includes('TEMPO DE DESLOCAMENTO')||all.includes('HORARIO DE ALMOCO'))break;const nome=S(get(row,col.nome));if(!nome||U(nome).includes('APR. NOME')||U(nome).includes('NOME'))continue;const aluno=byName.get(cleanName(nome));if(!aluno){if(parseTime(get(row,col.hrAtend))||S(get(row,col.turma)).length>=4)fantasmas.push(nome);continue;}const turmaPlan=S(get(row,col.turma));const empPlan=S(get(row,col.empresa));const cidPlan=S(get(row,col.cidade));const erros=[];if(turmaPlan&&U(aluno.turma)!==U(turmaPlan))erros.push(`Turma sistema ${aluno.turma||'-'} / planilha ${turmaPlan}`);if(empPlan&&aluno.empresa&&U(aluno.empresa.razao)!==U(empPlan))erros.push('Empresa divergente');if(cidPlan&&U(aluno.cidade)!==U(cidPlan))erros.push('Cidade divergente');if(erros.length)inconform.push(`${nome}: ${erros.join(', ')}`);let visita=window.calcularProximaVisitaDoSistema(aluno);let statusBruto=S(get(row,col.status));let statusNorm=U(statusBruto);let status=(statusNorm==='VISITADO'||statusNorm==='VISITADA'||statusNorm==='REALIZADA'||statusNorm==='REALIZADO')?'Realizada':((statusNorm.includes('NAO')||statusNorm.includes('NÃO')||statusNorm.includes('CANCEL'))?'Não realizada':'Realizar');if(statusBruto)statusCount++;let obs=S(get(row,col.obs))||aluno.obs_origem||'';if(obs)obsCount++;roteiro.push({ordem:roteiro.length+1,student:aluno,date:data,hrAtend:parseTime(get(row,col.hrAtend)),hrFim:'',hrTeoria:aluno.teoria||parseTime(get(row,col.teoria))||'',hrPratica:aluno.pratica||'',visitaTipo:visita,status,obs,cc_override:''});}
  return{roteiro,fantasmas,inconform,statusCount,obsCount};}
 function chooseName(sheet,roteiro){const current=STATE.planContext;if(current&&DB.planning?.[current]?.length){const names=new Set(DB.planning[current].map(x=>cleanName(x.student?.nome)));const overlap=roteiro.filter(x=>names.has(cleanName(x.student?.nome))).length;if(overlap>0)return{name:current,mode:'updated'};}let base=(sheet+' - '+(window.__senacExcelFileName||'ROTEIRO')).toUpperCase().slice(0,80),name=base,n=2;while(DB.planning?.[name])name=`${base} (${n++})`;return{name,mode:'created'};}
 window.processarPlanilhaInstrutor=async function(event){const file=event?.target?.files?.[0];if(!file)return;try{if(typeof XLSX==='undefined')return alert('Motor XLSX não carregado.');const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Lendo abas da planilha...';const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true,bookVBA:true});if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}openSheetModal(wb,file.name.replace(/\.[^.]+$/,''));}catch(e){alert('Erro ao ler planilha: '+e.message);}finally{if(event?.target)event.target.value='';}};
