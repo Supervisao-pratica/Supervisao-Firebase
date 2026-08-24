@@ -4226,6 +4226,11 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     item.student.obs_origem = val;
                 }
                 
+                if (field === 'status') {
+                    try { syncVisitStatus(item); } catch(e){ console.error(e); }
+                    if (typeof runFilter === 'function') runFilter();
+                }
+
                 if(typeof window.saveToStorage === 'function') window.saveToStorage(); 
                 if(field === 'status' || field === 'ordem') {
                     if(typeof window.renderPlanningTable === 'function') window.renderPlanningTable(); 
@@ -4244,11 +4249,14 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             if (student) { 
                 let vIdx = 0; 
                 if (planItem.visitaTipo === '2ª Visita') vIdx = 1; 
-                if (planItem.visitaTipo === '3ª Visita') vIdx = 2; 
+                else if (planItem.visitaTipo === '3ª Visita') vIdx = 2; 
+                else if (planItem.visitaTipo === '4ª Visita') vIdx = 3; 
+                else if (planItem.visitaTipo === '5ª Visita') vIdx = 4; 
+                else if (planItem.visitaTipo === '6ª Visita') vIdx = 5; 
                 
-                // Garante que o aluno tenha o array de visitas para não dar erro
-                if (!student.visits) {
-                    student.visits = [ {ok:false, date:null}, {ok:false, date:null}, {ok:false, date:null} ];
+                if (!student.visits) student.visits = [];
+                while (student.visits.length < 6) {
+                    student.visits.push({ok:false, date:null});
                 }
                 
                 if (planItem.status === 'Realizada') {
@@ -4261,6 +4269,9 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     } 
                     student.visits[vIdx].ok = true; 
                     student.visits[vIdx].date = syncDate; 
+                    if(typeof saveToStorage === 'function') saveToStorage();
+                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                    if(typeof runFilter === 'function') runFilter();
                     if(typeof showToast === 'function') showToast(`Sincronizado!`);
                 } else {
                     // A MÁGICA AQUI: Se mudar para "Realizar" ou "Não realizada", ele desmarca a visita
