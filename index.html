@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.18 - Rateio Somente pelo Deslocamento)</title>
+    <title>Supervisão Senac 2026 (v9.6.21 - Importação de Destino Flexível)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -173,8 +173,8 @@ th {
     </style>
 <!-- V9.6.8: Botao Novo Aluno Manual ativado no cabecalho. -->
 <!-- V9.6.14: preserva rateio estrito, recuperacao de visitas e define a visita importada conforme a ficha mestre. -->
-<!-- V9.6.17: atendimento calculado entre chegada e saida da regiao, vinculando cada aluno ao periodo mais proximo do horario planejado. -->
-<!-- V9.6.18: horario do aluno nao interfere no rateio; permanencias e periodos sao definidos exclusivamente pelos deslocamentos reais. -->
+<!-- V9.6.19: sequencia rigida DESLOCAMENTO -> ATENDIMENTO -> DESLOCAMENTO; almoco e administrativo apenas cortam atendimento. -->
+<!-- V9.6.21: extrator de deslocamento detecta destino mesmo quando celulas mescladas deslocam o dado para coluna vizinha. -->
 </head>
 <body class="text-slate-800">
 
@@ -3780,26 +3780,15 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             selectAll.checked = (checkboxes.length > 0 && checkboxes.length === checkedBoxes.length);
         }
 
-       window.obterAlunoMestreSistema = function(referencia) {
-            if (!referencia) return null;
-            const todos=[...(DB.quali||[]),...(DB.tec||[])];
-            const id=String(referencia.id||'').trim();
-            if(id){const porId=todos.find(a=>String(a.id||'').trim()===id);if(porId)return porId;}
-            const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
-            const nome=N(referencia.nome),turma=N(referencia.turma);
-            return todos.find(a=>N(a.nome)===nome&&N(a.turma)===turma)||todos.find(a=>N(a.nome)===nome)||null;
-        };
-       window.calcularProximaVisitaDoSistema = function(referencia) {
-            const aluno=window.obterAlunoMestreSistema(referencia)||referencia;
-            if(!aluno)return '1ª Visita';
-            const limite=(DB.tec||[]).some(t=>String(t.id)===String(aluno.id))?6:3;
-            const visitas=Array.isArray(aluno.visits)?aluno.visits:[];
-            let i=0;while(i<limite&&visitas[i]?.ok===true)i++;
-            if(i>=limite)i=limite-1;
-            return `${i+1}ª Visita`;
-        };
-       window.recalcularOrdemVisitasPlanejamento = function(ctx=STATE.planContext){
-            const resumo={};(DB.planning?.[ctx]||[]).forEach(item=>{const mestre=window.obterAlunoMestreSistema(item.student);if(mestre)item.student=mestre;item.visitaTipo=window.calcularProximaVisitaDoSistema(mestre||item.student);resumo[item.visitaTipo]=(resumo[item.visitaTipo]||0)+1;});return resumo;
+       window.calcularProximaVisitaDoSistema = function(aluno) {
+            if (!aluno) return '1ª Visita';
+            const isTec = (DB.tec || []).some(t => String(t.id) === String(aluno.id));
+            const limite = isTec ? 6 : 3;
+            const visitas = Array.isArray(aluno.visits) ? aluno.visits : [];
+            let indice = 0;
+            while (indice < limite && visitas[indice]?.ok === true) indice++;
+            if (indice >= limite) indice = limite - 1;
+            return `${indice + 1}ª Visita`;
         };
 
        function limparAditivoPlanejamento(t){return String(t||'').split(/\n+/).filter(l=>!String(l).trim().toUpperCase().startsWith('[ADITIVO PDF]')).join('\n').trim();}
@@ -4938,77 +4927,65 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             RATEIO_DATA=[];
             const context=STATE.planContext;
             const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
-            const min=t=>{const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null;};
+            const min=t=>{const m=String(t||'').trim().match(/^(\d{1,2}):(\d{2})/);return m?Number(m[1])*60+Number(m[2]):null;};
             const clock=m=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(Math.round(m%60)).padStart(2,'0')}`;
             const statusOk=v=>['REALIZADA','REALIZADO','VISITADO','VISITADA'].includes(N(v));
-            const allPlan=DB.planning?.[context]||[];
-            const visits=allPlan.filter(v=>v?.student?.id&&v.date&&statusOk(v.status));
-            const logistics=(DB.planning_logistics?.[context]||[]).filter(l=>l.date&&l.originTime&&l.destTime);
+            const plano=DB.planning?.[context]||[];
+            const visitas=plano.filter(v=>v?.student?.id&&v.date&&statusOk(v.status));
+            const logs=DB.planning_logistics?.[context]||[];
             const lunches=DB.planning_lunch?.[context]||[];
             const admins=DB.planning_admin?.[context]||[];
-            const warnings=[],events=[];
-            if(!visits.length){if(typeof renderRateioTable==='function')renderRateioTable([],['Nenhum aluno realizado/visitado no planejamento atual.']);const e=document.getElementById('rateioStatusText');if(e)e.innerText='Rateio vazio: nenhum aluno realizado.';return;}
+            const warnings=[],eventos=[];
+            if(!visitas.length){if(typeof renderRateioTable==='function')renderRateioTable([],['Nenhum aluno realizado/visitado no planejamento atual.']);const e=document.getElementById('rateioStatusText');if(e)e.innerText='Rateio vazio: nenhum aluno realizado.';return;}
+            const datas=[...new Set(visitas.map(v=>v.date))];
+            const turmasUsadas=new Set();
+            const addEvento=(e)=>{if(e.hours>0)eventos.push(e);};
+            datas.forEach(date=>{
+                const pernas=logs.filter(l=>l.date===date&&l.originTime&&l.destTime).map(l=>({...l,s:min(l.originTime),e:min(l.destTime)})).filter(l=>l.s!==null&&l.e!==null&&l.e>l.s).sort((a,b)=>a.s-b.s);
+                const visitasDia=visitas.filter(v=>v.date===date);
+                if(!pernas.length){warnings.push(`Dia ${date.split('-').reverse().join('/')}: não há deslocamentos válidos.`);return;}
+                const bloqueios=[
+                    ...lunches.filter(x=>x.date===date).map(x=>({type:'DESCANSO',s:min(x.start),e:min(x.end),start:x.start,end:x.end,origin:'-',turma:'-',cc:'-'})),
+                    ...admins.filter(x=>x.date===date).map(x=>({type:'ADMINISTRATIVO',s:min(x.start),e:min(x.end),start:x.start,end:x.end,origin:x.activity||'Atividade Adm.',turma:x.turma||'-',cc:x.turma?(obterCentroCustoTurma(x.turma)||'-'):'-'}))
+                ].filter(x=>x.s!==null&&x.e!==null&&x.e>x.s);
 
-            const dates=[...new Set(visits.map(v=>v.date))];
-            const allocated=new Set();
-            dates.forEach(date=>{
-                const legs=logistics.filter(l=>l.date===date).map((l,i)=>({...l,_i:i,s:min(l.originTime),e:min(l.destTime)})).filter(l=>l.s!==null&&l.e!==null).sort((a,b)=>a.s-b.s);
-                const dayVisits=visits.filter(v=>v.date===date);
-                // Permanencias reais: chegada ao destino ate saida da mesma localidade.
-                const stays=[];
-                for(let i=0;i<legs.length-1;i++){
-                    const chegada=legs[i],saida=legs[i+1];
-                    if(N(chegada.dest)!==N(saida.origin))continue;
-                    if(saida.s<=chegada.e)continue;
-                    stays.push({date,city:chegada.dest,start:chegada.e,end:saida.s,startText:chegada.destTime,endText:saida.originTime,index:stays.length,visits:[]});
-                }
-                // REGRA V9.6.18: o horario do aluno e apenas informativo e nao participa do rateio.
-                // Para cada cidade, as permanencias reais e os alunos realizados sao ordenados cronologicamente
-                // pelo deslocamento e pela ordem do planejamento. Cada aluno e usado uma unica vez.
-                const cidades=[...new Set(dayVisits.map(v=>N(v.student?.cidade)).filter(Boolean))];
-                cidades.forEach(cidade=>{
-                    const cityStays=stays.filter(st=>N(st.city)===cidade).sort((a,b)=>a.start-b.start);
-                    const cityVisits=dayVisits.filter(v=>N(v.student?.cidade)===cidade).sort((a,b)=>(Number(a.ordem)||9999)-(Number(b.ordem)||9999));
-                    if(!cityStays.length){cityVisits.forEach(v=>warnings.push(`Nao rateado: ${v.student?.nome||'Aluno'} (${v.student?.turma||'-'}) - nenhuma permanencia de deslocamento encontrada em ${v.student?.cidade||'cidade nao informada'}.`));return;}
-                    // Distribuicao sequencial e equilibrada. Se houver duas passagens pela cidade e dois alunos,
-                    // o primeiro fica na primeira passagem e o segundo na segunda. Horarios digitados nao interferem.
-                    cityVisits.forEach((v,idx)=>{
-                        const stayIndex=Math.min(cityStays.length-1,Math.floor(idx*cityStays.length/Math.max(1,cityVisits.length)));
-                        cityStays[stayIndex].visits.push(v);
-                        allocated.add(String(v.student.id));
+                pernas.forEach((perna,i)=>{
+                    // 1. Sempre lança o deslocamento real.
+                    const candidatosDestino=visitasDia.filter(v=>N(v.student?.cidade)===N(perna.dest));
+                    const candidatosOrigem=visitasDia.filter(v=>N(v.student?.cidade)===N(perna.origin));
+                    const baseDesloc=candidatosDestino.length?candidatosDestino:candidatosOrigem;
+                    const turmaDesloc=baseDesloc.map(v=>v.student?.turma).find(t=>t&&!turmasUsadas.has(t))||baseDesloc[0]?.student?.turma||'-';
+                    if(turmaDesloc!=='-')turmasUsadas.add(turmaDesloc);
+                    addEvento({date,type:'DESLOCAMENTO',start:perna.originTime,end:perna.destTime,origin:perna.origin,dest:perna.dest,turma:turmaDesloc,cc:turmaDesloc!=='-'?(obterCentroCustoTurma(turmaDesloc)||'-'):'-',hours:(perna.e-perna.s)/60});
+
+                    // 2. Depois do deslocamento, atendimento começa na chegada e termina na próxima saída da MESMA localidade.
+                    if(i>=pernas.length-1)return;
+                    const proxima=pernas[i+1];
+                    if(N(perna.dest)!==N(proxima.origin)||proxima.s<=perna.e)return;
+                    const inicio=perna.e,fim=proxima.s,cidade=perna.dest;
+                    const visitasLocal=visitasDia.filter(v=>N(v.student?.cidade)===N(cidade));
+                    if(!visitasLocal.length){warnings.push(`Sem atendimento em ${cidade} (${clock(inicio)}-${clock(fim)}): nenhum aluno realizado dessa localidade.`);return;}
+                    // O horário digitado do aluno NÃO participa. Todas as turmas realizadas na localidade validam a permanência.
+                    const turmas=[...new Set(visitasLocal.flatMap(v=>String(v.student?.turma||'').split(/[,;/]+/).map(t=>t.trim()).filter(Boolean)))];
+                    if(!turmas.length)return;
+                    // Corta a permanência somente por almoço/administrativo.
+                    let segmentos=[[inicio,fim]];
+                    bloqueios.forEach(b=>{segmentos=segmentos.flatMap(([a,z])=>b.e<=a||b.s>=z?[[a,z]]:[[a,Math.max(a,b.s)],[Math.min(z,b.e),z]].filter(x=>x[1]>x[0]));});
+                    segmentos.forEach(([a,z])=>{
+                        let cursor=a;const fatia=(z-a)/turmas.length;
+                        turmas.forEach((turma,ti)=>{const final=ti===turmas.length-1?z:Math.round(cursor+fatia);const fontes=visitasLocal.filter(v=>String(v.student?.turma||'').split(/[,;/]+/).map(t=>t.trim()).includes(turma));addEvento({date,type:'ATENDIMENTO',start:clock(cursor),end:clock(final),origin:cidade,dest:'-',turma,cc:obterCentroCustoTurma(turma)||'-',hours:(final-cursor)/60,sourceStudentIds:fontes.map(v=>String(v.student.id)),allocationRule:'permanencia_entre_deslocamentos'});cursor=final;});
                     });
-                });
-
-                // Deslocamentos permanecem iguais; turma atribuida pelo destino, depois pela origem.
-                legs.forEach(l=>{
-                    const destStay=stays.find(st=>N(st.city)===N(l.dest)&&st.visits.length);
-                    const sourceStay=[...stays].reverse().find(st=>N(st.city)===N(l.origin)&&st.visits.length);
-                    const base=(destStay?.visits||sourceStay?.visits||[]);
-                    const turma=base[0]?.student?.turma||'-';
-                    events.push({date,type:'DESLOCAMENTO',start:l.originTime,end:l.destTime,origin:l.origin,dest:l.dest,turma,cc:turma!=='-'?(obterCentroCustoTurma(turma)||'-'):'-',hours:(l.e-l.s)/60});
-                });
-
-                // Almoço e administrativo entram como bloqueios que cortam a permanencia.
-                lunches.filter(x=>x.date===date&&min(x.start)!==null&&min(x.end)!==null).forEach(x=>events.push({date,type:'DESCANSO',start:x.start,end:x.end,origin:'-',dest:'-',turma:'-',cc:'-',hours:(min(x.end)-min(x.start))/60}));
-                admins.filter(x=>x.date===date&&min(x.start)!==null&&min(x.end)!==null).forEach(x=>events.push({date,type:'ADMINISTRATIVO',start:x.start,end:x.end,origin:x.activity||'Atividade Adm.',dest:'-',turma:x.turma||'-',cc:x.turma?(obterCentroCustoTurma(x.turma)||'-'):'-',hours:(min(x.end)-min(x.start))/60}));
-
-                stays.filter(st=>st.visits.length).forEach(st=>{
-                    let segments=[[st.start,st.end]];
-                    const blockers=[...lunches.filter(x=>x.date===date).map(x=>[min(x.start),min(x.end)]),...admins.filter(x=>x.date===date).map(x=>[min(x.start),min(x.end)])].filter(x=>x[0]!==null&&x[1]!==null);
-                    blockers.forEach(([bs,be])=>{segments=segments.flatMap(([a,b])=>be<=a||bs>=b?[[a,b]]:[[a,Math.max(a,bs)],[Math.min(b,be),b]].filter(x=>x[1]>x[0]));});
-                    const turmas=[...new Set(st.visits.flatMap(v=>String(v.student?.turma||'').split(/[,;/]+/).map(t=>t.trim()).filter(Boolean)))];
-                    segments.forEach(([a,b])=>{
-                        if(!turmas.length||b<=a)return;let cursor=a;const each=(b-a)/turmas.length;
-                        turmas.forEach((turma,i)=>{const fim=i===turmas.length-1?b:Math.round(cursor+each);const fontes=st.visits.filter(v=>String(v.student?.turma||'').split(/[,;/]+/).map(t=>t.trim()).includes(turma));events.push({date,type:'ATENDIMENTO',start:clock(cursor),end:clock(fim),origin:st.city,dest:'-',turma,cc:obterCentroCustoTurma(turma)||'-',hours:(fim-cursor)/60,sourceStudentIds:fontes.map(v=>String(v.student.id)),allocationRule:'deslocamento_e_ordem_planejamento'});cursor=fim;});
-                    });
+                    // Insere os bloqueios dentro desta permanência na posição cronológica correta.
+                    bloqueios.filter(b=>b.s>=inicio&&b.e<=fim).forEach(b=>addEvento({date,type:b.type,start:b.start,end:b.end,origin:b.origin,dest:'-',turma:b.turma,cc:b.cc,hours:(b.e-b.s)/60}));
                 });
             });
-            const valid=events.filter(e=>e.hours>0).sort((a,b)=>a.date.localeCompare(b.date)||min(a.start)-min(b.start)||({DESLOCAMENTO:1,ATENDIMENTO:2,DESCANSO:3,ADMINISTRATIVO:4}[a.type]-({DESLOCAMENTO:1,ATENDIMENTO:2,DESCANSO:3,ADMINISTRATIVO:4}[b.type])));
-            RATEIO_DATA=valid;
-            if(typeof renderRateioTable==='function')renderRateioTable(valid,warnings);
+            const prioridade={DESLOCAMENTO:1,ATENDIMENTO:2,DESCANSO:3,ADMINISTRATIVO:4};
+            const validos=eventos.sort((a,b)=>a.date.localeCompare(b.date)||min(a.start)-min(b.start)||prioridade[a.type]-prioridade[b.type]);
+            RATEIO_DATA=validos;
+            if(typeof renderRateioTable==='function')renderRateioTable(validos,warnings);
             if(DB.controle_logs){DB.controle_logs=DB.controle_logs.filter(log=>!log.assinatura);if(typeof saveToStorage==='function')saveToStorage();}
             if(typeof window.renderControleRateio==='function')window.renderControleRateio();
-            const statusEl=document.getElementById('rateioStatusText');if(statusEl)statusEl.innerText=`Rateio somente pelo deslocamento: ${valid.length} etapas | Realizados: ${visits.length} | Alocados: ${allocated.size} | Nao alocados: ${visits.length-allocated.size}.`;
+            const statusEl=document.getElementById('rateioStatusText');if(statusEl)statusEl.innerText=`Linha do tempo sequencial: ${validos.length} etapas | Alunos realizados: ${visitas.length}.`;
         }
 
         function renderRateioTable(data, warnings) {
@@ -8617,7 +8594,21 @@ function extractLogistics(ws){
    const row=matrix[r]||[], all=row.map(U).join('|');
    if(all.includes('TOTAL DE KM')||all.includes('HORARIO DE ALMOCO')||all.includes('HORÁRIO DE ALMOÇO')||all.includes('OBSERVACOES DA VIAJEM'))break;
    const d=parseDate(row[m.data]); if(d)lastDate=d;
-   const origin=normCity(row[m.origem]), dest=normCity(row[m.destino]);
+   const origin=normCity(row[m.origem]);
+   // Algumas abas usam cabecalho mesclado em E:F, mas gravam o destino real em D.
+   // Primeiro tenta a coluna mapeada pelo cabecalho; se estiver vazia, procura texto entre
+   // o horario de saida e o horario de chegada, sem depender da celula/mesclagem usada.
+   let rawDest=row[m.destino];
+   if(!S(rawDest)){
+     const ini=Math.max(0,(m.origemHora>=0?m.origemHora:m.origem)+1);
+     const fim=m.destinoHora>=0?m.destinoHora:Math.min(row.length,ini+5);
+     for(let c=ini;c<fim;c++){
+       const candidato=row[c],txt=S(candidato);
+       if(!txt||parseTime(candidato)||parseDate(candidato)||nval(candidato)!==null)continue;
+       rawDest=candidato;break;
+     }
+   }
+   const dest=normCity(rawDest);
    const originTime=parseTime(row[m.origemHora]), destTime=parseTime(row[m.destinoHora]);
    const ped=m.pedagio>=0?S(row[m.pedagio]):''; if(ped)lastPedagio=ped;
    const n1=m.kmSaida>=0?nval(row[m.kmSaida]):null, n2=m.kmChegada>=0?nval(row[m.kmChegada]):null;
@@ -8654,7 +8645,7 @@ function parsePlan(wb,sheet){const ws=wb.Sheets[sheet], {matrix,header,col}=plan
  return{roteiro,fantasmas,inconform,statusCount,obsCount};}
 function chooseName(sheet,roteiro){const current=STATE.planContext;if(current&&DB.planning?.[current]?.length){const names=new Set(DB.planning[current].map(x=>cleanName(x.student?.nome)));const overlap=roteiro.filter(x=>names.has(cleanName(x.student?.nome))).length;if(overlap>0)return{name:current,mode:'updated'};}let base=(sheet+' - '+(window.__senacExcelFileName||'ROTEIRO')).toUpperCase().slice(0,80),name=base,n=2;while(DB.planning?.[name])name=`${base} (${n++})`;return{name,mode:'created'};}
 window.processarPlanilhaInstrutor=async function(event){const file=event?.target?.files?.[0];if(!file)return;try{if(typeof XLSX==='undefined')return alert('Motor XLSX não carregado.');const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Lendo abas da planilha...';const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true,bookVBA:true});if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}openSheetModal(wb,file.name.replace(/\.[^.]+$/,''));}catch(e){alert('Erro ao ler planilha: '+e.message);}finally{if(event?.target)event.target.value='';}};
-window.confirmarImportacaoAbaExcel=async function(sheet){const wb=window.__senacExcelWb||window.__roteiroImportWb;if(!wb||!wb.Sheets?.[sheet])return alert('Planilha/aba não carregada. Importe novamente.');const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Importando alunos, deslocamentos e almoço...';try{const ws=wb.Sheets[sheet];const logistics=extractLogistics(ws);const lunch=extractLunch(ws,logistics[0]?.date||'');const parsed=parsePlan(wb,sheet);if(!parsed.roteiro.length){if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}return alert('Nenhum aluno da base foi encontrado nessa aba.');}const chosen=chooseName(sheet,parsed.roteiro);if(chosen.mode==='updated'){DB.planning[chosen.name]=parsed.roteiro.map((item,idx)=>({...item,ordem:idx+1}));}else DB.planning[chosen.name]=parsed.roteiro;DB.planning_logistics[chosen.name]=logistics;DB.planning_lunch[chosen.name]=lunch;STATE.planContext=chosen.name;window.recalcularOrdemVisitasPlanejamento(chosen.name);RATEIO_DATA=[];if(typeof saveToStorage==='function')await saveToStorage();if(typeof initPlanSelector==='function')initPlanSelector();const sel=document.getElementById('planSelector');if(sel)sel.value=chosen.name;if(typeof renderPlanningTable==='function')renderPlanningTable();if(typeof renderLogisticsTable==='function')renderLogisticsTable();if(typeof renderLunchTable==='function')renderLunchTable();if(typeof renderAdminTable==='function')renderAdminTable();document.getElementById('modalAbaExcelConsolidado')?.remove();document.getElementById('modalEscolhaAbaExcel')?.remove();if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}hist('ACAO','Importar Excel',`Aba ${sheet}: alunos ${DB.planning[chosen.name].length}, desloc ${logistics.length}, almoço ${lunch.length}.`);let out=`✅ ${chosen.mode==='updated'?'Planejamento atualizado':'Planejamento criado'} pela aba: ${sheet}\n\nAlunos no planejamento: ${DB.planning[chosen.name].length}\nStatus lidos: ${parsed.statusCount}\nObservações lidas: ${parsed.obsCount}\nDeslocamentos importados: ${logistics.length}\nAlmoço importado: ${lunch.length}\n\nCC: usado sempre do sistema pela turma/aluno.`;if(parsed.inconform.length)out+=`\n\n⚠️ Divergências: ${parsed.inconform.length}\n${parsed.inconform.slice(0,6).join('\n')}${parsed.inconform.length>6?'\n...':''}`;if(parsed.fantasmas.length)out+=`\n\n👻 Alunos não encontrados: ${parsed.fantasmas.length}\n${parsed.fantasmas.slice(0,6).join('\n')}${parsed.fantasmas.length>6?'\n...':''}`;alert(out);}catch(e){console.error(e);if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}alert('Erro ao importar aba: '+e.message);}};
+window.confirmarImportacaoAbaExcel=async function(sheet){const wb=window.__senacExcelWb||window.__roteiroImportWb;if(!wb||!wb.Sheets?.[sheet])return alert('Planilha/aba não carregada. Importe novamente.');const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Importando alunos, deslocamentos e almoço...';try{const ws=wb.Sheets[sheet];const logistics=extractLogistics(ws);const lunch=extractLunch(ws,logistics[0]?.date||'');const parsed=parsePlan(wb,sheet);if(!parsed.roteiro.length){if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}return alert('Nenhum aluno da base foi encontrado nessa aba.');}const chosen=chooseName(sheet,parsed.roteiro);if(chosen.mode==='updated'){DB.planning[chosen.name]=parsed.roteiro.map((item,idx)=>({...item,ordem:idx+1}));}else DB.planning[chosen.name]=parsed.roteiro;DB.planning_logistics[chosen.name]=logistics;DB.planning_lunch[chosen.name]=lunch;STATE.planContext=chosen.name;if(typeof saveToStorage==='function')await saveToStorage();if(typeof initPlanSelector==='function')initPlanSelector();const sel=document.getElementById('planSelector');if(sel)sel.value=chosen.name;if(typeof renderPlanningTable==='function')renderPlanningTable();if(typeof renderLogisticsTable==='function')renderLogisticsTable();if(typeof renderLunchTable==='function')renderLunchTable();if(typeof renderAdminTable==='function')renderAdminTable();document.getElementById('modalAbaExcelConsolidado')?.remove();document.getElementById('modalEscolhaAbaExcel')?.remove();if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}hist('ACAO','Importar Excel',`Aba ${sheet}: alunos ${DB.planning[chosen.name].length}, desloc ${logistics.length}, almoço ${lunch.length}.`);let out=`✅ ${chosen.mode==='updated'?'Planejamento atualizado':'Planejamento criado'} pela aba: ${sheet}\n\nAlunos no planejamento: ${DB.planning[chosen.name].length}\nStatus lidos: ${parsed.statusCount}\nObservações lidas: ${parsed.obsCount}\nDeslocamentos importados: ${logistics.length}\nAlmoço importado: ${lunch.length}\n\nCC: usado sempre do sistema pela turma/aluno.`;if(parsed.inconform.length)out+=`\n\n⚠️ Divergências: ${parsed.inconform.length}\n${parsed.inconform.slice(0,6).join('\n')}${parsed.inconform.length>6?'\n...':''}`;if(parsed.fantasmas.length)out+=`\n\n👻 Alunos não encontrados: ${parsed.fantasmas.length}\n${parsed.fantasmas.slice(0,6).join('\n')}${parsed.fantasmas.length>6?'\n...':''}`;alert(out);}catch(e){console.error(e);if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}alert('Erro ao importar aba: '+e.message);}};
 window.abrirSharePointImportModal=window.alertarImportacaoSharePoint=function(){document.getElementById('spModalConsolidado')?.remove();const last=localStorage.getItem('senac_sharepoint_excel_url')||'';const m=document.createElement('div');m.id='spModalConsolidado';m.className='fixed inset-0 z-[1850] bg-slate-900/70 flex items-center justify-center p-4';m.innerHTML=`<div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl"><div class="p-4 border-b flex justify-between"><div><h2 class="text-lg font-black text-senac-blue">SharePoint / OneDrive</h2><p class="text-xs text-slate-500">Cole o link para tentar ler direto ou selecione o arquivo local baixado.</p></div><button class="text-2xl px-2" onclick="document.getElementById('spModalConsolidado').remove()">×</button></div><div class="p-4 space-y-3"><div class="text-xs bg-blue-50 border rounded p-3 text-slate-600">Modo seguro: se o SharePoint bloquear a leitura direta, use Selecionar arquivo local. A integração é somente para leitura e importação, preservando a planilha original.</div><input id="spExcelUrlConsolidado" class="w-full p-2 border rounded text-xs" value="${ESC(last)}" placeholder="Cole o link compartilhado"><div class="flex gap-2 justify-end"><button class="px-3 py-2 border rounded text-xs font-bold" onclick="document.getElementById('spModalConsolidado').remove();document.getElementById('importRoteiroFile').click();">Selecionar arquivo local</button><button class="px-3 py-2 bg-senac-blue text-white rounded text-xs font-bold" onclick="lerExcelSharePointLinkConsolidado('import')">Ler link e listar abas</button></div></div></div>`;document.body.appendChild(m);};
 window.lerExcelSharePointLinkConsolidado=async function(){const raw=document.getElementById('spExcelUrlConsolidado')?.value||'';if(!raw.trim())return alert('Cole o link primeiro.');localStorage.setItem('senac_sharepoint_excel_url',raw);let url=raw.trim();if(!/[?&]download=1/i.test(url)&&!/_layouts\/.*download\.aspx/i.test(url))url+=url.includes('?')?'&download=1':'?download=1';const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Tentando ler arquivo do SharePoint...';try{const r=await fetch(url,{credentials:'include'});if(!r.ok)throw new Error('HTTP '+r.status);const buf=await r.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true,bookVBA:true});document.getElementById('spModalConsolidado')?.remove();if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}openSheetModal(wb,'SHAREPOINT');}catch(e){if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}alert('Não consegui ler o link direto. Use arquivo local baixado.\n\nDetalhe: '+e.message);}};
 function ensureToolbar(){const sp=[...document.querySelectorAll('button')].find(b=>/SharePoint/i.test(b.textContent||''));if(sp)sp.onclick=window.alertarImportacaoSharePoint;if(typeof lucide!=='undefined')lucide.createIcons();}
