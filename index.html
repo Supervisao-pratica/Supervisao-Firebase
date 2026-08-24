@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.8 - Botão Novo Aluno)</title>
+    <title>Supervisão Senac 2026 (v9.6.10 - Visitas Protegidas)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -172,6 +172,8 @@ th {
         }
     </style>
 <!-- V9.6.8: Botao Novo Aluno Manual ativado no cabecalho. -->
+<!-- V9.6.9: Rateio restrito a linhas atuais com status Realizada/Visitado. -->
+<!-- V9.6.10: visitas realizadas protegidas contra exclusao automatica. -->
 </head>
 <body class="text-slate-800">
 
@@ -3795,11 +3797,12 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if(DB.planning[STATE.planContext].find(p => String(p.student.id).trim() === id)) return; 
                 
                 const student = allStudents.find(s => String(s.id).trim() === id); 
-                if(student) { 
-                    // 🔥 A BLINDAGEM CONTRA O ERRO: Só verifica se a visita está ok se ela de fato existir!
-                    let nextVisit = '1ª Visita'; 
-                    if (student.visits && student.visits[0] && student.visits[0].ok) nextVisit = '2ª Visita'; 
-                    if (student.visits && student.visits[1] && student.visits[1].ok) nextVisit = '3ª Visita'; 
+                if(student) {
+                    const maxVisitasAluno = (DB.tec || []).some(t => t.id === student.id) ? 6 : 3;
+                    let proximoIndice = 0;
+                    while (proximoIndice < maxVisitasAluno && student.visits?.[proximoIndice]?.ok) proximoIndice++;
+                    if (proximoIndice >= maxVisitasAluno) proximoIndice = maxVisitasAluno - 1;
+                    let nextVisit = `${proximoIndice + 1}ª Visita`; 
                     
                     const nextOrder = DB.planning[STATE.planContext].length + 1;
 
@@ -4211,13 +4214,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     }, 150);
                 }
                 // =========================================================
-                
-               // Agora o robô escuta QUALQUER mudança de status e ajusta a data
-                if(field === 'status') { 
-                    if(typeof syncVisitStatus === 'function') syncVisitStatus(item); 
-                }
-                
-                if (field === 'obs') {
+if (field === 'obs') {
                     const studentId = item.student.id;
                     const sQuali = DB.quali.find(s => s.id === studentId);
                     if (sQuali) sQuali.obs_origem = val;
@@ -4241,46 +4238,46 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
         function updatePlanStudent(idx, field, val) { if(STATE.planContext && DB.planning[STATE.planContext][idx]) { DB.planning[STATE.planContext][idx].student[field] = val; saveToStorage(); } }
         function updatePlanCompany(idx, field, val) { if(STATE.planContext && DB.planning[STATE.planContext][idx]) { DB.planning[STATE.planContext][idx].student.empresa[field] = val; saveToStorage(); } }
         function updatePlanSupervisor(idx, field, val) { if(STATE.planContext && DB.planning[STATE.planContext][idx]) { DB.planning[STATE.planContext][idx].student.supervisor[field] = val; saveToStorage(); } }
-        function syncVisitStatus(planItem) { 
-            const studentId = planItem.student.id; 
-            let student = DB.quali.find(s => s.id === studentId); 
-            if (!student) student = DB.tec.find(s => s.id === studentId); 
-            
-            if (student) { 
-                let vIdx = 0; 
-                if (planItem.visitaTipo === '2ª Visita') vIdx = 1; 
-                else if (planItem.visitaTipo === '3ª Visita') vIdx = 2; 
-                else if (planItem.visitaTipo === '4ª Visita') vIdx = 3; 
-                else if (planItem.visitaTipo === '5ª Visita') vIdx = 4; 
-                else if (planItem.visitaTipo === '6ª Visita') vIdx = 5; 
-                
-                if (!student.visits) student.visits = [];
-                while (student.visits.length < 6) {
-                    student.visits.push({ok:false, date:null});
-                }
-                
-                if (planItem.status === 'Realizada') {
-                    let syncDate = new Date(); 
-                    if (planItem.date) { 
-                        const parts = planItem.date.split('-'); 
-                        syncDate = new Date(parts[0], parts[1] - 1, parts[2]); 
-                    } else { 
-                        planItem.date = syncDate.toISOString().split('T')[0]; 
-                    } 
-                    student.visits[vIdx].ok = true; 
-                    student.visits[vIdx].date = syncDate; 
-                    if(typeof saveToStorage === 'function') saveToStorage();
-                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                    if(typeof runFilter === 'function') runFilter();
-                    if(typeof showToast === 'function') showToast(`Sincronizado!`);
-                } else {
-                    // A MÁGICA AQUI: Se mudar para "Realizar" ou "Não realizada", ele desmarca a visita
-                    student.visits[vIdx].ok = false;
-                    student.visits[vIdx].date = null;
-                }
-            } 
+        function syncVisitStatus(planItem) {
+            if (!planItem || !planItem.student) return false;
+            const studentId = planItem.student.id;
+            let student = DB.quali.find(s => s.id === studentId) || DB.tec.find(s => s.id === studentId);
+            if (!student) return false;
+            const match = String(planItem.visitaTipo || '').match(/([1-6])/);
+            const vIdx = match ? Math.max(0, Math.min(5, parseInt(match[1], 10) - 1)) : 0;
+            if (!student.visits) student.visits = [];
+            while (student.visits.length < 6) student.visits.push({ok:false, date:null});
+            const status = String(planItem.status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+            // Historico imutavel: apenas acrescenta/atualiza quando concluida; nunca apaga em outros status.
+            if (status !== 'REALIZADA' && status !== 'VISITADO') return false;
+            let syncDate = new Date();
+            if (planItem.date) {
+                const p = String(planItem.date).split('-');
+                if (p.length === 3) syncDate = new Date(+p[0], +p[1]-1, +p[2], 12, 0, 0);
+            } else {
+                planItem.date = `${syncDate.getFullYear()}-${String(syncDate.getMonth()+1).padStart(2,'0')}-${String(syncDate.getDate()).padStart(2,'0')}`;
+            }
+            if (isNaN(syncDate.getTime())) return false;
+            student.visits[vIdx] = {...(student.visits[vIdx]||{}), ok:true, date:syncDate, protected:true, source:'planejamento', updatedAt:Date.now()};
+            if (!planItem.student.visits) planItem.student.visits=[];
+            while(planItem.student.visits.length<6)planItem.student.visits.push({ok:false,date:null});
+            planItem.student.visits[vIdx]={...student.visits[vIdx]};
+            if(typeof showToast==='function')showToast(`Visita ${vIdx+1} registrada e protegida.`);
+            return true;
         }
-        
+
+        window.auditarProtecaoVisitas = function() {
+            let protegidas=0, inconsistencias=0;
+            [...(DB.quali||[]),...(DB.tec||[])].forEach(student=>{
+                if(!student.visits)student.visits=[];
+                const limite=(DB.tec||[]).some(t=>t.id===student.id)?6:3;
+                while(student.visits.length<limite)student.visits.push({ok:false,date:null});
+                student.visits.forEach(v=>{if(v?.ok){v.protected=true;protegidas++;if(!v.date)inconsistencias++;}});
+            });
+            if(typeof saveToStorage==='function')saveToStorage();
+            return {protegidas,inconsistencias};
+        };
+
         function removeFromPlan(idx) { 
             if(!confirm("Remover este aluno do roteiro atual?")) return; 
             if(STATE.planContext) { 
@@ -4900,19 +4897,53 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
 
         function generateRateio() {
             const context = STATE.planContext;
-            const visits = DB.planning[context] || [];
-            const lunches = DB.planning_lunch[context] || [];
-            const logistics = DB.planning_logistics[context] || [];
-            const admins = DB.planning_admin[context] || [];
+            const todosItens = DB.planning[context] || [];
+            const normalizarStatusRateio = valor => String(valor || '')
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .trim().toUpperCase();
+            const statusEhVisitado = valor => ['REALIZADA', 'VISITADO'].includes(normalizarStatusRateio(valor));
+
+            // REGRA V9.6.9: o rateio usa exclusivamente as linhas atualmente presentes
+            // no roteiro e marcadas como Realizada/Visitado. Itens removidos, pendentes ou
+            // nao realizados nao participam de turmas, CCs, deslocamentos ou atendimentos.
+            const visits = todosItens.filter(item => item && item.student && statusEhVisitado(item.status));
+            const turmasVisitadas = new Set(
+                visits.flatMap(item => String(item.student?.turma || '')
+                    .split(/[,;/]+/).map(t => t.trim()).filter(Boolean))
+            );
+            const datasVisitadas = new Set(visits.map(item => item.date).filter(Boolean));
+
+            const lunches = (DB.planning_lunch[context] || []).filter(item => datasVisitadas.has(item.date));
+            const logistics = (DB.planning_logistics[context] || []).filter(item => datasVisitadas.has(item.date));
+            const admins = (DB.planning_admin[context] || []).filter(item => {
+                if (!datasVisitadas.has(item.date)) return false;
+                if (!item.turma || item.turma === '-') return true;
+                return String(item.turma).split(/[,;/]+/).some(t => turmasVisitadas.has(t.trim()));
+            });
             const warnings = [];
             const allEvents = [];
             const turmasUsadasNoDeslocamento = new Set();
 
-            if (logistics.length === 0 && visits.length > 0) {
+            if (visits.length === 0) {
+                RATEIO_DATA = [];
+                warnings.push('Nenhum aluno com status Realizada/Visitado existe no roteiro atual.');
+                if (typeof renderRateioTable === 'function') renderRateioTable([], warnings);
+                const statusEl = document.getElementById('rateioStatusText');
+                if (statusEl) statusEl.innerHTML = '<span class="text-red-600 font-bold">Rateio nao gerado: marque ao menos uma visita como Realizada.</span>';
+                return;
+            }
+
+            const visitasSemData = visits.filter(item => !item.date).length;
+            if (visitasSemData > 0) {
+                warnings.push(`${visitasSemData} visita(s) realizada(s) sem data foram ignoradas no rateio.`);
+            }
+
+            if (logistics.length === 0 && visits.some(item => item.date)) {
                 warnings.push("Adicione o Deslocamento para que o sistema consiga calcular os intervalos de Atendimento!");
             }
 
-            const uniqueDates = [...new Set([...logistics.map(l=>l.date), ...lunches.map(l=>l.date), ...admins.map(a=>a.date)])].filter(d=>d);
+            // Somente datas que possuem ao menos uma visita efetivamente realizada.
+            const uniqueDates = [...datasVisitadas];
 
             // HELPER: Soma minutos no formato relógio (Ex: 13:00 + 90 min = 14:30)
             const addMinsToClock = (timeStr, mins) => {
@@ -6813,12 +6844,11 @@ window.atualizarAutocompleteGlobal = function() {
                             if(cidadePlanilha && norm(alunoSistema.cidade) !== norm(cidadePlanilha)) errosAluno.push(`Cidade (Sist: ${alunoSistema.cidade || '-'} | Planilha: ${cidadePlanilha})`);
                         }
                         if(errosAluno.length > 0) inconformidades.push(`- ${nomePlanilha}: ${errosAluno.join(", ")}`);
-
-                        let nextVisit = '1ª Visita'; 
-                        if (alunoSistema.visits && alunoSistema.visits.length > 0) {
-                            if (alunoSistema.visits[0] && alunoSistema.visits[0].ok) nextVisit = '2ª Visita'; 
-                            if (alunoSistema.visits[1] && alunoSistema.visits[1].ok) nextVisit = '3ª Visita'; 
-                        }
+                        const maxVisitasAluno = (DB.tec || []).some(t => t.id === alunoSistema.id) ? 6 : 3;
+                        let proximoIndice = 0;
+                        while (proximoIndice < maxVisitasAluno && alunoSistema.visits?.[proximoIndice]?.ok) proximoIndice++;
+                        if (proximoIndice >= maxVisitasAluno) proximoIndice = maxVisitasAluno - 1;
+                        let nextVisit = `${proximoIndice + 1}ª Visita`;
 
                         roteiroItens.push({ 
                             ordem: roteiroItens.length + 1, 
