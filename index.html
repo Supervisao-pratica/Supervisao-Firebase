@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.21 - Importação de Destino Flexível)</title>
+    <title>Supervisão Senac 2026 (v9.6.23 - Importação de Novos Alunos Reforçada)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -175,6 +175,8 @@ th {
 <!-- V9.6.14: preserva rateio estrito, recuperacao de visitas e define a visita importada conforme a ficha mestre. -->
 <!-- V9.6.19: sequencia rigida DESLOCAMENTO -> ATENDIMENTO -> DESLOCAMENTO; almoco e administrativo apenas cortam atendimento. -->
 <!-- V9.6.21: extrator de deslocamento detecta destino mesmo quando celulas mescladas deslocam o dado para coluna vizinha. -->
+<!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
+<!-- V9.6.23: importa XLS real ou XLS tabulado Windows-1252; chave Apr. Cod; inclui novos e atualiza existentes sem apagar historico. -->
 </head>
 <body class="text-slate-800">
 
@@ -1177,44 +1179,48 @@ th {
         // =========================================================================
         // 1. MOTOR DE LEITURA (Leitura Inteligente à prova de espaços ocultos)
         // =========================================================================
-        function readAndParseFile(file) { 
-            return new Promise((resolve, reject) => { 
-                const reader = new FileReader(); 
-                reader.onerror = () => reject("Erro ao ler arquivo"); 
-                reader.onload = (e) => { 
-                    try { 
-                        const data = new Uint8Array(e.target.result); 
-                        const wb = XLSX.read(data, {type:'array', cellDates:true}); 
-                        let newQualiList = [], newTecList = []; 
-                        let regMap = {}, ccMap = {}; 
-
-                        for(let sheetName of wb.SheetNames) { 
-                            // Limpa espaços duplos e transforma tudo em minúsculo
-                            const nameLower = String(sheetName).toLowerCase().replace(/\s+/g, ' ').trim(); 
-                            
-                            // LEITURA INTELIGENTE: Procura pelas palavras-chave em vez de exigir o nome exato
-                            const isTec = nameLower.includes("téc") || nameLower.includes("tec");
-                            const isQuali = nameLower.includes("dados gerais") && !isTec; 
-                            
-                            if (!isQuali && !isTec) continue; // Ignora abas vazias ou resumos
-                            
-                            const ws = wb.Sheets[sheetName]; 
-                            const parsed = parseMainSheet(ws, isTec ? 'tec' : 'quali'); 
-                            
-                            if (isTec) {
-                                newTecList.push(...parsed);
-                            } else {
-                                newQualiList.push(...parsed);
-                            }
-                        } 
-                        
-                        resolve({ quali: newQualiList, tec: newTecList, regMap, ccMap }); 
-                    } catch(err) { reject(err); } 
-                }; 
-                reader.readAsArrayBuffer(file); 
-            }); 
+        function readAndParseFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('Erro ao ler arquivo'));
+                reader.onload = (e) => {
+                    try {
+                        const buffer=e.target.result;
+                        let wb=null, modo='excel';
+                        try {
+                            wb=XLSX.read(new Uint8Array(buffer),{type:'array',cellDates:true,raw:false});
+                            const temDados=wb.SheetNames.some(n=>{
+                                const aoa=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''});
+                                return aoa.some(r=>r.some(c=>String(c||'').toUpperCase().includes('APR. NOME')));
+                            });
+                            if(!temDados) throw new Error('Sem cabeçalho de alunos');
+                        } catch(excelError) {
+                            modo='tabulado-windows-1252';
+                            let texto='';
+                            try { texto=new TextDecoder('utf-8',{fatal:true}).decode(buffer); }
+                            catch(_) { texto=new TextDecoder('windows-1252').decode(buffer); }
+                            texto=texto.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+                            const linhas=texto.split('\n').filter(l=>l.trim()!=='');
+                            const matriz=linhas.map(l=>l.split('\t'));
+                            if(!matriz.length||!matriz[0].some(c=>String(c).toUpperCase().includes('APR. NOME'))) throw new Error('Arquivo tabulado sem cabeçalho Apr. Nome');
+                            wb=XLSX.utils.book_new();
+                            XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(matriz),'DADOS GERAIS');
+                        }
+                        let newQualiList=[],newTecList=[];
+                        for(const sheetName of wb.SheetNames){
+                            const ws=wb.Sheets[sheetName];
+                            const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+                            const temCab=aoa.slice(0,20).some(r=>r.some(c=>String(c||'').toUpperCase().includes('APR. NOME')));
+                            if(!temCab)continue;
+                            const parsed=parseMainSheet(ws,'auto');
+                            parsed.forEach(a=>(a._tipoImportacao==='tec'?newTecList:newQualiList).push(a));
+                        }
+                        resolve({quali:newQualiList,tec:newTecList,regMap:{},ccMap:{},modo});
+                    } catch(err){reject(err);}
+                };
+                reader.readAsArrayBuffer(file);
+            });
         }
-
         // =========================================================================
         // FUNÇÕES AUXILIARES (Mantidas para não quebrar o sistema)
         // =========================================================================
@@ -1225,179 +1231,71 @@ th {
         // =========================================================================
         // 2. EXTRATOR DE DADOS (Com Leitura Automática da Coluna Z - Situação e CNPJ)
         // =========================================================================
-        function parseMainSheet(ws, type) { 
-            const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}); 
-            if(json.length < 1) return []; 
-
-            let headerIdx = -1;
-            let headers = [];
-
-            for (let i = 0; i < Math.min(20, json.length); i++) {
-                if (!json[i] || !Array.isArray(json[i])) continue;
-                const row = json[i].map(h => String(h || "").toLowerCase().trim());
-                if (row.some(h => h.includes('apr. nome') || h.includes('turma'))) {
-                    headerIdx = i;
-                    headers = row;
-                    break;
-                }
+        function parseMainSheet(ws,type) {
+            const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+            let headerIdx=-1,headers=[];
+            const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
+            for(let i=0;i<Math.min(30,json.length);i++){
+                const row=(json[i]||[]).map(norm);
+                if(row.some(h=>h==='APR. NOME'||h.includes('APR. NOME'))&&row.some(h=>h==='TURMA')){headerIdx=i;headers=row;break;}
             }
-
-            if (headerIdx === -1) return [];
-
-            const findCol = (terms) => { 
-                return headers.findIndex(h => terms.some(t => h.includes(t.toLowerCase()))); 
-            }; 
-
-            const C = { 
-                turma: findCol(['turma']), 
-                nome: findCol(['apr. nome']), 
-                curso: findCol(['curso']), 
-                ini: findCol(['turdatini']), 
-                fim: findCol(['turdatfim']), 
-                empresa: findCol(['razao social', 'razão social']), 
-                cnpj: findCol(['cnpj', 'c.n.p.j']), // 👑 BUSCA DA COLUNA CNPJ
-                end: findCol(['endereço', 'endereco']), 
-                mapa: findCol(['link mapa']), 
-                cidade: findCol(['emp. cidade']), 
-                regiao: findCol(['atuação senac', 'atuacao senac']), 
-                sup: findCol(['sup. cadastrado']), 
-                tel: findCol(['sup celular']), 
-                email: findCol(['sup. email']), 
-                teoria: findCol(['teoria hr ini']), 
-                pratica: findCol(['pratica hr ini', 'prática hr ini']),
-                situacao: findCol(['situação', 'situacao', 'status']) // <- BUSCA A COLUNA SITUAÇÃO
-            }; 
-
-            const safeStr = (v) => v !== undefined && v !== null ? String(v) : "";
-            let alunosLidos = [];
-
-            for (let i = headerIdx + 1; i < json.length; i++) {
-                const row = json[i];
-                if (!row || row.length === 0) continue; 
-
-                const val = (idx) => (idx > -1 && row[idx] !== undefined && row[idx] !== null) ? row[idx] : ""; 
-                const nomeVal = String(val(C.nome)).trim();
-                const turmaVal = String(val(C.turma)).trim() || "Sem Turma";
-
-                if(!nomeVal || nomeVal.length < 3 || nomeVal.toLowerCase().includes("nome")) continue; 
-                
-                // --- MÁGICA DA COLUNA Z AQUI ---
-                // Se não achar pelo cabeçalho, vai direto na Coluna Z (índice 25)
-                const idxSituacao = C.situacao > -1 ? C.situacao : 25;
-                const situacaoVal = String(val(idxSituacao)).toLowerCase().trim();
-                const alunoVemDesligado = situacaoVal.includes('desligado');
-                // --------------------------------
-
-                const parseDate = (v) => { 
-                    if (v instanceof Date) return v; 
-                    if (typeof v === 'number') return new Date(Math.round((v - 25569)*864e5)); 
-                    return null; 
-                }; 
-                
-                // 👑 INSERÇÃO DO CNPJ TRATADO
-                let cnpjTratado = String(val(C.cnpj)).replace(/\D/g, '');
-                
-                let hrTeoria = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.teoria)) : val(C.teoria);
-                let hrPratica = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.pratica)) : val(C.pratica);
-                
-                alunosLidos.push({ 
-                    id: "ID_" + Date.now().toString(36) + Math.random().toString(36).substr(2, 5).toUpperCase(), 
-                    nome: nomeVal, 
-                    turma: turmaVal, 
-                    curso: val(C.curso),
-                    cnpj: cnpjTratado, // 👑 SALVA O CNPJ AQUI
-                    empresa: { 
-                        razao: String(val(C.empresa)).trim() || "Não Inf.", 
-                        endereco: val(C.end), 
-                        link: normalizarLinkMapa(val(C.mapa), val(C.end)), 
-                        cnpj: cnpjTratado // 👑 SALVA O CNPJ AQUI TAMBÉM
-                    }, 
-                    supervisor: { 
-                        display: val(C.sup) || "Não Inf.", 
-                        tel: val(C.tel), 
-                        email: val(C.email) 
-                    }, 
-                    regiao: String(val(C.regiao)).toUpperCase().trim(), 
-                    cidade: String(val(C.cidade)).toUpperCase().trim(), 
-                    ini: parseDate(val(C.ini)), 
-                    fim: parseDate(val(C.fim)), 
-                    teoria: hrTeoria, 
-                    pratica: hrPratica, 
-                    visits: [], 
-                    isDesligado: alunoVemDesligado, 
-                    obs_origem: alunoVemDesligado ? "Desligado via planilha" : "" 
-                });
+            if(headerIdx<0)return[];
+            const find=(...terms)=>headers.findIndex(h=>terms.some(t=>h===norm(t)||h.includes(norm(t))));
+            const C={turma:find('Turma'),curso:find('Curso'),turIni:find('TurDatIni'),turFim:find('TurDatFim'),empresa:find('Razao Social'),cnpj:find('CNPJ'),cidade:find('Emp. Cidade'),uf:find('Emp. UF'),sup:find('Sup. Nome','Sup. Cadastrado'),supCpf:find('Sup. CPF'),supTel:find('Sup Telefone'),supCel:find('Sup Celular'),supEmail:find('Sup. Email'),contrIni:find('Contrato Inicio'),contrFim:find('Contrato Fim'),teoIni:find('Teoria Hr Ini'),teoFim:find('Teoria Hr Fim'),praIni:find('Pratica Hr Ini'),praFim:find('Pratica Hr Fim'),aprUf:find('Apr. UF Matr.'),codigo:find('Apr. Cod'),nome:find('Apr. Nome'),cpf:find('Apr CPF'),cel:find('Apr Celular'),email:find('Apr Email'),nasc:find('Apr Nasc'),idade:find('Apr Idade Final'),situacao:find('Situacao Matr','Situação Matr')};
+            const val=(row,idx)=>idx>=0?String(row[idx]??'').trim():'';
+            const data=v=>{if(!v)return null;if(v instanceof Date)return v;const t=String(v).trim();let m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1],12);m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3],12);return null;};
+            const horario=v=>{const t=String(v||'').trim();const m=t.match(/(\d{1,2}):(\d{2})/);return m?`${String(+m[1]).padStart(2,'0')}:${m[2]}`:t;};
+            const out=[],seen=new Set();
+            for(let i=headerIdx+1;i<json.length;i++){
+                const row=json[i]||[],nome=val(row,C.nome),codigo=val(row,C.codigo).replace(/\.0$/,'');
+                if(!nome||!codigo||seen.has(codigo))continue;seen.add(codigo);
+                const curso=val(row,C.curso),isTec=norm(curso).includes('TECNIC');
+                const contrIni=data(val(row,C.contrIni)),contrFim=data(val(row,C.contrFim)),turIni=data(val(row,C.turIni)),turFim=data(val(row,C.turFim));
+                const cidade=norm(val(row,C.cidade)),regiao=(typeof getRegiaoDaCidade==='function'?getRegiaoDaCidade(cidade):'')||'';
+                const situacao=val(row,C.situacao),desligado=/DESLIG|CANCEL|EVAS|ENCERR/i.test(norm(situacao));
+                const maxV=isTec?6:3;
+                out.push({_tipoImportacao:isTec?'tec':'quali',id:codigo,codigo_aluno:codigo,nome,turma:val(row,C.turma),curso,cpf:val(row,C.cpf),celular:val(row,C.cel),email:val(row,C.email),nascimento:data(val(row,C.nasc)),idadeFinal:val(row,C.idade),ufMatricula:val(row,C.aprUf),situacaoMatricula:situacao,regiao,cidade,estado:val(row,C.uf),ini:contrIni||turIni,fim:contrFim||turFim,dataTurmaInicio:turIni,dataTurmaFim:turFim,contratoInicio:contrIni,contratoFim:contrFim,teoria:horario(val(row,C.teoIni)),teoriaFim:horario(val(row,C.teoFim)),pratica:val(row,C.praIni),praticaFim:val(row,C.praFim),cnpj:val(row,C.cnpj).replace(/\D/g,''),empresa:{razao:val(row,C.empresa)||'Não Inf.',cnpj:val(row,C.cnpj).replace(/\D/g,''),endereco:'',link:''},supervisor:{display:val(row,C.sup)||'Não Inf.',cpf:val(row,C.supCpf),tel:val(row,C.supCel)||val(row,C.supTel),telefone:val(row,C.supTel),celular:val(row,C.supCel),email:val(row,C.supEmail)},visits:Array.from({length:maxV},()=>({ok:false,date:null})),isDesligado:desligado,obs_origem:desligado?'Desligado via planilha':''});
             }
-            return alunosLidos; 
+            return out;
         }
-
         // =========================================================================
         // 3. ADICIONAR NOVOS (COM PROTEÇÃO ABSOLUTA DOS ANTIGOS)
         // =========================================================================
-        async function runMergeImport(input) { 
-            const file = input.files[0]; 
-            if(!file) return; 
-            
-            const loader = document.getElementById('globalLoader'); 
-            if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
-            const loadMsg = document.getElementById('loadingMsg');
-            if(loadMsg) loadMsg.innerText = "PROCURANDO ALUNOS NOVOS..."; 
-            
-            setTimeout(async () => { 
-                try { 
-                    const data = await readAndParseFile(file); 
-                    let adicionados = 0;
-                    let ignorados = 0; 
-                    
-                    const getAssinatura = (aluno) => `${safeStr(aluno.nome).trim().toUpperCase()}|${safeStr(aluno.turma).trim().toUpperCase()}`; 
-                    
-                    const bancoQuali = new Map((DB.quali || []).map(a => [getAssinatura(a), a])); 
-                    const bancoTec = new Map((DB.tec || []).map(a => [getAssinatura(a), a])); 
-
-                    data.quali.forEach(novoAluno => { 
-                        const ass = getAssinatura(novoAluno); 
-                        if(!bancoQuali.has(ass)) { 
-                            // É ALUNO NOVO: Insere no banco
-                            DB.quali.unshift(novoAluno); 
-                            bancoQuali.set(ass, novoAluno); 
-                            adicionados++; 
-                        } else {
-                            // 👑 JÁ EXISTE NO SISTEMA: Protege o aluno! (Não apaga endereços)
-                            ignorados++;
-                        }
-                    }); 
-
-                    data.tec.forEach(novoAluno => { 
-                        const ass = getAssinatura(novoAluno); 
-                        if(!bancoTec.has(ass)) { 
-                            // É ALUNO NOVO: Insere no banco
-                            DB.tec.unshift(novoAluno); 
-                            bancoTec.set(ass, novoAluno); 
-                            adicionados++; 
-                        } else {
-                            // 👑 JÁ EXISTE NO SISTEMA: Protege o aluno! (Não apaga endereços)
-                            ignorados++;
-                        }
-                    }); 
-
-                    if(typeof rehydratePlanning === 'function') rehydratePlanning();
-                    if(typeof saveToStorage === 'function') await saveToStorage(); 
-                    
-                    if(typeof setupFilters === 'function') setupFilters(); 
-                    if(typeof runFilter === 'function') runFilter(); 
-                    
-                    // 👑 AVISO ATUALIZADO
-                    alert(`IMPORTAÇÃO CONCLUÍDA!\n\n✅ ${adicionados} novos alunos cadastrados.\n🛡️ ${ignorados} alunos antigos preservados (endereços e supervisores intocados).`); 
-                } catch(e) { 
-                    console.error(e); 
-                    alert("Erro na importação: " + e); 
-                } finally { 
-                    if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
-                    input.value = ''; 
-                } 
-            }, 100); 
+        async function runMergeImport(input) {
+            const file=input.files[0];if(!file)return;
+            const loader=document.getElementById('globalLoader');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}
+            const loadMsg=document.getElementById('loadingMsg');if(loadMsg)loadMsg.innerText='LENDO E CONCILIANDO NOVOS ALUNOS...';
+            try{
+                const data=await readAndParseFile(file);
+                const todosNovos=[...data.quali,...data.tec];
+                const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+                const dig=v=>String(v||'').replace(/\D/g,'');
+                const todosAtuais=()=>[...(DB.quali||[]),...(DB.tec||[])];
+                const localizar=novo=>todosAtuais().find(a=>String(a.codigo_aluno||a.id||'')===String(novo.codigo_aluno))||todosAtuais().find(a=>dig(a.cpf)===dig(novo.cpf)&&dig(novo.cpf).length>=11)||todosAtuais().find(a=>norm(a.nome)===norm(novo.nome)&&norm(a.turma)===norm(novo.turma));
+                let adicionados=0,atualizados=0,migrados=0,preservados=0;
+                for(const novo of todosNovos){
+                    const tipo=novo._tipoImportacao;delete novo._tipoImportacao;
+                    const destino=tipo==='tec'?DB.tec:DB.quali;
+                    let atual=localizar(novo);
+                    if(!atual){destino.unshift(novo);adicionados++;continue;}
+                    const origemTec=DB.tec.includes(atual),deveTec=tipo==='tec';
+                    if(origemTec!==deveTec){DB.tec=DB.tec.filter(a=>a!==atual);DB.quali=DB.quali.filter(a=>a!==atual);destino.unshift(atual);migrados++;}
+                    const antigo={...atual},empAnt={...(atual.empresa||{})},supAnt={...(atual.supervisor||{})};
+                    const keep=(novoValor,antigoValor)=>novoValor!==null&&novoValor!==undefined&&String(novoValor).trim()!==''?novoValor:antigoValor;
+                    Object.assign(atual,{id:keep(novo.id,atual.id),codigo_aluno:keep(novo.codigo_aluno,atual.codigo_aluno||atual.id),nome:keep(novo.nome,atual.nome),turma:keep(novo.turma,atual.turma),curso:keep(novo.curso,atual.curso),cpf:keep(novo.cpf,atual.cpf),celular:keep(novo.celular,atual.celular),email:keep(novo.email,atual.email),nascimento:keep(novo.nascimento,atual.nascimento),idadeFinal:keep(novo.idadeFinal,atual.idadeFinal),ufMatricula:keep(novo.ufMatricula,atual.ufMatricula),situacaoMatricula:keep(novo.situacaoMatricula,atual.situacaoMatricula),regiao:keep(novo.regiao,atual.regiao),cidade:keep(novo.cidade,atual.cidade),estado:keep(novo.estado,atual.estado),ini:keep(novo.contratoInicio,atual.ini)||keep(novo.dataTurmaInicio,atual.ini),fim:keep(novo.contratoFim,atual.fim)||keep(novo.dataTurmaFim,atual.fim),dataTurmaInicio:keep(novo.dataTurmaInicio,atual.dataTurmaInicio),dataTurmaFim:keep(novo.dataTurmaFim,atual.dataTurmaFim),contratoInicio:keep(novo.contratoInicio,atual.contratoInicio),contratoFim:keep(novo.contratoFim,atual.contratoFim),teoria:keep(novo.teoria,atual.teoria),teoriaFim:keep(novo.teoriaFim,atual.teoriaFim),pratica:keep(novo.pratica,atual.pratica),praticaFim:keep(novo.praticaFim,atual.praticaFim),cnpj:keep(novo.cnpj,atual.cnpj),isDesligado:novo.isDesligado===true?true:atual.isDesligado});
+                    atual.empresa={...empAnt,razao:keep(novo.empresa?.razao,empAnt.razao),cnpj:keep(novo.empresa?.cnpj,empAnt.cnpj),endereco:empAnt.endereco||'',link:empAnt.link||''};
+                    atual.supervisor={...supAnt,display:keep(novo.supervisor?.display,supAnt.display),cpf:keep(novo.supervisor?.cpf,supAnt.cpf),tel:keep(novo.supervisor?.tel,supAnt.tel),telefone:keep(novo.supervisor?.telefone,supAnt.telefone),celular:keep(novo.supervisor?.celular,supAnt.celular),email:keep(novo.supervisor?.email,supAnt.email)};
+                    atual.visits=antigo.visits||[];atual.obs_origem=antigo.obs_origem||'';atual.etapas=antigo.etapas;atual.contraTurno=antigo.contraTurno;atual.contraturno=antigo.contraturno;atual.status=antigo.status;atual.obs=antigo.obs;
+                    const limite=deveTec?6:3;while(atual.visits.length<limite)atual.visits.push({ok:false,date:null});
+                    atualizados++;preservados++;
+                }
+                if(typeof rehydratePlanning==='function')rehydratePlanning();
+                if(typeof saveToStorage==='function')await saveToStorage();
+                if(typeof setupFilters==='function')setupFilters();if(typeof runFilter==='function')runFilter();
+                alert(`IMPORTAÇÃO CONCLUÍDA!\n\nModo de leitura: ${data.modo}\n✅ Novos alunos: ${adicionados}\n🔄 Existentes atualizados: ${atualizados}\n↔️ Movidos entre Técnica/Qualificação: ${migrados}\n🛡️ Históricos preservados: ${preservados}\n\nLidos: ${todosNovos.length} | Técnica: ${data.tec.length} | Qualificação: ${data.quali.length}`);
+            } catch(e){console.error(e);alert('Erro na importação: '+(e.message||e));}
+            finally{if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}input.value='';}
         }
-
         // =========================================================================
         // 4. SUBSTITUIR BASE (Híbrido: Restaura Backup JSON ou Importa Excel)
         // =========================================================================
@@ -4768,6 +4666,15 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
         
         html += rowsHtml; 
         html += `</table>`; 
+
+        // Legenda de apoio para interpretação dos dados importados pelo botão Ler Pedagógico.
+        html += `
+        <div style="margin: 18px 0 22px 0; padding: 14px 16px; background-color: #fff7ed; border: 1px solid #fdba74; border-left: 5px solid #f68d2e; border-radius: 7px; font-size: 12px; line-height: 1.55; color: #334155;">
+            <div style="font-size: 13px; font-weight: bold; color: #9a3412; margin-bottom: 7px;">Legenda das informações pedagógicas</div>
+            <div style="margin-bottom: 5px;"><strong>Conselho de Classe:</strong> aluno com alto índice de faltas.</div>
+            <div style="margin-bottom: 5px;"><strong>Recuperação:</strong> aluno que não desenvolveu as atividades.</div>
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #fed7aa;"><strong>Orientação:</strong> entrar na plataforma garante a presença. Realizar as atividades e obter aprovação garante o desenvolvimento.</div>
+        </div>`;
     } 
     
     if(logistics.length > 0) { 
