@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.30 - ENDEREÇOS SEM TRAVAR)</title>
+    <title>Supervisão Senac 2026 (v9.6.32 - NUVEM E ENDEREÇOS CORRIGIDOS)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -1024,10 +1024,7 @@ th {
                         
                         const compressedData = LZString.compressToBase64(JSON.stringify(cleanData));
                         
-                        await firestoreDB.collection('banco_senac').doc('dados_principais').set({ 
-                            payload: compressedData,
-                            updatedAt: timestamp // Anota a hora exata na nuvem
-                        });
+                        await salvarPayloadNuvemEmPartes(firestoreDB, compressedData, timestamp);
                     } catch(err) {
                         alert("⚠️ AVISO DA NUVEM: Não foi possível enviar os dados (" + err.message + "). O sistema salvou no seu Computador!");
                         console.warn("Falha ao salvar na Nuvem:", err);
@@ -1084,10 +1081,13 @@ th {
                         const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
                         if (doc.exists) {
                             const rawData = doc.data();
-                            if (rawData.payload) {
+                            if (rawData.chunked === true) {
+                                const payloadCompleto = await carregarPayloadNuvemEmPartes(firestoreDB, rawData);
+                                cloudData = JSON.parse(LZString.decompressFromBase64(payloadCompleto));
+                            } else if (rawData.payload) {
                                 cloudData = JSON.parse(LZString.decompressFromBase64(rawData.payload));
                             } else {
-                                cloudData = rawData; 
+                                cloudData = rawData;
                             }
                         }
                     } catch(err) { console.warn("Erro ao ler nuvem:", err); }
@@ -8978,35 +8978,66 @@ function gerarBackupIntegralManual(){
 }
 </script>
 <script>
-/* v9.6.30 - finalização garantida da atualização de endereços */
+/* v9.6.32 - Firestore segmentado: elimina o limite de 1 MiB por documento */
+const TAMANHO_PARTE_NUVEM_V9632 = 350000;
+async function salvarPayloadNuvemEmPartes(firestoreDB, payload, timestamp) {
+  const principal = firestoreDB.collection('banco_senac').doc('dados_principais');
+  const anterior = await principal.get();
+  const qtdAnterior = anterior.exists ? Number(anterior.data()?.chunkCount || 0) : 0;
+  if (payload.length <= 700000) {
+    await principal.set({payload, updatedAt:timestamp, chunked:false, chunkCount:0, schema:'senac-cloud-v2'});
+    for (let i=0;i<qtdAnterior;i++) await principal.collection('partes').doc(String(i).padStart(5,'0')).delete().catch(()=>{});
+    return;
+  }
+  const partes=[];
+  for(let i=0;i<payload.length;i+=TAMANHO_PARTE_NUVEM_V9632) partes.push(payload.slice(i,i+TAMANHO_PARTE_NUVEM_V9632));
+  // Grava as partes primeiro. O documento principal só é trocado após todas concluírem.
+  for(let inicio=0;inicio<partes.length;inicio+=400){
+    const batch=firestoreDB.batch();
+    partes.slice(inicio,inicio+400).forEach((conteudo,j)=>{
+      const indice=inicio+j;
+      batch.set(principal.collection('partes').doc(String(indice).padStart(5,'0')), {indice,conteudo,updatedAt:timestamp});
+    });
+    await batch.commit();
+  }
+  await principal.set({chunked:true,chunkCount:partes.length,totalLength:payload.length,updatedAt:timestamp,schema:'senac-cloud-v2'});
+  for(let i=partes.length;i<qtdAnterior;i++) await principal.collection('partes').doc(String(i).padStart(5,'0')).delete().catch(()=>{});
+}
+async function carregarPayloadNuvemEmPartes(firestoreDB, meta) {
+  const principal=firestoreDB.collection('banco_senac').doc('dados_principais');
+  const snap=await principal.collection('partes').orderBy('indice').get();
+  const partes=[];snap.forEach(d=>partes.push(d.data()));partes.sort((a,b)=>a.indice-b.indice);
+  if(partes.length!==Number(meta.chunkCount)) throw new Error(`Nuvem incompleta: esperadas ${meta.chunkCount} partes, encontradas ${partes.length}.`);
+  const payload=partes.map(p=>p.conteudo).join('');
+  if(payload.length!==Number(meta.totalLength)) throw new Error('Nuvem incompleta: tamanho do payload divergente.');
+  return payload;
+}
+
+/* Atualização de endereços autocontida. A última definição vence as versões antigas. */
 window.iniciarSuperBuscaEnderecos=async function(){
  const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');
- let ok=0,sem=0,err=0,internos=0,cand=[];
  const fechar=()=>{if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}if(msg)msg.innerText='Processando...';};
- const limite=(promise,ms,label)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+' excedeu '+Math.round(ms/1000)+'s')),ms))]);
+ const dig=v=>String(v??'').replace(/\D/g,''),cnpj=a=>dig(a?.cnpj||a?.empresa?.cnpj),end=a=>String(a?.empresa?.endereco||'').trim();
+ const ruim=a=>end(a).length<6||/nao inf|não inf|sem endereco|sem endereço|undefined|null/i.test(end(a));
+ const link=e=>e?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(e):'';
+ const limite=(p,ms,n)=>Promise.race([p,new Promise((_,r)=>setTimeout(()=>r(new Error(n+' excedeu o tempo limite')),ms))]);
+ const api=async c=>{const r=await limite(fetch('https://brasilapi.com.br/api/cnpj/v1/'+c,{cache:'no-store'}),15000,'Consulta '+c);if(!r.ok)throw new Error('HTTP '+r.status);return r.json();};
+ const fmt=d=>{const p=[d?.descricao_tipo_de_logradouro,d?.logradouro,d?.numero].filter(Boolean).join(' '),x=d?.complemento?', '+d.complemento:'',b=d?.bairro?' - '+d.bairro:'',m=d?.municipio?' - '+d.municipio:'',u=d?.uf?'/'+d.uf:'',c=d?.cep?' - CEP '+String(d.cep).replace(/(\d{5})(\d{3})/,'$1-$2'):'';return(p+x+b+m+u+c).replace(/\s+/g,' ').trim();};
+ const prop=a=>Object.values(DB.planning||{}).forEach(arr=>(arr||[]).forEach(i=>{if(i?.student?.id===a.id){i.student.empresa=JSON.parse(JSON.stringify(a.empresa||{}));i.student.cidade=a.cidade;i.student.estado=a.estado;}}));
+ let internos=0,consultados=0,atualizados=0,sem=0,erros=0;
  try{
-  const todos=[...(window.DB?.quali||[]),...(window.DB?.tec||[])];
-  // Primeiro reaproveita os endereços já existentes para o mesmo CNPJ.
-  const mapa=new Map();todos.forEach(a=>{const c=cnpjAluno(a),e=String(a?.empresa?.endereco||'').trim();if(c.length===14&&e.length>5)mapa.set(c,{endereco:e,link:a.empresa?.link||'',razao:a.empresa?.razao||'',cidade:a.cidade||''});});
-  todos.forEach(a=>{const c=cnpjAluno(a),d=mapa.get(c);if(d&&enderecoRuim(a)){a.empresa=a.empresa||{};a.empresa.endereco=d.endereco;a.empresa.link=d.link;a.empresa.razao=a.empresa.razao||d.razao;a.cidade=a.cidade||d.cidade;propaga(a);internos++;}});
-  cand=todos.filter(a=>cnpjAluno(a).length===14&&(enderecoRuim(a)||!a?.empresa?.link||/googleusercontent/i.test(a?.empresa?.link||'')));
-  if(!cand.length){corrigirLinksEmMemoria();try{await limite(saveToStorage(),20000,'Salvamento');}catch(e){console.warn(e);}if(typeof runFilter==='function')runFilter();alert(`Atualização concluída.\n\nReaproveitados internamente: ${internos}\nNenhuma consulta externa pendente.`);return;}
-  if(!confirm(`Atualizar endereços por CNPJ em lote?\nPendentes: ${cand.length}\nReaproveitados internamente: ${internos}`))return;
+  const todos=[...(DB.quali||[]),...(DB.tec||[])],base=new Map();
+  todos.forEach(a=>{const c=cnpj(a),e=end(a);if(c.length===14&&e.length>=6)base.set(c,{e,l:a.empresa?.link||link(e),cidade:a.cidade||'',estado:a.estado||''});});
+  todos.forEach(a=>{const d=base.get(cnpj(a));if(d&&ruim(a)){a.empresa=a.empresa||{};a.empresa.endereco=d.e;a.empresa.link=d.l;a.cidade=a.cidade||d.cidade;a.estado=a.estado||d.estado;prop(a);internos++;}});
+  const agrup=new Map();todos.forEach(a=>{const c=cnpj(a);if(c.length===14&&ruim(a)){if(!agrup.has(c))agrup.set(c,[]);agrup.get(c).push(a);}});const grupos=[...agrup.entries()];
+  if(!grupos.length){if(internos)await limite(saveToStorage(),60000,'Salvamento');alert(`ENDEREÇOS CONFERIDOS\n\nCorrigidos pela base interna: ${internos}\nCNPJs externos pendentes: 0`);return;}
+  if(!confirm(`ATUALIZAÇÃO DE ENDEREÇOS\n\nCorrigidos pela base interna: ${internos}\nCNPJs únicos para consulta: ${grupos.length}\nAlunos abrangidos: ${grupos.reduce((n,g)=>n+g[1].length,0)}\n\nContinuar?`))return;
   if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}
-  for(let i=0;i<cand.length;i++){
-   const a=cand[i],c=cnpjAluno(a);if(msg)msg.innerText=`Atualizando por CNPJ ${i+1}/${cand.length}...`;
-   try{const d=await limite(cnpjApi(c),12000,'Consulta CNPJ '+c);const mudou=aplica(a,d);propaga(a);mudou?ok++:sem++;}
-   catch(e){err++;console.warn('CNPJ',c,e);}
-   await delay(200);
-  }
-  if(msg)msg.innerText='Salvando e finalizando...';corrigirLinksEmMemoria();
-  try{await limite(saveToStorage(),25000,'Salvamento final');}catch(e){console.warn(e);err++;}
-  try{if(typeof runFilter==='function')runFilter();}catch(e){console.warn('Filtro',e);}
-  try{if(typeof renderPlanningTable==='function'&&STATE?.planContext)renderPlanningTable();}catch(e){console.warn('Planejamento',e);}
-  try{if(typeof logHist==='function')logHist('AUDITORIA','Atualizar Endereços',`Internos: ${internos}; atualizados: ${ok}; sem mudança: ${sem}; erros: ${err}.`);}catch(e){}
-  alert(`Atualização concluída.\n\nReaproveitados internamente: ${internos}\nAtualizados pela consulta: ${ok}\nSem mudança: ${sem}\nErros/tempo excedido: ${err}\n\nA tela foi liberada.`);
- }catch(e){console.error(e);alert('A atualização foi encerrada com segurança:\n'+(e.message||e));}
- finally{fechar();}
+  for(let i=0;i<grupos.length;i++){const[c,alunos]=grupos[i];if(msg)msg.innerText=`Consultando CNPJ ${i+1}/${grupos.length} | ${alunos.length} aluno(s)...`;try{const d=await api(c),e=fmt(d);consultados++;if(e.length<6){sem+=alunos.length;continue;}alunos.forEach(a=>{a.empresa=a.empresa||{};a.cnpj=c;a.empresa.cnpj=c;a.empresa.razao=a.empresa.razao||d.razao_social||d.nome_fantasia||'';a.empresa.endereco=e;a.empresa.link=link(e);a.cidade=d.municipio||a.cidade||'';a.estado=d.uf||a.estado||'';prop(a);atualizados++;});}catch(e){erros+=alunos.length;console.warn(c,e);}await new Promise(r=>setTimeout(r,300));}
+  if(msg)msg.innerText='Gravando localmente e na nuvem em partes...';await limite(saveToStorage(),90000,'Salvamento final');
+  try{if(typeof runFilter==='function')runFilter();}catch(e){}try{if(typeof renderPlanningTable==='function'&&STATE?.planContext)renderPlanningTable();}catch(e){}
+  alert(`ATUALIZAÇÃO CONCLUÍDA\n\nBase interna: ${internos}\nCNPJs respondidos: ${consultados}\nAlunos atualizados: ${atualizados}\nSem retorno: ${sem}\nFalhas: ${erros}\n\nDados gravados e tela liberada.`);
+ }catch(e){console.error(e);alert('A tela será liberada. Motivo: '+(e.message||e));}finally{fechar();}
 };
 </script>
 </body>
