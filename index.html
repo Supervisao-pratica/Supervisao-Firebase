@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.24 - Importação e Cadastro Completo)</title>
+    <title>Supervisão Senac 2026 (v9.6.25 - RECUPERAÇÃO SEGURA)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -176,7 +176,6 @@ th {
 <!-- V9.6.19: sequencia rigida DESLOCAMENTO -> ATENDIMENTO -> DESLOCAMENTO; almoco e administrativo apenas cortam atendimento. -->
 <!-- V9.6.21: extrator de deslocamento detecta destino mesmo quando celulas mescladas deslocam o dado para coluna vizinha. -->
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
-<!-- V9.6.24: datas TurDatIni/TurDatFim, prática iniciada em Teoria Hr Fim, contraturno por sábado e endereço por CNPJ interno/externo. -->
 </head>
 <body class="text-slate-800">
 
@@ -1100,7 +1099,7 @@ th {
                 // 3. DECISÃO INTELIGENTE (O ÁRBITRO)
                 let finalData = null;
 
-                if (cloudData && cloudQtd > 0 && cloudTime >= localTime) {
+                if (cloudData && cloudQtd > 0 && cloudTime >= localTime && !(localQtd > cloudQtd + 50)) {
                     finalData = cloudData;
                     origin = `NUVEM (${cloudQtd} alunos)`;
                 } 
@@ -8907,35 +8906,47 @@ window.APP_VERSION = '9.5.4-PEDAGOGICO-SUBSTITUI-BLOCO';
 
 <script>window.APP_VERSION='9.6.3-PDF-TABELA-PRIORIDADE';</script>
 <script>window.APP_VERSION='9.6.5-BASE-INTEGRA-ETAPAS-IMPRESSAO';</script>
-
 <script>
-/* v9.6.24 - Sobrescrita final segura da importacao de novos alunos */
-function normalizarImportacaoV9624(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();}
-function dataImportacaoV9624(v){if(!v)return null;if(v instanceof Date)return v;const t=String(v).trim();let m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1],12);m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3],12);return null;}
-function horaImportacaoV9624(v){const m=String(v||'').match(/(\d{1,2}):(\d{2})/);return m?`${String(+m[1]).padStart(2,'0')}:${m[2]}`:String(v||'').trim();}
-function contraturnoImportacaoV9624(grade){
- const n=normalizarImportacaoV9624(grade),dias={seg:/SEGUNDA/.test(n),ter:/TERCA/.test(n),qua:/QUARTA/.test(n),qui:/QUINTA/.test(n),sex:/SEXTA/.test(n)};
- const temSabado=/SABADO/.test(n);if(!temSabado)return {contraTurno:{seg:false,ter:false,qua:false,qui:false,sex:false},contraturno:'',detectado:false};
- const faltantes=Object.keys(dias).filter(k=>!dias[k]);const nomes={seg:'Segunda',ter:'Terça',qua:'Quarta',qui:'Quinta',sex:'Sexta'};
- const marcado=faltantes.length===1?faltantes[0]:null;
- return {contraTurno:{seg:marcado==='seg',ter:marcado==='ter',qua:marcado==='qua',qui:marcado==='qui',sex:marcado==='sex'},contraturno:marcado?nomes[marcado]:'',detectado:!!marcado,alerta:temSabado&&!marcado};
-}
-function diretorioCnpjV9624(){const mapa=new Map();[...(DB.quali||[]),...(DB.tec||[])].forEach(a=>{const c=String(a?.empresa?.cnpj||a?.cnpj||'').replace(/\D/g,'');const e=String(a?.empresa?.endereco||'').trim();if(c.length===14&&e.length>5)mapa.set(c,{endereco:e,link:a.empresa?.link||'',cidade:a.cidade||'',razao:a.empresa?.razao||''});});return mapa;}
-function parseMainSheet(ws,type){
- const json=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});let hi=-1,h=[];for(let i=0;i<Math.min(30,json.length);i++){const r=(json[i]||[]).map(normalizarImportacaoV9624);if(r.some(x=>x.includes('APR. NOME'))&&r.some(x=>x==='TURMA')){hi=i;h=r;break;}}if(hi<0)return[];
- const col=(...ts)=>h.findIndex(x=>ts.some(t=>x===normalizarImportacaoV9624(t)||x.includes(normalizarImportacaoV9624(t))));
- const C={turma:col('Turma'),curso:col('Curso'),ini:col('TurDatIni'),fim:col('TurDatFim'),empresa:col('Razao Social'),cnpj:col('CNPJ'),cidade:col('Emp. Cidade'),uf:col('Emp. UF'),sup:col('Sup. Nome'),supCpf:col('Sup. CPF'),supTel:col('Sup Telefone'),supCel:col('Sup Celular'),supEmail:col('Sup. Email'),teoIni:col('Teoria Hr Ini'),teoFim:col('Teoria Hr Fim'),praIni:col('Pratica Hr Ini'),codigo:col('Apr. Cod'),nome:col('Apr. Nome'),cpf:col('Apr CPF'),cel:col('Apr Celular'),email:col('Apr Email'),nasc:col('Apr Nasc'),sit:col('Situacao Matr')};
- const get=(r,c)=>c>=0?String(r[c]??'').trim():'';const dir=diretorioCnpjV9624(),out=[],seen=new Set();
- for(let i=hi+1;i<json.length;i++){const r=json[i]||[],codigo=get(r,C.codigo).replace(/\.0$/,''),nome=get(r,C.nome);if(!codigo||!nome||seen.has(codigo))continue;seen.add(codigo);const curso=get(r,C.curso),tec=normalizarImportacaoV9624(curso).includes('TECNIC'),cnpj=get(r,C.cnpj).replace(/\D/g,''),interno=dir.get(cnpj)||{},grade=get(r,C.praIni),ct=contraturnoImportacaoV9624(grade),cidade=normalizarImportacaoV9624(get(r,C.cidade));
-  out.push({_tipoImportacao:tec?'tec':'quali',id:codigo,codigo_aluno:codigo,nome,turma:get(r,C.turma),curso,cpf:get(r,C.cpf),celular:get(r,C.cel),email:get(r,C.email),nascimento:dataImportacaoV9624(get(r,C.nasc)),cidade:cidade||interno.cidade||'',estado:get(r,C.uf),regiao:(typeof getRegiaoDaCidade==='function'?getRegiaoDaCidade(cidade):'')||'',ini:dataImportacaoV9624(get(r,C.ini)),fim:dataImportacaoV9624(get(r,C.fim)),teoria:horaImportacaoV9624(get(r,C.teoIni)),teoriaFim:horaImportacaoV9624(get(r,C.teoFim)),pratica:horaImportacaoV9624(get(r,C.teoFim)),gradePratica:grade,contraTurno:ct.contraTurno,contraturno:ct.contraturno,contraturnoDetectado:ct.detectado,contraturnoPendente:ct.alerta,cnpj,empresa:{razao:get(r,C.empresa)||interno.razao||'Não Inf.',cnpj,endereco:interno.endereco||'',link:interno.link||''},supervisor:{display:get(r,C.sup)||'Não Inf.',cpf:get(r,C.supCpf),tel:get(r,C.supCel)||get(r,C.supTel),telefone:get(r,C.supTel),celular:get(r,C.supCel),email:get(r,C.supEmail)},visits:Array.from({length:tec?6:3},()=>({ok:false,date:null})),situacaoMatricula:get(r,C.sit),isDesligado:/DESLIG|CANCEL|EVAS|ENCERR/.test(normalizarImportacaoV9624(get(r,C.sit))),obs_origem:''});
- }return out;
-}
-function readAndParseFile(file){return new Promise((resolve,reject)=>{const fr=new FileReader();fr.onerror=()=>reject(new Error('Erro ao ler arquivo'));fr.onload=e=>{try{const b=e.target.result;let wb,modo='Excel';try{wb=XLSX.read(new Uint8Array(b),{type:'array',cellDates:true,raw:false});if(!wb.SheetNames.some(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''}).some(r=>r.some(c=>String(c).toUpperCase().includes('APR. NOME')))))throw 0;}catch(_){modo='XLS tabulado Windows-1252';let tx;try{tx=new TextDecoder('utf-8',{fatal:true}).decode(b);}catch(_){tx=new TextDecoder('windows-1252').decode(b);}const mat=tx.replace(/^\uFEFF/,'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).map(x=>x.split('\t'));wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(mat),'DADOS GERAIS');}let quali=[],tec=[];wb.SheetNames.forEach(n=>parseMainSheet(wb.Sheets[n],'auto').forEach(a=>(a._tipoImportacao==='tec'?tec:quali).push(a)));resolve({quali,tec,modo});}catch(err){reject(err);}};fr.readAsArrayBuffer(file);});}
-async function preencherEnderecoImportadoV9624(a){const c=String(a?.empresa?.cnpj||a?.cnpj||'').replace(/\D/g,'');if(c.length!==14||String(a?.empresa?.endereco||'').trim().length>5)return false;const dir=diretorioCnpjV9624();if(dir.has(c)){const d=dir.get(c);a.empresa.endereco=d.endereco;a.empresa.link=d.link;a.cidade=a.cidade||d.cidade;return true;}return false;}
-async function runMergeImport(input){const file=input.files[0];if(!file)return;const loader=document.getElementById('globalLoader');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}try{const d=await readAndParseFile(file),novos=[...d.quali,...d.tec],N=normalizarImportacaoV9624,D=v=>String(v||'').replace(/\D/g,'');let add=0,upd=0,addr=0,ct=0,pend=0;const all=()=>[...(DB.quali||[]),...(DB.tec||[])];for(const n of novos){const tipo=n._tipoImportacao;delete n._tipoImportacao;let a=all().find(x=>String(x.codigo_aluno||x.id)===String(n.codigo_aluno))||all().find(x=>D(x.cpf)===D(n.cpf)&&D(n.cpf).length===11)||all().find(x=>N(x.nome)===N(n.nome)&&N(x.turma)===N(n.turma));const dest=tipo==='tec'?DB.tec:DB.quali;if(!a){if(await preencherEnderecoImportadoV9624(n))addr++;dest.unshift(n);add++;if(n.contraturnoDetectado)ct++;if(n.contraturnoPendente)pend++;continue;}const old={...a},oe={...(a.empresa||{})},os={...(a.supervisor||{})},keep=(v,o)=>v!==null&&v!==undefined&&String(v).trim()!==''?v:o;if(DB.tec.includes(a)!==(tipo==='tec')){DB.tec=DB.tec.filter(x=>x!==a);DB.quali=DB.quali.filter(x=>x!==a);dest.unshift(a);}Object.assign(a,{codigo_aluno:n.codigo_aluno,nome:keep(n.nome,a.nome),turma:keep(n.turma,a.turma),curso:keep(n.curso,a.curso),cpf:keep(n.cpf,a.cpf),celular:keep(n.celular,a.celular),email:keep(n.email,a.email),cidade:keep(n.cidade,a.cidade),estado:keep(n.estado,a.estado),regiao:keep(n.regiao,a.regiao),ini:keep(n.ini,a.ini),fim:keep(n.fim,a.fim),teoria:keep(n.teoria,a.teoria),teoriaFim:keep(n.teoriaFim,a.teoriaFim),pratica:keep(n.pratica,a.pratica),gradePratica:keep(n.gradePratica,a.gradePratica),cnpj:keep(n.cnpj,a.cnpj)});a.empresa={...oe,razao:keep(n.empresa.razao,oe.razao),cnpj:keep(n.empresa.cnpj,oe.cnpj),endereco:oe.endereco||n.empresa.endereco||'',link:oe.link||n.empresa.link||''};a.supervisor={...os,...n.supervisor};if(n.contraturnoDetectado){a.contraTurno=n.contraTurno;a.contraturno=n.contraturno;ct++;}else{a.contraTurno=old.contraTurno;a.contraturno=old.contraturno;}a.visits=old.visits||[];a.obs_origem=old.obs_origem||'';a.etapas=old.etapas;a.status=old.status;a.obs=old.obs;while(a.visits.length<(tipo==='tec'?6:3))a.visits.push({ok:false,date:null});if(await preencherEnderecoImportadoV9624(a))addr++;upd++;if(n.contraturnoPendente)pend++;}if(typeof rehydratePlanning==='function')rehydratePlanning();if(typeof saveToStorage==='function')await saveToStorage();if(typeof setupFilters==='function')setupFilters();if(typeof runFilter==='function')runFilter();alert(`IMPORTAÇÃO CONCLUÍDA!\n\nModo: ${d.modo}\nNovos: ${add}\nAtualizados: ${upd}\nEndereços preenchidos pelo CNPJ já existente: ${addr}\nContraturnos identificados: ${ct}\nCasos de sábado sem um único dia ausente: ${pend}\n\nPara CNPJs ainda sem endereço na base, clique em Atualizar Endereços.`);}catch(e){console.error(e);alert('Erro: '+(e.message||e));}finally{if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}input.value='';}}
-// Reforça o lote: primeiro reaproveita endereços de CNPJ já existentes e só depois consulta a BrasilAPI.
-const atualizarEnderecosExternoV9624=window.iniciarSuperBuscaEnderecos;
-window.iniciarSuperBuscaEnderecos=async function(){let internos=0;const todos=[...(DB.quali||[]),...(DB.tec||[])];for(const a of todos)if(await preencherEnderecoImportadoV9624(a))internos++;if(internos&&typeof saveToStorage==='function')await saveToStorage();return atualizarEnderecosExternoV9624.apply(this,arguments);};
+/* v9.6.25 - restauração transacional validada */
+window.restoreBackup = function(input){
+ const file=input?.files?.[0]; if(!file)return;
+ const pass=prompt('RECUPERAÇÃO SEGURA\n\nDigite a senha de Gestão:');
+ if(pass!=='supervisao2026'){input.value='';return alert('Senha incorreta ou operação cancelada.');}
+ const reader=new FileReader();
+ reader.onerror=()=>alert('Não foi possível ler o arquivo.');
+ reader.onload=async e=>{
+  const loader=document.getElementById('globalLoader');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}
+  try{
+   let parsed=JSON.parse(e.target.result); if(typeof parsed==='string')parsed=JSON.parse(parsed);
+   const q=Array.isArray(parsed.quali)?parsed.quali.length:0,t=Array.isArray(parsed.tec)?parsed.tec.length:0;
+   const rp=parsed.planning&&typeof parsed.planning==='object'?Object.keys(parsed.planning).length:0;
+   if(q+t<500)throw new Error(`Arquivo recusado: somente ${q+t} alunos.`);
+   if(!parsed.planning||!parsed.planning_logistics)throw new Error('Arquivo recusado: planejamentos ausentes.');
+   const stamp=new Date().toISOString(); parsed.updatedAt=stamp; delete parsed._origin;
+   // 1) IndexedDB, escrevendo o objeto importado diretamente, sem depender da variável global.
+   const idb=await dbPromise;
+   await new Promise((resolve,reject)=>{const tx=idb.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(parsed,'root');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('Falha no IndexedDB'));});
+   // 2) Arquivo local no Electron, se aplicável.
+   if(typeof isElectron!=='undefined'&&isElectron&&typeof fs!=='undefined'&&fs&&dbFilePath)fs.writeFileSync(dbFilePath,JSON.stringify(parsed));
+   // 3) Nuvem, escrevendo parsed diretamente.
+   if(typeof firebase!=='undefined'&&navigator.onLine){
+    if(typeof LZString==='undefined')throw new Error('Compactador indisponível. A cópia local foi feita, mas a nuvem não foi atualizada.');
+    const payload=LZString.compressToBase64(JSON.stringify(parsed));
+    await firebase.firestore().collection('banco_senac').doc('dados_principais').set({payload,updatedAt:stamp});
+    // relê e valida a nuvem antes de recarregar
+    const chk=await firebase.firestore().collection('banco_senac').doc('dados_principais').get();
+    const cloud=JSON.parse(LZString.decompressFromBase64(chk.data().payload));
+    const cq=(cloud.quali?.length||0)+(cloud.tec?.length||0);
+    if(cq!==q+t)throw new Error(`Validação da nuvem falhou: esperado ${q+t}, encontrado ${cq}.`);
+   }
+   DB=parsed;window.DB=DB;
+   alert(`RECUPERAÇÃO VALIDADA!\n\nQualificação: ${q}\nTécnica: ${t}\nTotal: ${q+t}\nPlanejamentos: ${rp}\n\nA página será recarregada.`);
+   location.reload();
+  }catch(err){console.error(err);alert('A restauração foi interrompida com segurança:\n'+err.message);}
+  finally{if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}input.value='';}
+ };
+ reader.readAsText(file);
+};
 </script>
 </body>
 </html>
