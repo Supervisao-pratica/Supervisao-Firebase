@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.33 - RÁPIDO, SEGURO E VISITAS CORRIGIDAS)</title>
+    <title>Supervisão Senac 2026 (v9.6.35 - E-MAILS SEM CUSTOS)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -1084,12 +1084,10 @@ th {
                         const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
                         if (doc.exists) {
                             const rawData = doc.data();
-                            if (rawData.chunked === true && typeof carregarNuvemV9633 === 'function') {
-                                cloudData = await carregarNuvemV9633(firestoreDB, rawData);
-                            } else if (rawData.payload) {
+                            if (rawData.payload) {
                                 cloudData = JSON.parse(LZString.decompressFromBase64(rawData.payload));
                             } else {
-                                cloudData = rawData;
+                                cloudData = rawData; 
                             }
                         }
                     } catch(err) { console.warn("Erro ao ler nuvem:", err); }
@@ -4780,16 +4778,13 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
     } 
     
     if(logistics.length > 0) { 
-        html += `<h3 style="color: #f68d2e; border-bottom: 1px solid #ddd; padding-bottom: 4px;">2. Deslocamento e Custos</h3>`; 
+        html += `<h3 style="color: #f68d2e; border-bottom: 1px solid #ddd; padding-bottom: 4px;">2. Deslocamento</h3>`; 
         html += `<table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">`; 
         html += `<tr style="background-color: #f8fafc; color: #333;">
             <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Data</th>
             <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Origem</th>
             <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Destino</th>
             <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">KM</th>
-            <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Tipo Comb.</th>
-            <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Pedágio</th>
-            <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Ressarcimento</th>
         </tr>`; 
         let totRessarc = 0;
         logistics.forEach(l => { 
@@ -4807,12 +4802,8 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 <td style="padding: 8px; border: 1px solid #ddd;">${l.origin || '-'} - <b>${l.originTime || '-'}</b></td>
                 <td style="padding: 8px; border: 1px solid #ddd;">${l.dest || '-'} - <b>${l.destTime || '-'}</b>${hospBadge}</td>
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${l.km || '-'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${fType}<br>R$ ${p.toFixed(2).replace('.',',')}</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">R$ ${t.toFixed(2).replace('.',',')}</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #1d4ed8;">R$ ${res.toFixed(2).replace('.',',')}</td>
             </tr>`; 
-        }); 
-        html += `<tr><td colspan="6" style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: bold;">TOTAL A SER RESSARCIDO:</td><td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #1d4ed8;">R$ ${totRessarc.toFixed(2).replace('.',',')}</td></tr>`;
+        });
         html += `</table>`; 
     } 
     
@@ -4952,6 +4943,23 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             datas.forEach(date=>{
                 const pernas=logs.filter(l=>l.date===date&&l.originTime&&l.destTime).map(l=>({...l,s:min(l.originTime),e:min(l.destTime)})).filter(l=>l.s!==null&&l.e!==null&&l.e>l.s).sort((a,b)=>a.s-b.s);
                 const visitasDia=visitas.filter(v=>v.date===date);
+                // SHAREPOINT: algumas linhas importadas chegam com a chegada de um trecho exatamente
+                // igual a saida do trecho seguinte. Isso cria permanencia zero e ocultava o atendimento,
+                // mesmo com alunos Realizados na cidade. Corrige apenas essa incoerencia importada.
+                for(let pi=0;pi<pernas.length-1;pi++){
+                    const atual=pernas[pi],prox=pernas[pi+1];
+                    if(N(atual.dest)!==N(prox.origin)||prox.s>atual.e)continue;
+                    const locais=visitasDia.filter(v=>N(v.student?.cidade)===N(atual.dest));
+                    if(!locais.length)continue;
+                    // Reserva 30 minutos por atendimento realizado, limitado pelo inicio do deslocamento.
+                    const minutos=Math.max(30,locais.length*30);
+                    const chegadaCorrigida=Math.max(atual.s,prox.s-minutos);
+                    if(chegadaCorrigida<prox.s){
+                        const original=atual.destTime;
+                        atual.e=chegadaCorrigida;atual.destTime=clock(chegadaCorrigida);
+                        warnings.push(`Horario importado do SharePoint ajustado em ${atual.dest}: chegada ${original} -> ${atual.destTime}, pois havia ${locais.length} aluno(s) realizado(s) e o intervalo estava zerado.`);
+                    }
+                }
                 if(!pernas.length){warnings.push(`Dia ${date.split('-').reverse().join('/')}: não há deslocamentos válidos.`);return;}
                 const bloqueios=[
                     ...lunches.filter(x=>x.date===date).map(x=>({type:'DESCANSO',s:min(x.start),e:min(x.end),start:x.start,end:x.end,origin:'-',turma:'-',cc:'-'})),
@@ -5198,32 +5206,8 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #004587; font-size: 14px;">${decimalToTime(totalGeral)}</td>
                 <td colspan="2" style="border: 1px solid #ddd;"></td>
             </tr>`;
-            
-            const contextLogs = DB.planning_logistics[STATE.planContext] || [];
-            let totKm = 0, totPedagio = 0, totCombustivel = 0, totRessarcimento = 0;
-            contextLogs.forEach(l => {
-                const k = parseFloat(l.km) || 0;
-                const p = parseFloat(l.fuelPrice) || 0;
-                const t = parseFloat(l.toll) || 0;
-                const fType = l.fuelType || 'Gasolina';
-                const consumo = fType === 'Álcool' ? 8 : 10;
-                const combustivelReembolso = (k / consumo) * 1.25 * p;
-                totKm += k; totPedagio += t; totCombustivel += combustivelReembolso; totRessarcimento += (combustivelReembolso + t);
-            });
-            
-            html += `<tr>
-                <td colspan="9" style="padding: 12px; border: 1px solid #ddd; background-color: #eff6ff; text-align: right;">
-                    <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Custos de Deslocamento</div>
-                    <div style="font-size: 11px; color: #334155; margin-bottom: 4px;">
-                        KM Total: <b>${totKm} km</b> | 
-                        Pedágio: <b>R$ ${totPedagio.toFixed(2).replace('.',',')}</b> | 
-                        Custos removidos: <b>R$ ${totCombustivel.toFixed(2).replace('.',',')}</b>
-                    </div>
-                    <div style="font-size: 14px; color: #1d4ed8; font-weight: bold;">
-                        TOTAL A SER RESSARCIDO: R$ ${totRessarcimento.toFixed(2).replace('.',',')}
-                    </div>
-                </td>
-            </tr>`;
+            // Resumo financeiro omitido apenas na copia para e-mail.
+
             
             html += `</table></div>`;
 
@@ -8978,57 +8962,6 @@ function baixarJsonV9627(data,nome){const texto=JSON.stringify(data);const blob=
 function gerarBackupIntegralManual(){
  try{const snap=JSON.parse(JSON.stringify(DB||{}));snap.updatedAt=new Date().toISOString();snap._backup_manifest=criarManifestoBackupIntegral(snap,'manual');const v=validarBackupIntegralV9627(snap);if(!v.ok)throw new Error('Backup bloqueado: '+v.erros.join(', '));const nome=`backup_INTEGRAL_senac_${new Date().toISOString().replace(/[:.]/g,'-')}.json`,bytes=baixarJsonV9627(snap,nome),c=snap._backup_manifest.counts;alert(`BACKUP INTEGRAL GERADO E VALIDADO\n\nAlunos: ${c.totalAlunos} (${c.quali} Qualificação + ${c.tec} Técnica)\nRoteiros: ${c.roteiros}\nItens planejados: ${c.itensPlanejamento}\nDeslocamentos/logística: ${c.itensLogistica}\nAlmoços: ${c.itensAlmoco}\nAdministrativo: ${c.itensAdmin}\nTurmas de rateio: ${c.controleTurmas}\nLogs de controle/rateio: ${c.controleLogs}\nCampos gravados: ${snap._backup_manifest.keys.length}\nTamanho: ${(bytes/1024/1024).toFixed(2)} MB`);return true;}catch(e){alert('ERRO: o backup não foi gerado porque a validação falhou.\n'+e.message);return false;}
 }
-</script>
-<script>
-/* v9.6.33 - salvamento local imediato + nuvem desacoplada e auditoria de visitas */
-let v9633Timer=null,v9633LocalFila=Promise.resolve(),v9633NuvemExecutando=false,v9633NuvemPendente=false,v9633Revisao=0;
-const V9633_PARTE=350000;
-function snapshotV9633(){const d=JSON.parse(JSON.stringify(DB||{}));d.updatedAt=Date.now();return d;}
-function statusV9633(html,cor){const e=document.getElementById('saveStatus');if(!e)return;e.innerHTML=html;e.classList.remove('text-senac-orange','text-red-500','text-emerald-600');if(cor)e.classList.add(cor);try{lucide.createIcons();}catch(_){}}
-async function gravarLocalV9633(data){
- const db=await dbPromise;
- await new Promise((ok,fail)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,'root');tx.oncomplete=ok;tx.onerror=()=>fail(tx.error||new Error('Falha IndexedDB'));});
- if(typeof isElectron!=='undefined'&&isElectron&&typeof fs!=='undefined'&&fs&&dbFilePath)fs.writeFileSync(dbFilePath,JSON.stringify(data));
-}
-async function salvarNuvemPartesV9633(data){
- if(typeof firebase==='undefined'||!navigator.onLine)return false;
- if(typeof LZString==='undefined')throw new Error('Compactador indisponível');
- const f=firebase.firestore(),ref=f.collection('banco_senac').doc('dados_principais'),payload=LZString.compressToBase64(JSON.stringify(data));
- const anterior=await ref.get(),qtdAnt=anterior.exists?Number(anterior.data()?.chunkCount||0):0;
- if(payload.length<=700000){await ref.set({payload,updatedAt:data.updatedAt,chunked:false,chunkCount:0,schema:'senac-cloud-v3'});for(let i=0;i<qtdAnt;i++)ref.collection('partes').doc(String(i).padStart(5,'0')).delete().catch(()=>{});return true;}
- const partes=[];for(let i=0;i<payload.length;i+=V9633_PARTE)partes.push(payload.slice(i,i+V9633_PARTE));
- for(let ini=0;ini<partes.length;ini+=400){const b=f.batch();partes.slice(ini,ini+400).forEach((conteudo,j)=>b.set(ref.collection('partes').doc(String(ini+j).padStart(5,'0')),{indice:ini+j,conteudo,updatedAt:data.updatedAt}));await b.commit();}
- await ref.set({chunked:true,chunkCount:partes.length,totalLength:payload.length,updatedAt:data.updatedAt,schema:'senac-cloud-v3'});
- for(let i=partes.length;i<qtdAnt;i++)ref.collection('partes').doc(String(i).padStart(5,'0')).delete().catch(()=>{});return true;
-}
-async function carregarNuvemV9633(f,meta){const ref=f.collection('banco_senac').doc('dados_principais'),q=await ref.collection('partes').orderBy('indice').get(),p=[];q.forEach(x=>p.push(x.data()));p.sort((a,b)=>a.indice-b.indice);if(p.length!==Number(meta.chunkCount))throw new Error('Nuvem segmentada incompleta');const raw=p.map(x=>x.conteudo).join('');if(raw.length!==Number(meta.totalLength))throw new Error('Tamanho da nuvem divergente');return JSON.parse(LZString.decompressFromBase64(raw));}
-async function sincronizarNuvemV9633(){
- if(v9633NuvemExecutando){v9633NuvemPendente=true;return;}
- v9633NuvemExecutando=true;v9633NuvemPendente=false;statusV9633('<i data-lucide="cloud-upload" class="w-3 h-3"></i> <span>Sincronizando nuvem...</span>','text-senac-orange');
- try{const ok=await salvarNuvemPartesV9633(snapshotV9633());statusV9633(ok?'<i data-lucide="cloud-check" class="w-3 h-3"></i> <span>Nuvem atualizada</span>':'<i data-lucide="hard-drive" class="w-3 h-3"></i> <span>Local seguro, nuvem pendente</span>',ok?'text-emerald-600':'text-senac-orange');}
- catch(e){console.warn('Nuvem pendente:',e);statusV9633('<i data-lucide="cloud-off" class="w-3 h-3"></i> <span>Local seguro, nuvem pendente</span>','text-senac-orange');}
- finally{v9633NuvemExecutando=false;if(v9633NuvemPendente)setTimeout(sincronizarNuvemV9633,1000);}
-}
-// Toda ação salva localmente já; nuvem ocorre uma vez, 6 s após a última mudança.
-saveToStorage=function(){
- const data=snapshotV9633();statusV9633('<i data-lucide="hard-drive" class="w-3 h-3"></i> <span>Salvando local...</span>','text-senac-orange');
- const tarefa=v9633LocalFila=v9633LocalFila.then(()=>gravarLocalV9633(data)).then(()=>statusV9633('<i data-lucide="check-circle" class="w-3 h-3"></i> <span>Salvo no computador</span>','text-emerald-600')).catch(e=>{statusV9633('<i data-lucide="alert-circle" class="w-3 h-3"></i> <span>Falha local</span>','text-red-500');throw e;});
- clearTimeout(v9633Timer);v9633Timer=setTimeout(sincronizarNuvemV9633,6000);return tarefa;
-};
-function chaveDataVisitaV9633(v){if(!v?.date)return'';const d=new Date(v.date);return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function localizarDuplicidadesVisitasV9633(){const achados=[];[...(DB.quali||[]),...(DB.tec||[])].forEach(a=>{const vistos=new Map();(a.visits||[]).forEach((v,i)=>{if(!v?.ok)return;const k=chaveDataVisitaV9633(v);if(!k)return;if(vistos.has(k))achados.push({aluno:a,manter:vistos.get(k),remover:i,data:k});else vistos.set(k,i);});});return achados;}
-async function auditarDuplicidadesVisitasV9633(){
- const a=localizarDuplicidadesVisitasV9633();if(!a.length)return;
- const alunos=new Set(a.map(x=>x.aluno.id)).size;
- if(!confirm(`CORREÇÃO DE VISITAS DUPLICADAS\n\nForam encontradas ${a.length} visita(s) posterior(es) com a mesma data de uma visita anterior, em ${alunos} aluno(s).\n\nRegra: manter a primeira ocorrência da data; desmarcar a 2ª/3ª/seguintes duplicadas e apagar somente a data duplicada.\n\nAplicar a correção agora?`))return;
- // Primeiro baixa backup integral, quando a função existir.
- try{if(typeof gerarBackupIntegralManual==='function')gerarBackupIntegralManual();}catch(e){console.warn(e);}
- a.forEach(x=>{const v=x.aluno.visits[x.remover];v.ok=false;v.date=null;});
- await saveToStorage();
- if(typeof runFilter==='function')runFilter();
- alert(`CORREÇÃO CONCLUÍDA\n\nVisitas duplicadas desmarcadas: ${a.length}\nAlunos corrigidos: ${alunos}\n\nA visita anterior foi mantida e somente as ocorrências posteriores de mesma data foram limpas.`);
-}
-document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesVisitasV9633,2500));
 </script>
 </body>
 </html>
