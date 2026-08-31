@@ -9126,22 +9126,24 @@ async function auditarDuplicidadesVisitasV9637(){
 }
 document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesVisitasV9637,2500));
 </script>
-<script id="correcao-rateio-almoco-administrativo-v9638">
+<script id="correcao-rateio-clt-administrativo-v9639">
 (function () {
     'use strict';
 
-    const gerarRateioOriginalV9638 = window.generateRateio;
+    const gerarRateioAnteriorV9639 = window.generateRateio;
+    const abrirRateioAnteriorV9639 = window.openRateioModal;
 
-    function normalizarTexto(valor) {
+    function normalizarV9639(valor) {
         return String(valor || '')
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
-            .toUpperCase()
-            .trim();
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toUpperCase();
     }
 
-    function horaParaMinutos(hora) {
-        const resultado = String(hora || '')
+    function horaMinutosV9639(valor) {
+        const resultado = String(valor || '')
             .trim()
             .match(/^(\d{1,2}):(\d{2})/);
 
@@ -9164,126 +9166,14 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
         return (horas * 60) + minutos;
     }
 
-    function minutosParaDecimal(inicio, fim) {
-        const minInicio = horaParaMinutos(inicio);
-        const minFim = horaParaMinutos(fim);
-
-        if (
-            minInicio === null ||
-            minFim === null ||
-            minFim <= minInicio
-        ) {
-            return 0;
-        }
-
-        return (minFim - minInicio) / 60;
-    }
-
-    function assinaturaEvento(evento) {
-        return [
-            normalizarTexto(evento.type),
-            String(evento.date || ''),
-            String(evento.start || ''),
-            String(evento.end || ''),
-            normalizarTexto(evento.turma),
-            normalizarTexto(evento.origin)
-        ].join('|');
-    }
-
-    function obterCCSeguro(turma) {
-        if (!turma || turma === '-') return '-';
-
-        if (typeof obterCentroCustoTurma === 'function') {
-            const cc = obterCentroCustoTurma(turma);
-            if (cc && cc !== '-') return cc;
-        }
-
-        const turmaNormalizada = normalizarTexto(turma);
-
-        const cadastroTurma = (DB.controle_turmas || []).find(item =>
-            normalizarTexto(item && item.nome) === turmaNormalizada
+    function minutosHoraV9639(totalMinutos) {
+        const total = Math.max(
+            0,
+            Math.round(Number(totalMinutos) || 0)
         );
 
-        if (cadastroTurma && cadastroTurma.cc) {
-            return cadastroTurma.cc;
-        }
-
-        const chaveCC = Object.keys(DB.cc_map || {}).find(chave =>
-            normalizarTexto(chave) === turmaNormalizada
-        );
-
-        return chaveCC ? DB.cc_map[chaveCC] : '-';
-    }
-
-    function atualizarQuadroUEPT(possuiAdministrativo, possuiAlmoco) {
-        const box = document.getElementById('boxUept');
-        if (!box) return;
-
-        box.innerHTML = `
-            <p>
-                <strong class="text-senac-blue">
-                    Dados para deslocamento:
-                </strong>
-                UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 3
-            </p>
-
-            <p>
-                <strong class="text-senac-blue">
-                    Dados para atendimento:
-                </strong>
-                UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 24
-            </p>
-
-            <p id="linhaAdmin"
-               class="${possuiAdministrativo ? '' : 'hidden'}">
-                <strong class="text-senac-blue">
-                    Dados para administrativo:
-                </strong>
-                UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 24
-            </p>
-
-            <p id="linhaAlmoco"
-               class="${possuiAlmoco ? '' : 'hidden'}">
-                <strong class="text-senac-blue">
-                    Intervalo de almoço:
-                </strong>
-                Registro de descanso, sem apropriação de UEPT/TEPT
-            </p>
-        `;
-    }
-
-    function criarIndicadorAlmoco() {
-        if (document.getElementById('rateioTotalAlmoco')) return;
-
-        const totalAdmin = document.getElementById('rateioTotalAdmin');
-        if (!totalAdmin) return;
-
-        const blocoAdmin = totalAdmin.closest('.flex-col');
-        if (!blocoAdmin || !blocoAdmin.parentElement) return;
-
-        const novoBloco = document.createElement('div');
-
-        novoBloco.className = 'flex flex-col';
-        novoBloco.innerHTML = `
-            <span class="text-[9px] font-bold text-slate-400 uppercase">
-                Almoço
-            </span>
-
-            <span
-                class="text-sm font-black text-orange-500"
-                id="rateioTotalAlmoco"
-            >
-                00:00
-            </span>
-        `;
-
-        blocoAdmin.parentElement.appendChild(novoBloco);
-    }
-
-    function converterDecimalParaHora(decimal) {
-        const totalMinutos = Math.round((Number(decimal) || 0) * 60);
-        const horas = Math.floor(totalMinutos / 60);
-        const minutos = totalMinutos % 60;
+        const horas = Math.floor(total / 60);
+        const minutos = total % 60;
 
         return (
             String(horas).padStart(2, '0') +
@@ -9292,86 +9182,171 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
         );
     }
 
-    function incluirAlmocoEAdministrativo() {
-        if (!STATE.planContext) return;
+    function decimalHoraV9639(decimal) {
+        return minutosHoraV9639(
+            (Number(decimal) || 0) * 60
+        );
+    }
 
-        if (!Array.isArray(window.RATEIO_DATA)) {
-            window.RATEIO_DATA = [];
+    function minutosDecimalV9639(inicio, fim) {
+        const minutoInicio = horaMinutosV9639(inicio);
+        const minutoFim = horaMinutosV9639(fim);
+
+        if (
+            minutoInicio === null ||
+            minutoFim === null ||
+            minutoFim <= minutoInicio
+        ) {
+            return 0;
         }
 
-        const contexto = STATE.planContext;
+        return (minutoFim - minutoInicio) / 60;
+    }
 
-        const almocos =
+    function minutosRelogioV9639(minutos) {
+        const valor = Math.max(
+            0,
+            Math.round(Number(minutos) || 0)
+        );
+
+        return (
+            String(Math.floor(valor / 60)).padStart(2, '0') +
+            ':' +
+            String(valor % 60).padStart(2, '0')
+        );
+    }
+
+    function ccTurmaV9639(turma) {
+        const valorTurma = String(turma || '').trim();
+
+        if (!valorTurma || valorTurma === '-') {
+            return '-';
+        }
+
+        if (typeof obterCentroCustoTurma === 'function') {
+            const cc = obterCentroCustoTurma(valorTurma);
+
+            if (cc && cc !== '-') {
+                return String(cc).trim();
+            }
+        }
+
+        const chave = normalizarV9639(valorTurma);
+
+        const controle = (DB.controle_turmas || []).find(item =>
+            normalizarV9639(item && item.nome) === chave
+        );
+
+        if (controle && controle.cc) {
+            return String(controle.cc).trim();
+        }
+
+        const chaveMapa = Object.keys(DB.cc_map || {}).find(item =>
+            normalizarV9639(item) === chave
+        );
+
+        if (chaveMapa) {
+            return String(DB.cc_map[chaveMapa] || '-').trim();
+        }
+
+        return '-';
+    }
+
+    function intervalosAlmocoV9639(contexto) {
+        const registros =
             DB.planning_lunch &&
             Array.isArray(DB.planning_lunch[contexto])
                 ? DB.planning_lunch[contexto]
                 : [];
 
-        const administrativos =
+        const assinaturas = new Set();
+        const resultado = [];
+
+        registros.forEach((registro, indice) => {
+            const data = String(registro.date || '').trim();
+            const inicio = String(registro.start || '').trim();
+            const fim = String(registro.end || '').trim();
+
+            const minutoInicio = horaMinutosV9639(inicio);
+            const minutoFim = horaMinutosV9639(fim);
+
+            if (
+                !data ||
+                minutoInicio === null ||
+                minutoFim === null ||
+                minutoFim <= minutoInicio
+            ) {
+                return;
+            }
+
+            const assinatura =
+                `${data}|${inicio}|${fim}`;
+
+            if (assinaturas.has(assinatura)) return;
+
+            assinaturas.add(assinatura);
+
+            resultado.push({
+                id: `ALMOCO_${indice}`,
+                date: data,
+                start: inicio,
+                end: fim,
+                startMin: minutoInicio,
+                endMin: minutoFim,
+                minutes: minutoFim - minutoInicio
+            });
+        });
+
+        return resultado;
+    }
+
+    function administrativosV9639(contexto) {
+        const registros =
             DB.planning_admin &&
             Array.isArray(DB.planning_admin[contexto])
                 ? DB.planning_admin[contexto]
                 : [];
 
-        const assinaturas = new Set(
-            RATEIO_DATA.map(assinaturaEvento)
-        );
+        const assinaturas = new Set();
+        const resultado = [];
 
-        const avisos = [];
+        registros.forEach((registro, indice) => {
+            const data = String(registro.date || '').trim();
+            const inicio = String(registro.start || '').trim();
+            const fim = String(registro.end || '').trim();
+            const turma =
+                String(registro.turma || '').trim() || '-';
 
-        almocos.forEach((item, indice) => {
-            const data = String(item.date || '').trim();
-            const inicio = String(item.start || '').trim();
-            const fim = String(item.end || '').trim();
-            const horas = minutosParaDecimal(inicio, fim);
-
-            if (!data || !inicio || !fim || horas <= 0) {
-                avisos.push(
-                    `Almoço ${indice + 1}: data ou horário inválido.`
-                );
-                return;
-            }
-
-            const evento = {
-                date: data,
-                type: 'DESCANSO',
-                start: inicio,
-                end: fim,
-                origin: 'INTERVALO DE ALMOÇO',
-                dest: '-',
-                turma: '-',
-                cc: '-',
-                hours: horas,
-                allocationRule: 'almoco_planejamento'
-            };
-
-            const assinatura = assinaturaEvento(evento);
-
-            if (!assinaturas.has(assinatura)) {
-                RATEIO_DATA.push(evento);
-                assinaturas.add(assinatura);
-            }
-        });
-
-        administrativos.forEach((item, indice) => {
-            const data = String(item.date || '').trim();
-            const inicio = String(item.start || '').trim();
-            const fim = String(item.end || '').trim();
-            const turma = String(item.turma || '').trim() || '-';
             const atividade =
-                String(item.activity || '').trim() ||
+                String(registro.activity || '').trim() ||
                 'ATIVIDADE ADMINISTRATIVA';
 
-            const horas = minutosParaDecimal(inicio, fim);
+            const minutoInicio = horaMinutosV9639(inicio);
+            const minutoFim = horaMinutosV9639(fim);
 
-            if (!data || !inicio || !fim || horas <= 0) {
-                avisos.push(
-                    `Administrativo ${indice + 1}: data ou horário inválido.`
-                );
+            if (
+                !data ||
+                minutoInicio === null ||
+                minutoFim === null ||
+                minutoFim <= minutoInicio
+            ) {
                 return;
             }
 
-            const evento = {
+            const assinatura = [
+                data,
+                inicio,
+                fim,
+                normalizarV9639(turma),
+                normalizarV9639(atividade)
+            ].join('|');
+
+            if (assinaturas.has(assinatura)) return;
+
+            assinaturas.add(assinatura);
+
+            resultado.push({
+                id: `ADMIN_${indice}`,
                 date: data,
                 type: 'ADMINISTRATIVO',
                 start: inicio,
@@ -9379,164 +9354,641 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                 origin: atividade,
                 dest: '-',
                 turma: turma,
-                cc: obterCCSeguro(turma),
-                hours: horas,
-                allocationRule: 'administrativo_planejamento'
-            };
+                cc: ccTurmaV9639(turma),
+                hours: (minutoFim - minutoInicio) / 60,
+                minutes: minutoFim - minutoInicio,
+                allocationRule: 'administrativo_data_separada'
+            });
+        });
 
-            const assinatura = assinaturaEvento(evento);
+        return resultado.sort((a, b) =>
+            String(a.date).localeCompare(String(b.date)) ||
+            horaMinutosV9639(a.start) -
+                horaMinutosV9639(b.start)
+        );
+    }
 
-            if (!assinaturas.has(assinatura)) {
-                RATEIO_DATA.push(evento);
-                assinaturas.add(assinatura);
+    function descontarIntervalosV9639(eventos, almocos) {
+        const resultado = [];
+
+        eventos.forEach(evento => {
+            if (
+                evento.type === 'DESCANSO' ||
+                evento.type === 'ADMINISTRATIVO'
+            ) {
+                return;
             }
+
+            const inicioEvento = horaMinutosV9639(evento.start);
+            const fimEvento = horaMinutosV9639(evento.end);
+
+            if (
+                inicioEvento === null ||
+                fimEvento === null ||
+                fimEvento <= inicioEvento
+            ) {
+                return;
+            }
+
+            let segmentos = [
+                [inicioEvento, fimEvento]
+            ];
+
+            const almocosDoDia = almocos
+                .filter(almoco =>
+                    almoco.date === evento.date
+                )
+                .sort((a, b) =>
+                    a.startMin - b.startMin
+                );
+
+            almocosDoDia.forEach(almoco => {
+                segmentos = segmentos.flatMap(segmento => {
+                    const inicioSegmento = segmento[0];
+                    const fimSegmento = segmento[1];
+
+                    if (
+                        almoco.endMin <= inicioSegmento ||
+                        almoco.startMin >= fimSegmento
+                    ) {
+                        return [segmento];
+                    }
+
+                    const partes = [];
+
+                    if (almoco.startMin > inicioSegmento) {
+                        partes.push([
+                            inicioSegmento,
+                            Math.min(
+                                almoco.startMin,
+                                fimSegmento
+                            )
+                        ]);
+                    }
+
+                    if (almoco.endMin < fimSegmento) {
+                        partes.push([
+                            Math.max(
+                                almoco.endMin,
+                                inicioSegmento
+                            ),
+                            fimSegmento
+                        ]);
+                    }
+
+                    return partes.filter(parte =>
+                        parte[1] > parte[0]
+                    );
+                });
+            });
+
+            segmentos.forEach((segmento, indice) => {
+                const inicio = segmento[0];
+                const fim = segmento[1];
+
+                if (fim <= inicio) return;
+
+                resultado.push({
+                    ...evento,
+                    start: minutosRelogioV9639(inicio),
+                    end: minutosRelogioV9639(fim),
+                    hours: (fim - inicio) / 60,
+                    lunchAdjusted:
+                        segmentos.length > 1 ||
+                        inicio !== inicioEvento ||
+                        fim !== fimEvento,
+                    segmentIndex: indice
+                });
+            });
+        });
+
+        almocos.forEach(almoco => {
+            resultado.push({
+                date: almoco.date,
+                type: 'DESCANSO',
+                start: almoco.start,
+                end: almoco.end,
+                origin: 'INTERVALO DE ALMOÇO',
+                dest: '-',
+                turma: '-',
+                cc: '-',
+                hours: almoco.minutes / 60,
+                allocationRule: 'intervalo_nao_computado'
+            });
         });
 
         const prioridade = {
             DESLOCAMENTO: 1,
             ATENDIMENTO: 2,
-            DESCANSO: 3,
-            ADMINISTRATIVO: 4
+            DESCANSO: 3
         };
 
-        RATEIO_DATA.sort((a, b) => {
-            const comparacaoData =
-                String(a.date || '').localeCompare(String(b.date || ''));
+        return resultado.sort((a, b) => {
+            const data =
+                String(a.date || '').localeCompare(
+                    String(b.date || '')
+                );
 
-            if (comparacaoData !== 0) return comparacaoData;
+            if (data !== 0) return data;
 
-            const inicioA = horaParaMinutos(a.start);
-            const inicioB = horaParaMinutos(b.start);
+            const inicioA =
+                horaMinutosV9639(a.start) ?? 99999;
 
-            const minutoA = inicioA === null ? 99999 : inicioA;
-            const minutoB = inicioB === null ? 99999 : inicioB;
+            const inicioB =
+                horaMinutosV9639(b.start) ?? 99999;
 
-            if (minutoA !== minutoB) return minutoA - minutoB;
+            if (inicioA !== inicioB) {
+                return inicioA - inicioB;
+            }
 
             return (
                 (prioridade[a.type] || 99) -
                 (prioridade[b.type] || 99)
             );
         });
+    }
 
-        criarIndicadorAlmoco();
+    function garantirEstruturaV9639() {
+        const tabelaPrincipal =
+            document.getElementById('rateioTableBody');
 
-        const totalAlmoco = RATEIO_DATA
-            .filter(item => item.type === 'DESCANSO')
-            .reduce((total, item) => total + (Number(item.hours) || 0), 0);
+        if (!tabelaPrincipal) return null;
 
-        const totalAdministrativo = RATEIO_DATA
-            .filter(item => item.type === 'ADMINISTRATIVO')
-            .reduce((total, item) => total + (Number(item.hours) || 0), 0);
+        const containerTabela =
+            tabelaPrincipal.closest(
+                '.flex-1.overflow-auto'
+            ) ||
+            tabelaPrincipal.closest('table')?.parentElement;
 
-        const possuiAdministrativo = totalAdministrativo > 0;
-        const possuiAlmoco = totalAlmoco > 0;
+        if (!containerTabela) return null;
 
-        atualizarQuadroUEPT(
-            possuiAdministrativo,
-            possuiAlmoco
-        );
+        let bloco =
+            document.getElementById(
+                'blocoAdministrativoRateioV9639'
+            );
 
-        if (typeof renderRateioTable === 'function') {
-            renderRateioTable(RATEIO_DATA, avisos);
+        if (!bloco) {
+            bloco = document.createElement('div');
+            bloco.id =
+                'blocoAdministrativoRateioV9639';
+
+            bloco.className =
+                'mt-4 border border-purple-200 rounded-lg overflow-hidden bg-white';
+
+            bloco.innerHTML = `
+                <div class="bg-purple-50 border-b border-purple-200 px-3 py-2">
+                    <div class="flex justify-between items-center gap-4">
+                        <div>
+                            <h4 class="text-xs font-black text-purple-700 uppercase">
+                                Horas administrativas em datas separadas
+                            </h4>
+
+                            <p class="text-[10px] text-purple-600 mt-0.5">
+                                Não integram o total da jornada de viagem.
+                            </p>
+                        </div>
+
+                        <div class="text-right">
+                            <span class="text-[9px] font-bold text-purple-500 uppercase block">
+                                Total administrativo
+                            </span>
+
+                            <span
+                                id="totalAdministrativoSeparadoV9639"
+                                class="text-lg font-black text-purple-700"
+                            >
+                                00:00
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overflow-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-purple-50/60 text-slate-600">
+                            <tr>
+                                <th class="p-2 border">
+                                    Data
+                                </th>
+
+                                <th class="p-2 border">
+                                    Atividade
+                                </th>
+
+                                <th class="p-2 border text-center">
+                                    Início
+                                </th>
+
+                                <th class="p-2 border text-center">
+                                    Fim
+                                </th>
+
+                                <th class="p-2 border text-right">
+                                    Horas
+                                </th>
+
+                                <th class="p-2 border">
+                                    Turma
+                                </th>
+
+                                <th class="p-2 border">
+                                    CC
+                                </th>
+                            </tr>
+                        </thead>
+
+                        <tbody
+                            id="tbodyAdministrativoRateioV9639"
+                        ></tbody>
+                    </table>
+                </div>
+
+                <div
+                    id="dadosAdministrativoRateioV9639"
+                    class="bg-purple-50 border-t border-purple-200 px-3 py-2 text-[10px] text-purple-700"
+                >
+                    UEPT: 27 | TEPT: 11348 | Evento: 24
+                </div>
+            `;
+
+            containerTabela.insertAdjacentElement(
+                'afterend',
+                bloco
+            );
         }
 
+        let totalAlmoco =
+            document.getElementById(
+                'rateioTotalAlmoco'
+            );
+
+        if (!totalAlmoco) {
+            const totalAdmin =
+                document.getElementById(
+                    'rateioTotalAdmin'
+                );
+
+            const blocoAdmin =
+                totalAdmin?.closest('.flex-col');
+
+            if (
+                blocoAdmin &&
+                blocoAdmin.parentElement
+            ) {
+                const indicador =
+                    document.createElement('div');
+
+                indicador.className = 'flex flex-col';
+
+                indicador.innerHTML = `
+                    <span class="text-[9px] font-bold text-slate-400 uppercase">
+                        Almoço descontado
+                    </span>
+
+                    <span
+                        id="rateioTotalAlmoco"
+                        class="text-sm font-black text-orange-500"
+                    >
+                        00:00
+                    </span>
+                `;
+
+                blocoAdmin.parentElement.appendChild(
+                    indicador
+                );
+
+                totalAlmoco =
+                    document.getElementById(
+                        'rateioTotalAlmoco'
+                    );
+            }
+        }
+
+        return bloco;
+    }
+
+    function renderAdministrativoV9639(
+        administrativos
+    ) {
+        garantirEstruturaV9639();
+
+        const bloco =
+            document.getElementById(
+                'blocoAdministrativoRateioV9639'
+            );
+
+        const tbody =
+            document.getElementById(
+                'tbodyAdministrativoRateioV9639'
+            );
+
+        const totalEl =
+            document.getElementById(
+                'totalAdministrativoSeparadoV9639'
+            );
+
+        if (!bloco || !tbody || !totalEl) return;
+
+        if (!administrativos.length) {
+            bloco.classList.add('hidden');
+            tbody.innerHTML = '';
+            totalEl.innerText = '00:00';
+            return;
+        }
+
+        bloco.classList.remove('hidden');
+
+        let totalMinutos = 0;
+
+        tbody.innerHTML =
+            administrativos.map(item => {
+                totalMinutos += item.minutes;
+
+                const dataBR = String(
+                    item.date || ''
+                ).includes('-')
+                    ? String(item.date)
+                        .split('-')
+                        .reverse()
+                        .join('/')
+                    : String(item.date || '-');
+
+                return `
+                    <tr class="bg-purple-50/20">
+                        <td class="p-2 border font-medium">
+                            ${dataBR}
+                        </td>
+
+                        <td class="p-2 border">
+                            ${item.origin || '-'}
+                        </td>
+
+                        <td class="p-2 border text-center font-mono">
+                            ${item.start || '-'}
+                        </td>
+
+                        <td class="p-2 border text-center font-mono">
+                            ${item.end || '-'}
+                        </td>
+
+                        <td class="p-2 border text-right font-black text-purple-700">
+                            ${minutosHoraV9639(item.minutes)}
+                        </td>
+
+                        <td class="p-2 border font-mono text-[9px]">
+                            ${item.turma || '-'}
+                        </td>
+
+                        <td class="p-2 border font-mono text-[9px]">
+                            ${item.cc || '-'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+        totalEl.innerText =
+            minutosHoraV9639(totalMinutos);
+    }
+
+    function atualizarQuadroV9639(
+        totalAlmoco,
+        totalAdmin
+    ) {
+        const box =
+            document.getElementById('boxUept');
+
+        if (!box) return;
+
+        box.innerHTML = `
+            <p>
+                <strong class="text-senac-blue">
+                    Dados para deslocamento:
+                </strong>
+                UEPT: 27 &nbsp;|&nbsp;
+                TEPT: 11348 &nbsp;|&nbsp;
+                Evento: 3
+            </p>
+
+            <p>
+                <strong class="text-senac-blue">
+                    Dados para atendimento:
+                </strong>
+                UEPT: 27 &nbsp;|&nbsp;
+                TEPT: 11348 &nbsp;|&nbsp;
+                Evento: 24
+            </p>
+
+            <p>
+                <strong class="text-orange-600">
+                    Intervalo intrajornada descontado:
+                </strong>
+                ${minutosHoraV9639(totalAlmoco)}
+            </p>
+
+            <p class="${totalAdmin > 0 ? '' : 'hidden'}">
+                <strong class="text-purple-700">
+                    Administrativo em bloco separado:
+                </strong>
+                UEPT: 27 &nbsp;|&nbsp;
+                TEPT: 11348 &nbsp;|&nbsp;
+                Evento: 24 &nbsp;|&nbsp;
+                Total: ${minutosHoraV9639(totalAdmin)}
+            </p>
+        `;
+    }
+
+    function processarCorrecaoV9639() {
+        const contexto = STATE.planContext;
+
+        if (!contexto) return;
+
+        garantirEstruturaV9639();
+
+        const almocos =
+            intervalosAlmocoV9639(contexto);
+
+        const administrativos =
+            administrativosV9639(contexto);
+
+        const eventosOriginais =
+            Array.isArray(RATEIO_DATA)
+                ? RATEIO_DATA.filter(item =>
+                    item.type !== 'DESCANSO' &&
+                    item.type !== 'ADMINISTRATIVO'
+                )
+                : [];
+
+        const eventosViagem =
+            descontarIntervalosV9639(
+                eventosOriginais,
+                almocos
+            );
+
+        RATEIO_DATA = eventosViagem;
+        window.RATEIO_DATA = RATEIO_DATA;
+
+        if (typeof renderRateioTable === 'function') {
+            renderRateioTable(
+                eventosViagem,
+                []
+            );
+        }
+
+        renderAdministrativoV9639(
+            administrativos
+        );
+
+        const totalAlmocoMinutos =
+            almocos.reduce(
+                (total, item) =>
+                    total + item.minutes,
+                0
+            );
+
+        const totalAdminMinutos =
+            administrativos.reduce(
+                (total, item) =>
+                    total + item.minutes,
+                0
+            );
+
         const totalAlmocoEl =
-            document.getElementById('rateioTotalAlmoco');
+            document.getElementById(
+                'rateioTotalAlmoco'
+            );
 
         if (totalAlmocoEl) {
             totalAlmocoEl.innerText =
-                converterDecimalParaHora(totalAlmoco);
+                minutosHoraV9639(
+                    totalAlmocoMinutos
+                );
         }
 
-        const totalAdminEl =
-            document.getElementById('rateioTotalAdmin');
+        const totalAdminRodape =
+            document.getElementById(
+                'rateioTotalAdmin'
+            );
 
-        if (totalAdminEl) {
-            totalAdminEl.innerText =
-                converterDecimalParaHora(totalAdministrativo);
+        if (totalAdminRodape) {
+            totalAdminRodape.innerText = '00:00';
+
+            const bloco =
+                totalAdminRodape.closest(
+                    '.flex-col'
+                );
+
+            if (bloco) {
+                bloco.classList.add('hidden');
+            }
         }
 
-        const statusEl =
-            document.getElementById('rateioStatusText');
+        atualizarQuadroV9639(
+            totalAlmocoMinutos,
+            totalAdminMinutos
+        );
 
-        if (statusEl) {
-            const totalVisitas = (
-                DB.planning[contexto] || []
-            ).filter(item => {
-                const status = normalizarTexto(item.status);
+        const status =
+            document.getElementById(
+                'rateioStatusText'
+            );
 
-                return [
-                    'REALIZADA',
-                    'REALIZADO',
-                    'VISITADO',
-                    'VISITADA'
-                ].includes(status);
-            }).length;
+        if (status) {
+            const totalViagemMinutos =
+                eventosViagem
+                    .filter(item =>
+                        item.type !== 'DESCANSO'
+                    )
+                    .reduce(
+                        (total, item) =>
+                            total +
+                            Math.round(
+                                (Number(item.hours) || 0) *
+                                60
+                            ),
+                        0
+                    );
 
-            statusEl.innerText =
-                `Linha do tempo sequencial: ${RATEIO_DATA.length} etapas` +
-                ` | Alunos realizados: ${totalVisitas}` +
-                ` | Almoço: ${converterDecimalParaHora(totalAlmoco)}` +
-                ` | Administrativo: ${converterDecimalParaHora(totalAdministrativo)}.`;
-        }
+            const alunosRealizados =
+                (DB.planning[contexto] || [])
+                    .filter(item =>
+                        [
+                            'REALIZADA',
+                            'REALIZADO',
+                            'VISITADO',
+                            'VISITADA'
+                        ].includes(
+                            normalizarV9639(
+                                item.status
+                            )
+                        )
+                    ).length;
 
-        if (
-            possuiAdministrativo &&
-            typeof window.renderControleRateio === 'function'
-        ) {
-            window.renderControleRateio();
+            status.innerText =
+                `Jornada de viagem: ` +
+                `${minutosHoraV9639(totalViagemMinutos)}` +
+                ` | Almoço descontado: ` +
+                `${minutosHoraV9639(totalAlmocoMinutos)}` +
+                ` | Alunos realizados: ` +
+                `${alunosRealizados}` +
+                ` | Administrativo separado: ` +
+                `${minutosHoraV9639(totalAdminMinutos)}.`;
         }
 
         if (
             typeof lucide !== 'undefined' &&
-            typeof lucide.createIcons === 'function'
+            typeof lucide.createIcons ===
+                'function'
         ) {
             lucide.createIcons();
         }
     }
 
     window.generateRateio = function () {
-        if (typeof gerarRateioOriginalV9638 !== 'function') {
-            alert('A função original de rateio não foi localizada.');
+        if (
+            typeof gerarRateioAnteriorV9639 !==
+            'function'
+        ) {
+            alert(
+                'A função original do rateio não foi localizada.'
+            );
             return;
         }
 
         const resultado =
-            gerarRateioOriginalV9638.apply(this, arguments);
+            gerarRateioAnteriorV9639.apply(
+                this,
+                arguments
+            );
 
-        incluirAlmocoEAdministrativo();
+        processarCorrecaoV9639();
 
         return resultado;
     };
 
-    const abrirRateioOriginalV9638 = window.openRateioModal;
-
-    if (typeof abrirRateioOriginalV9638 === 'function') {
+    if (
+        typeof abrirRateioAnteriorV9639 ===
+        'function'
+    ) {
         window.openRateioModal = function () {
             const resultado =
-                abrirRateioOriginalV9638.apply(this, arguments);
+                abrirRateioAnteriorV9639.apply(
+                    this,
+                    arguments
+                );
 
             setTimeout(() => {
-                criarIndicadorAlmoco();
+                garantirEstruturaV9639();
 
-                const contexto = STATE.planContext;
+                const contexto =
+                    STATE.planContext;
 
-                const possuiAdmin =
-                    Array.isArray(DB.planning_admin?.[contexto]) &&
-                    DB.planning_admin[contexto].some(item =>
-                        item.date && item.start && item.end
+                const administrativos =
+                    administrativosV9639(
+                        contexto
                     );
 
-                const possuiAlmoco =
-                    Array.isArray(DB.planning_lunch?.[contexto]) &&
-                    DB.planning_lunch[contexto].some(item =>
-                        item.date && item.start && item.end
-                    );
-
-                atualizarQuadroUEPT(
-                    possuiAdmin,
-                    possuiAlmoco
+                renderAdministrativoV9639(
+                    administrativos
                 );
             }, 50);
 
