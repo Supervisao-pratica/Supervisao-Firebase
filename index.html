@@ -9126,5 +9126,424 @@ async function auditarDuplicidadesVisitasV9637(){
 }
 document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesVisitasV9637,2500));
 </script>
+<script id="correcao-rateio-almoco-administrativo-v9638">
+(function () {
+    'use strict';
+
+    const gerarRateioOriginalV9638 = window.generateRateio;
+
+    function normalizarTexto(valor) {
+        return String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase()
+            .trim();
+    }
+
+    function horaParaMinutos(hora) {
+        const resultado = String(hora || '')
+            .trim()
+            .match(/^(\d{1,2}):(\d{2})/);
+
+        if (!resultado) return null;
+
+        const horas = Number(resultado[1]);
+        const minutos = Number(resultado[2]);
+
+        if (
+            !Number.isFinite(horas) ||
+            !Number.isFinite(minutos) ||
+            horas < 0 ||
+            horas > 23 ||
+            minutos < 0 ||
+            minutos > 59
+        ) {
+            return null;
+        }
+
+        return (horas * 60) + minutos;
+    }
+
+    function minutosParaDecimal(inicio, fim) {
+        const minInicio = horaParaMinutos(inicio);
+        const minFim = horaParaMinutos(fim);
+
+        if (
+            minInicio === null ||
+            minFim === null ||
+            minFim <= minInicio
+        ) {
+            return 0;
+        }
+
+        return (minFim - minInicio) / 60;
+    }
+
+    function assinaturaEvento(evento) {
+        return [
+            normalizarTexto(evento.type),
+            String(evento.date || ''),
+            String(evento.start || ''),
+            String(evento.end || ''),
+            normalizarTexto(evento.turma),
+            normalizarTexto(evento.origin)
+        ].join('|');
+    }
+
+    function obterCCSeguro(turma) {
+        if (!turma || turma === '-') return '-';
+
+        if (typeof obterCentroCustoTurma === 'function') {
+            const cc = obterCentroCustoTurma(turma);
+            if (cc && cc !== '-') return cc;
+        }
+
+        const turmaNormalizada = normalizarTexto(turma);
+
+        const cadastroTurma = (DB.controle_turmas || []).find(item =>
+            normalizarTexto(item && item.nome) === turmaNormalizada
+        );
+
+        if (cadastroTurma && cadastroTurma.cc) {
+            return cadastroTurma.cc;
+        }
+
+        const chaveCC = Object.keys(DB.cc_map || {}).find(chave =>
+            normalizarTexto(chave) === turmaNormalizada
+        );
+
+        return chaveCC ? DB.cc_map[chaveCC] : '-';
+    }
+
+    function atualizarQuadroUEPT(possuiAdministrativo, possuiAlmoco) {
+        const box = document.getElementById('boxUept');
+        if (!box) return;
+
+        box.innerHTML = `
+            <p>
+                <strong class="text-senac-blue">
+                    Dados para deslocamento:
+                </strong>
+                UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 3
+            </p>
+
+            <p>
+                <strong class="text-senac-blue">
+                    Dados para atendimento:
+                </strong>
+                UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 24
+            </p>
+
+            <p id="linhaAdmin"
+               class="${possuiAdministrativo ? '' : 'hidden'}">
+                <strong class="text-senac-blue">
+                    Dados para administrativo:
+                </strong>
+                UEPT: 27 &nbsp;|&nbsp; TEPT: 11348 &nbsp;|&nbsp; Evento: 24
+            </p>
+
+            <p id="linhaAlmoco"
+               class="${possuiAlmoco ? '' : 'hidden'}">
+                <strong class="text-senac-blue">
+                    Intervalo de almoço:
+                </strong>
+                Registro de descanso, sem apropriação de UEPT/TEPT
+            </p>
+        `;
+    }
+
+    function criarIndicadorAlmoco() {
+        if (document.getElementById('rateioTotalAlmoco')) return;
+
+        const totalAdmin = document.getElementById('rateioTotalAdmin');
+        if (!totalAdmin) return;
+
+        const blocoAdmin = totalAdmin.closest('.flex-col');
+        if (!blocoAdmin || !blocoAdmin.parentElement) return;
+
+        const novoBloco = document.createElement('div');
+
+        novoBloco.className = 'flex flex-col';
+        novoBloco.innerHTML = `
+            <span class="text-[9px] font-bold text-slate-400 uppercase">
+                Almoço
+            </span>
+
+            <span
+                class="text-sm font-black text-orange-500"
+                id="rateioTotalAlmoco"
+            >
+                00:00
+            </span>
+        `;
+
+        blocoAdmin.parentElement.appendChild(novoBloco);
+    }
+
+    function converterDecimalParaHora(decimal) {
+        const totalMinutos = Math.round((Number(decimal) || 0) * 60);
+        const horas = Math.floor(totalMinutos / 60);
+        const minutos = totalMinutos % 60;
+
+        return (
+            String(horas).padStart(2, '0') +
+            ':' +
+            String(minutos).padStart(2, '0')
+        );
+    }
+
+    function incluirAlmocoEAdministrativo() {
+        if (!STATE.planContext) return;
+
+        if (!Array.isArray(window.RATEIO_DATA)) {
+            window.RATEIO_DATA = [];
+        }
+
+        const contexto = STATE.planContext;
+
+        const almocos =
+            DB.planning_lunch &&
+            Array.isArray(DB.planning_lunch[contexto])
+                ? DB.planning_lunch[contexto]
+                : [];
+
+        const administrativos =
+            DB.planning_admin &&
+            Array.isArray(DB.planning_admin[contexto])
+                ? DB.planning_admin[contexto]
+                : [];
+
+        const assinaturas = new Set(
+            RATEIO_DATA.map(assinaturaEvento)
+        );
+
+        const avisos = [];
+
+        almocos.forEach((item, indice) => {
+            const data = String(item.date || '').trim();
+            const inicio = String(item.start || '').trim();
+            const fim = String(item.end || '').trim();
+            const horas = minutosParaDecimal(inicio, fim);
+
+            if (!data || !inicio || !fim || horas <= 0) {
+                avisos.push(
+                    `Almoço ${indice + 1}: data ou horário inválido.`
+                );
+                return;
+            }
+
+            const evento = {
+                date: data,
+                type: 'DESCANSO',
+                start: inicio,
+                end: fim,
+                origin: 'INTERVALO DE ALMOÇO',
+                dest: '-',
+                turma: '-',
+                cc: '-',
+                hours: horas,
+                allocationRule: 'almoco_planejamento'
+            };
+
+            const assinatura = assinaturaEvento(evento);
+
+            if (!assinaturas.has(assinatura)) {
+                RATEIO_DATA.push(evento);
+                assinaturas.add(assinatura);
+            }
+        });
+
+        administrativos.forEach((item, indice) => {
+            const data = String(item.date || '').trim();
+            const inicio = String(item.start || '').trim();
+            const fim = String(item.end || '').trim();
+            const turma = String(item.turma || '').trim() || '-';
+            const atividade =
+                String(item.activity || '').trim() ||
+                'ATIVIDADE ADMINISTRATIVA';
+
+            const horas = minutosParaDecimal(inicio, fim);
+
+            if (!data || !inicio || !fim || horas <= 0) {
+                avisos.push(
+                    `Administrativo ${indice + 1}: data ou horário inválido.`
+                );
+                return;
+            }
+
+            const evento = {
+                date: data,
+                type: 'ADMINISTRATIVO',
+                start: inicio,
+                end: fim,
+                origin: atividade,
+                dest: '-',
+                turma: turma,
+                cc: obterCCSeguro(turma),
+                hours: horas,
+                allocationRule: 'administrativo_planejamento'
+            };
+
+            const assinatura = assinaturaEvento(evento);
+
+            if (!assinaturas.has(assinatura)) {
+                RATEIO_DATA.push(evento);
+                assinaturas.add(assinatura);
+            }
+        });
+
+        const prioridade = {
+            DESLOCAMENTO: 1,
+            ATENDIMENTO: 2,
+            DESCANSO: 3,
+            ADMINISTRATIVO: 4
+        };
+
+        RATEIO_DATA.sort((a, b) => {
+            const comparacaoData =
+                String(a.date || '').localeCompare(String(b.date || ''));
+
+            if (comparacaoData !== 0) return comparacaoData;
+
+            const inicioA = horaParaMinutos(a.start);
+            const inicioB = horaParaMinutos(b.start);
+
+            const minutoA = inicioA === null ? 99999 : inicioA;
+            const minutoB = inicioB === null ? 99999 : inicioB;
+
+            if (minutoA !== minutoB) return minutoA - minutoB;
+
+            return (
+                (prioridade[a.type] || 99) -
+                (prioridade[b.type] || 99)
+            );
+        });
+
+        criarIndicadorAlmoco();
+
+        const totalAlmoco = RATEIO_DATA
+            .filter(item => item.type === 'DESCANSO')
+            .reduce((total, item) => total + (Number(item.hours) || 0), 0);
+
+        const totalAdministrativo = RATEIO_DATA
+            .filter(item => item.type === 'ADMINISTRATIVO')
+            .reduce((total, item) => total + (Number(item.hours) || 0), 0);
+
+        const possuiAdministrativo = totalAdministrativo > 0;
+        const possuiAlmoco = totalAlmoco > 0;
+
+        atualizarQuadroUEPT(
+            possuiAdministrativo,
+            possuiAlmoco
+        );
+
+        if (typeof renderRateioTable === 'function') {
+            renderRateioTable(RATEIO_DATA, avisos);
+        }
+
+        const totalAlmocoEl =
+            document.getElementById('rateioTotalAlmoco');
+
+        if (totalAlmocoEl) {
+            totalAlmocoEl.innerText =
+                converterDecimalParaHora(totalAlmoco);
+        }
+
+        const totalAdminEl =
+            document.getElementById('rateioTotalAdmin');
+
+        if (totalAdminEl) {
+            totalAdminEl.innerText =
+                converterDecimalParaHora(totalAdministrativo);
+        }
+
+        const statusEl =
+            document.getElementById('rateioStatusText');
+
+        if (statusEl) {
+            const totalVisitas = (
+                DB.planning[contexto] || []
+            ).filter(item => {
+                const status = normalizarTexto(item.status);
+
+                return [
+                    'REALIZADA',
+                    'REALIZADO',
+                    'VISITADO',
+                    'VISITADA'
+                ].includes(status);
+            }).length;
+
+            statusEl.innerText =
+                `Linha do tempo sequencial: ${RATEIO_DATA.length} etapas` +
+                ` | Alunos realizados: ${totalVisitas}` +
+                ` | Almoço: ${converterDecimalParaHora(totalAlmoco)}` +
+                ` | Administrativo: ${converterDecimalParaHora(totalAdministrativo)}.`;
+        }
+
+        if (
+            possuiAdministrativo &&
+            typeof window.renderControleRateio === 'function'
+        ) {
+            window.renderControleRateio();
+        }
+
+        if (
+            typeof lucide !== 'undefined' &&
+            typeof lucide.createIcons === 'function'
+        ) {
+            lucide.createIcons();
+        }
+    }
+
+    window.generateRateio = function () {
+        if (typeof gerarRateioOriginalV9638 !== 'function') {
+            alert('A função original de rateio não foi localizada.');
+            return;
+        }
+
+        const resultado =
+            gerarRateioOriginalV9638.apply(this, arguments);
+
+        incluirAlmocoEAdministrativo();
+
+        return resultado;
+    };
+
+    const abrirRateioOriginalV9638 = window.openRateioModal;
+
+    if (typeof abrirRateioOriginalV9638 === 'function') {
+        window.openRateioModal = function () {
+            const resultado =
+                abrirRateioOriginalV9638.apply(this, arguments);
+
+            setTimeout(() => {
+                criarIndicadorAlmoco();
+
+                const contexto = STATE.planContext;
+
+                const possuiAdmin =
+                    Array.isArray(DB.planning_admin?.[contexto]) &&
+                    DB.planning_admin[contexto].some(item =>
+                        item.date && item.start && item.end
+                    );
+
+                const possuiAlmoco =
+                    Array.isArray(DB.planning_lunch?.[contexto]) &&
+                    DB.planning_lunch[contexto].some(item =>
+                        item.date && item.start && item.end
+                    );
+
+                atualizarQuadroUEPT(
+                    possuiAdmin,
+                    possuiAlmoco
+                );
+            }, 50);
+
+            return resultado;
+        };
+    }
+})();
+</script>                
 </body>
 </html>
