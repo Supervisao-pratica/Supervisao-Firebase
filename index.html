@@ -9996,6 +9996,942 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
         };
     }
 })();
+</script>
+<script id="correcao-email-administrativo-v9640">
+(function () {
+    'use strict';
+
+    function normalizarV9640(valor) {
+        return String(valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toUpperCase();
+    }
+
+    function horaParaMinutosV9640(valor) {
+        const resultado = String(valor || '')
+            .trim()
+            .match(/^(\d{1,2}):(\d{2})/);
+
+        if (!resultado) return null;
+
+        const horas = Number(resultado[1]);
+        const minutos = Number(resultado[2]);
+
+        if (
+            !Number.isFinite(horas) ||
+            !Number.isFinite(minutos) ||
+            horas < 0 ||
+            horas > 23 ||
+            minutos < 0 ||
+            minutos > 59
+        ) {
+            return null;
+        }
+
+        return (horas * 60) + minutos;
+    }
+
+    function minutosParaHoraV9640(totalMinutos) {
+        const total = Math.max(
+            0,
+            Math.round(Number(totalMinutos) || 0)
+        );
+
+        const horas = Math.floor(total / 60);
+        const minutos = total % 60;
+
+        return (
+            String(horas).padStart(2, '0') +
+            ':' +
+            String(minutos).padStart(2, '0')
+        );
+    }
+
+    function decimalParaHoraV9640(valor) {
+        return minutosParaHoraV9640(
+            (Number(valor) || 0) * 60
+        );
+    }
+
+    function formatarDataV9640(valor) {
+        const texto = String(valor || '').trim();
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
+            return texto.split('-').reverse().join('/');
+        }
+
+        return texto || '-';
+    }
+
+    function escaparHtmlV9640(valor) {
+        return String(valor ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function obterCCV9640(turma) {
+        const nomeTurma = String(turma || '').trim();
+
+        if (!nomeTurma || nomeTurma === '-') {
+            return '-';
+        }
+
+        if (typeof obterCentroCustoTurma === 'function') {
+            const cc = obterCentroCustoTurma(nomeTurma);
+
+            if (cc && cc !== '-') {
+                return String(cc).trim();
+            }
+        }
+
+        const turmaNormalizada =
+            normalizarV9640(nomeTurma);
+
+        const cadastro = (DB.controle_turmas || [])
+            .find(item =>
+                normalizarV9640(item && item.nome) ===
+                turmaNormalizada
+            );
+
+        if (cadastro && cadastro.cc) {
+            return String(cadastro.cc).trim();
+        }
+
+        const chave = Object.keys(DB.cc_map || {})
+            .find(item =>
+                normalizarV9640(item) ===
+                turmaNormalizada
+            );
+
+        return chave
+            ? String(DB.cc_map[chave] || '-').trim()
+            : '-';
+    }
+
+    function administrativosV9640() {
+        const contexto = STATE.planContext;
+
+        if (!contexto) return [];
+
+        const registros =
+            DB.planning_admin &&
+            Array.isArray(DB.planning_admin[contexto])
+                ? DB.planning_admin[contexto]
+                : [];
+
+        const assinaturas = new Set();
+        const resultado = [];
+
+        registros.forEach(registro => {
+            const data =
+                String(registro.date || '').trim();
+
+            const inicio =
+                String(registro.start || '').trim();
+
+            const fim =
+                String(registro.end || '').trim();
+
+            const turma =
+                String(registro.turma || '').trim() || '-';
+
+            const atividade =
+                String(registro.activity || '').trim() ||
+                'ATIVIDADE ADMINISTRATIVA';
+
+            const minutoInicio =
+                horaParaMinutosV9640(inicio);
+
+            const minutoFim =
+                horaParaMinutosV9640(fim);
+
+            if (
+                !data ||
+                minutoInicio === null ||
+                minutoFim === null ||
+                minutoFim <= minutoInicio
+            ) {
+                return;
+            }
+
+            const assinatura = [
+                data,
+                inicio,
+                fim,
+                normalizarV9640(turma),
+                normalizarV9640(atividade)
+            ].join('|');
+
+            if (assinaturas.has(assinatura)) return;
+
+            assinaturas.add(assinatura);
+
+            resultado.push({
+                date: data,
+                start: inicio,
+                end: fim,
+                activity: atividade,
+                turma,
+                cc: obterCCV9640(turma),
+                minutes: minutoFim - minutoInicio
+            });
+        });
+
+        return resultado.sort((a, b) =>
+            String(a.date).localeCompare(String(b.date)) ||
+            horaParaMinutosV9640(a.start) -
+            horaParaMinutosV9640(b.start)
+        );
+    }
+
+    function totalAlmocoV9640() {
+        const contexto = STATE.planContext;
+
+        const registros =
+            contexto &&
+            DB.planning_lunch &&
+            Array.isArray(DB.planning_lunch[contexto])
+                ? DB.planning_lunch[contexto]
+                : [];
+
+        const assinaturas = new Set();
+        let total = 0;
+
+        registros.forEach(registro => {
+            const data =
+                String(registro.date || '').trim();
+
+            const inicio =
+                String(registro.start || '').trim();
+
+            const fim =
+                String(registro.end || '').trim();
+
+            const minutoInicio =
+                horaParaMinutosV9640(inicio);
+
+            const minutoFim =
+                horaParaMinutosV9640(fim);
+
+            if (
+                !data ||
+                minutoInicio === null ||
+                minutoFim === null ||
+                minutoFim <= minutoInicio
+            ) {
+                return;
+            }
+
+            const assinatura =
+                `${data}|${inicio}|${fim}`;
+
+            if (assinaturas.has(assinatura)) return;
+
+            assinaturas.add(assinatura);
+            total += minutoFim - minutoInicio;
+        });
+
+        return total;
+    }
+
+    function montarQuadroUEPTV9640(
+        totalAlmoco,
+        totalAdministrativo
+    ) {
+        return `
+            <div style="
+                background-color: #eff6ff;
+                padding: 12px;
+                border: 1px solid #bfdbfe;
+                border-radius: 8px;
+                margin-bottom: 16px;
+                font-size: 12px;
+                line-height: 1.7;
+                color: #334155;
+                font-family: Arial, sans-serif;
+            ">
+                <div>
+                    <strong style="color: #004587;">
+                        Dados para deslocamento:
+                    </strong>
+                    UEPT: 27 |
+                    TEPT: 11348 |
+                    Evento: 3
+                </div>
+
+                <div>
+                    <strong style="color: #004587;">
+                        Dados para atendimento:
+                    </strong>
+                    UEPT: 27 |
+                    TEPT: 11348 |
+                    Evento: 24
+                </div>
+
+                <div>
+                    <strong style="color: #ea580c;">
+                        Intervalo de almoço descontado:
+                    </strong>
+                    ${minutosParaHoraV9640(totalAlmoco)}
+                </div>
+
+                ${
+                    totalAdministrativo > 0
+                        ? `
+                            <div>
+                                <strong style="color: #7e22ce;">
+                                    Administrativo separado:
+                                </strong>
+                                UEPT: 27 |
+                                TEPT: 11348 |
+                                Evento: 24 |
+                                Total:
+                                ${minutosParaHoraV9640(
+                                    totalAdministrativo
+                                )}
+                            </div>
+                        `
+                        : ''
+                }
+            </div>
+        `;
+    }
+
+    function montarTabelaViagemV9640() {
+        const dados =
+            Array.isArray(window.RATEIO_DATA)
+                ? window.RATEIO_DATA
+                : (
+                    typeof RATEIO_DATA !== 'undefined' &&
+                    Array.isArray(RATEIO_DATA)
+                        ? RATEIO_DATA
+                        : []
+                );
+
+        const eventos = dados.filter(item =>
+            item &&
+            item.type !== 'ADMINISTRATIVO'
+        );
+
+        let totalDeslocamento = 0;
+        let totalAtendimento = 0;
+        let totalDescanso = 0;
+
+        const linhas = eventos.map(item => {
+            const horas = Number(item.hours) || 0;
+
+            if (item.type === 'DESLOCAMENTO') {
+                totalDeslocamento += horas;
+            }
+
+            if (item.type === 'ATENDIMENTO') {
+                totalAtendimento += horas;
+            }
+
+            if (item.type === 'DESCANSO') {
+                totalDescanso += horas;
+            }
+
+            let corTipo = '#334155';
+            let fundo = '#ffffff';
+
+            if (item.type === 'DESLOCAMENTO') {
+                corTipo = '#2563eb';
+                fundo = '#eff6ff';
+            }
+
+            if (item.type === 'ATENDIMENTO') {
+                corTipo = '#059669';
+                fundo = '#ecfdf5';
+            }
+
+            if (item.type === 'DESCANSO') {
+                corTipo = '#ea580c';
+                fundo = '#fff7ed';
+            }
+
+            return `
+                <tr style="background-color: ${fundo};">
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                        text-align: center;
+                    ">
+                        ${escaparHtmlV9640(
+                            formatarDataV9640(item.date)
+                        )}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                        font-weight: bold;
+                        color: ${corTipo};
+                    ">
+                        ${escaparHtmlV9640(item.type || '-')}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                    ">
+                        ${escaparHtmlV9640(item.origin || '-')}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                    ">
+                        ${escaparHtmlV9640(item.dest || '-')}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                        text-align: center;
+                    ">
+                        ${escaparHtmlV9640(item.start || '-')}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                        text-align: center;
+                    ">
+                        ${escaparHtmlV9640(item.end || '-')}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                        text-align: center;
+                        font-weight: bold;
+                    ">
+                        ${decimalParaHoraV9640(horas)}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                        font-size: 10px;
+                    ">
+                        ${escaparHtmlV9640(item.turma || '-')}
+                    </td>
+
+                    <td style="
+                        padding: 7px;
+                        border: 1px solid #d1d5db;
+                        font-size: 10px;
+                        font-weight: bold;
+                    ">
+                        ${escaparHtmlV9640(item.cc || '-')}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        const totalJornada =
+            totalDeslocamento + totalAtendimento;
+
+        const tabela = `
+            <h3 style="
+                color: #004587;
+                margin: 18px 0 8px;
+                font-size: 15px;
+            ">
+                Jornada da viagem
+            </h3>
+
+            <table style="
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 16px;
+                font-size: 11px;
+            ">
+                <thead>
+                    <tr style="
+                        background-color: #004587;
+                        color: white;
+                    ">
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Data
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Tipo
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Origem / Local
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Destino
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Início
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Fim
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Horas
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            Turma
+                        </th>
+
+                        <th style="padding: 7px; border: 1px solid #d1d5db;">
+                            CC
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    ${linhas}
+                </tbody>
+
+                <tfoot>
+                    <tr style="background-color: #f8fafc;">
+                        <td
+                            colspan="9"
+                            style="
+                                padding: 10px;
+                                border: 1px solid #d1d5db;
+                                text-align: right;
+                                font-weight: bold;
+                            "
+                        >
+                            <span style="
+                                color: #2563eb;
+                                margin-right: 15px;
+                            ">
+                                Deslocamento:
+                                ${decimalParaHoraV9640(
+                                    totalDeslocamento
+                                )}
+                            </span>
+
+                            <span style="
+                                color: #059669;
+                                margin-right: 15px;
+                            ">
+                                Atendimento:
+                                ${decimalParaHoraV9640(
+                                    totalAtendimento
+                                )}
+                            </span>
+
+                            <span style="
+                                color: #ea580c;
+                                margin-right: 15px;
+                            ">
+                                Almoço descontado:
+                                ${decimalParaHoraV9640(
+                                    totalDescanso
+                                )}
+                            </span>
+
+                            <span style="color: #004587;">
+                                Jornada efetiva:
+                                ${decimalParaHoraV9640(
+                                    totalJornada
+                                )}
+                            </span>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        `;
+
+        return {
+            tabela,
+            totalDeslocamento,
+            totalAtendimento,
+            totalDescanso,
+            totalJornada
+        };
+    }
+
+    function montarTabelaAdministrativaV9640(
+        administrativos
+    ) {
+        if (!administrativos.length) {
+            return `
+                <div style="
+                    background-color: #faf5ff;
+                    border: 1px solid #e9d5ff;
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin-top: 16px;
+                    color: #7e22ce;
+                    font-size: 12px;
+                ">
+                    Nenhum horário administrativo informado
+                    para este planejamento.
+                </div>
+            `;
+        }
+
+        let totalMinutos = 0;
+
+        const linhas = administrativos.map(item => {
+            totalMinutos += item.minutes;
+
+            return `
+                <tr style="background-color: #faf5ff;">
+                    <td style="
+                        padding: 8px;
+                        border: 1px solid #d8b4fe;
+                        text-align: center;
+                    ">
+                        ${escaparHtmlV9640(
+                            formatarDataV9640(item.date)
+                        )}
+                    </td>
+
+                    <td style="
+                        padding: 8px;
+                        border: 1px solid #d8b4fe;
+                    ">
+                        ${escaparHtmlV9640(item.activity)}
+                    </td>
+
+                    <td style="
+                        padding: 8px;
+                        border: 1px solid #d8b4fe;
+                        text-align: center;
+                    ">
+                        ${escaparHtmlV9640(item.start)}
+                    </td>
+
+                    <td style="
+                        padding: 8px;
+                        border: 1px solid #d8b4fe;
+                        text-align: center;
+                    ">
+                        ${escaparHtmlV9640(item.end)}
+                    </td>
+
+                    <td style="
+                        padding: 8px;
+                        border: 1px solid #d8b4fe;
+                        text-align: center;
+                        font-weight: bold;
+                        color: #7e22ce;
+                    ">
+                        ${minutosParaHoraV9640(item.minutes)}
+                    </td>
+
+                    <td style="
+                        padding: 8px;
+                        border: 1px solid #d8b4fe;
+                        font-size: 10px;
+                    ">
+                        ${escaparHtmlV9640(item.turma)}
+                    </td>
+
+                    <td style="
+                        padding: 8px;
+                        border: 1px solid #d8b4fe;
+                        font-size: 10px;
+                        font-weight: bold;
+                    ">
+                        ${escaparHtmlV9640(item.cc)}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <div style="
+                margin-top: 20px;
+                border: 1px solid #d8b4fe;
+                border-radius: 8px;
+                overflow: hidden;
+            ">
+                <div style="
+                    background-color: #f3e8ff;
+                    padding: 12px;
+                    border-bottom: 1px solid #d8b4fe;
+                ">
+                    <h3 style="
+                        color: #7e22ce;
+                        margin: 0 0 4px;
+                        font-size: 15px;
+                    ">
+                        Horas administrativas em datas separadas
+                    </h3>
+
+                    <div style="
+                        color: #6b21a8;
+                        font-size: 11px;
+                    ">
+                        Não integram o total da jornada de viagem.
+                        UEPT: 27 |
+                        TEPT: 11348 |
+                        Evento: 24
+                    </div>
+                </div>
+
+                <table style="
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 11px;
+                ">
+                    <thead>
+                        <tr style="
+                            background-color: #faf5ff;
+                            color: #581c87;
+                        ">
+                            <th style="padding: 8px; border: 1px solid #d8b4fe;">
+                                Data
+                            </th>
+
+                            <th style="padding: 8px; border: 1px solid #d8b4fe;">
+                                Atividade
+                            </th>
+
+                            <th style="padding: 8px; border: 1px solid #d8b4fe;">
+                                Início
+                            </th>
+
+                            <th style="padding: 8px; border: 1px solid #d8b4fe;">
+                                Fim
+                            </th>
+
+                            <th style="padding: 8px; border: 1px solid #d8b4fe;">
+                                Horas
+                            </th>
+
+                            <th style="padding: 8px; border: 1px solid #d8b4fe;">
+                                Turma
+                            </th>
+
+                            <th style="padding: 8px; border: 1px solid #d8b4fe;">
+                                CC
+                            </th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        ${linhas}
+                    </tbody>
+
+                    <tfoot>
+                        <tr style="background-color: #f3e8ff;">
+                            <td
+                                colspan="7"
+                                style="
+                                    padding: 10px;
+                                    border: 1px solid #d8b4fe;
+                                    text-align: right;
+                                    font-weight: bold;
+                                    color: #7e22ce;
+                                "
+                            >
+                                Total administrativo:
+                                ${minutosParaHoraV9640(
+                                    totalMinutos
+                                )}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+    }
+
+    async function copiarHtmlV9640(html, texto) {
+        if (
+            navigator.clipboard &&
+            typeof ClipboardItem !== 'undefined' &&
+            typeof navigator.clipboard.write === 'function'
+        ) {
+            const item = new ClipboardItem({
+                'text/html': new Blob(
+                    [html],
+                    { type: 'text/html' }
+                ),
+                'text/plain': new Blob(
+                    [texto],
+                    { type: 'text/plain' }
+                )
+            });
+
+            await navigator.clipboard.write([item]);
+            return;
+        }
+
+        if (
+            navigator.clipboard &&
+            typeof navigator.clipboard.writeText === 'function'
+        ) {
+            await navigator.clipboard.writeText(texto);
+            return;
+        }
+
+        throw new Error(
+            'Área de transferência indisponível.'
+        );
+    }
+
+    window.copyRateioEmail = async function () {
+        const dados =
+            Array.isArray(window.RATEIO_DATA)
+                ? window.RATEIO_DATA
+                : (
+                    typeof RATEIO_DATA !== 'undefined' &&
+                    Array.isArray(RATEIO_DATA)
+                        ? RATEIO_DATA
+                        : []
+                );
+
+        if (!dados.length) {
+            alert(
+                'Nenhum rateio calculado para copiar. ' +
+                'Clique em "Processar Rateio" primeiro.'
+            );
+            return;
+        }
+
+        const administrativos =
+            administrativosV9640();
+
+        const totalAlmoco =
+            totalAlmocoV9640();
+
+        const totalAdministrativo =
+            administrativos.reduce(
+                (total, item) =>
+                    total + item.minutes,
+                0
+            );
+
+        const viagem =
+            montarTabelaViagemV9640();
+
+        const tabelaAdministrativa =
+            montarTabelaAdministrativaV9640(
+                administrativos
+            );
+
+        const html = `
+            <div style="
+                font-family: Arial, sans-serif;
+                color: #334155;
+                max-width: 950px;
+            ">
+                <h2 style="
+                    color: #004587;
+                    margin: 0 0 5px;
+                ">
+                    Relatório de Rateio
+                </h2>
+
+                <p style="
+                    color: #64748b;
+                    font-size: 12px;
+                    margin: 0 0 16px;
+                ">
+                    Planejamento:
+                    <strong>
+                        ${escaparHtmlV9640(
+                            STATE.planContext || '-'
+                        )}
+                    </strong>
+                </p>
+
+                ${montarQuadroUEPTV9640(
+                    totalAlmoco,
+                    totalAdministrativo
+                )}
+
+                ${viagem.tabela}
+
+                ${tabelaAdministrativa}
+            </div>
+        `;
+
+        let texto =
+            `RELATÓRIO DE RATEIO\n` +
+            `Planejamento: ${STATE.planContext || '-'}\n\n` +
+            `DADOS PARA DESLOCAMENTO\n` +
+            `UEPT: 27 | TEPT: 11348 | Evento: 3\n\n` +
+            `DADOS PARA ATENDIMENTO\n` +
+            `UEPT: 27 | TEPT: 11348 | Evento: 24\n\n` +
+            `ALMOÇO DESCONTADO: ` +
+            `${minutosParaHoraV9640(totalAlmoco)}\n\n` +
+            `JORNADA DA VIAGEM\n` +
+            `Deslocamento: ` +
+            `${decimalParaHoraV9640(
+                viagem.totalDeslocamento
+            )}\n` +
+            `Atendimento: ` +
+            `${decimalParaHoraV9640(
+                viagem.totalAtendimento
+            )}\n` +
+            `Jornada efetiva: ` +
+            `${decimalParaHoraV9640(
+                viagem.totalJornada
+            )}\n`;
+
+        if (administrativos.length) {
+            texto +=
+                `\nHORAS ADMINISTRATIVAS EM DATAS SEPARADAS\n` +
+                `UEPT: 27 | TEPT: 11348 | Evento: 24\n`;
+
+            administrativos.forEach(item => {
+                texto +=
+                    `\n${formatarDataV9640(item.date)} | ` +
+                    `${item.start} às ${item.end} | ` +
+                    `${minutosParaHoraV9640(item.minutes)} | ` +
+                    `${item.activity} | ` +
+                    `Turma: ${item.turma} | CC: ${item.cc}`;
+            });
+
+            texto +=
+                `\n\nTotal administrativo: ` +
+                `${minutosParaHoraV9640(
+                    totalAdministrativo
+                )}\n`;
+        }
+
+        try {
+            await copiarHtmlV9640(html, texto);
+
+            if (typeof showToast === 'function') {
+                showToast(
+                    'Rateio completo copiado, incluindo o administrativo separado.'
+                );
+            } else {
+                alert(
+                    'Rateio completo copiado, incluindo o administrativo separado.'
+                );
+            }
+        } catch (erro) {
+            console.error(
+                'Erro ao copiar rateio:',
+                erro
+            );
+
+            alert(
+                'Não foi possível copiar o relatório. ' +
+                'Use o Microsoft Edge ou Google Chrome e permita o acesso à área de transferência.'
+            );
+        }
+    };
+})();
 </script>                
 </body>
 </html>
