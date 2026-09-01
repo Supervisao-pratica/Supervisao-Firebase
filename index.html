@@ -7893,13 +7893,18 @@ window.atualizarAutocompleteGlobal = function() {
                     return alert("⚠️ Nenhum roteiro aberto no momento para avançar.");
                 }
 
-                const confirmar = confirm("🔄 AVANÇAR CICLO DE VISITAS E FAXINA\n\n1. Alunos 'Realizados' irão para a próxima visita (ex: 1ª para 2ª).\n2. Alunos com status 'Desligado/Evadido/Encerrado' na base serão removidos do roteiro.\n\nDeseja continuar?");
+                const confirmar = confirm(
+    "🔄 AVANÇAR CICLO DE VISITAS\n\n" +
+    "Os alunos com status 'Realizada' serão preparados " +
+    "para a próxima visita.\n\n" +
+    "Nenhum aluno será removido do planejamento.\n\n" +
+    "Deseja continuar?"
+);
                 if (!confirmar) return;
 
                 let roteiro = dbObj.planning[ctx];
                 let alterados = 0;
-                let removidos = 0;
-
+                
                 // 👑 NOVO MAPA SEGURO DE STATUS (Sem falsos positivos)
                 const inativosIds = new Set();
                 [...(dbObj.quali || []), ...(dbObj.tec || [])].forEach(a => {
@@ -7912,12 +7917,7 @@ window.atualizarAutocompleteGlobal = function() {
                 for (let i = roteiro.length - 1; i >= 0; i--) {
                     const item = roteiro[i];
                     if (!item || !item.student) continue;
-
-                    // 🛑 FAXINA SEGURA: Baseada apenas na ID e caixinha oficial
-                    if (inativosIds.has(String(item.student.id))) {
-                        roteiro.splice(i, 1);
-                        removidos++;
-                        continue;
+                    
                     }
 
                     // 🔄 AVANÇO DE CICLO
@@ -7941,14 +7941,22 @@ window.atualizarAutocompleteGlobal = function() {
                     }
                 }
 
-                if (alterados > 0 || removidos > 0) {
+                if (alterados > 0) {
                     roteiro.forEach((item, idx) => item.ordem = idx + 1);
                     if(typeof saveToStorage === 'function') saveToStorage();
                     if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                    alert(`✅ Ciclo Avançado!\n\n- ${alterados} aluno(s) movidos para o próximo ciclo.\n- ${removidos} aluno(s) desligados foram removidos do roteiro.`);
+                    alert(
+    `✅ Ciclo Avançado!\n\n` +
+    `${alterados} aluno(s) foram movidos para o próximo ciclo.\n\n` +
+    `Nenhum aluno foi removido do planejamento. ` +
+    `A exclusão de encerrados e desligados fica restrita ` +
+    `ao botão Faxina.`
+);
                 } else {
-                    alert("ℹ️ Nenhuma alteração necessária. Não há alunos 'Realizados' ou 'Desligados'.");
-                }
+                    alert(
+    "ℹ️ Nenhuma alteração necessária. " +
+    "Não há alunos com status 'Realizada' para avançar."
+);
                 
             } catch (error) {
                 console.error("Erro ao avançar ciclo:", error);
@@ -8136,9 +8144,17 @@ let totalRemovidos = 0;
                 if(typeof saveToStorage === 'function') saveToStorage();
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
-                let msg = "✅ Roteiro atual organizado com sucesso (Cidades e Prioridades)!";
-                                
-            } catch (error) {
+                let msg =
+    "✅ Roteiro atual organizado com sucesso " +
+    "(Cidades e Prioridades)!";
+
+if (typeof showToast === 'function') {
+    showToast(msg);
+} else {
+    alert(msg);
+}
+
+} catch (error) {
                 console.error("Erro na organização:", error);
                 alert("Erro ao tentar organizar o roteiro: " + error.message);
             }
