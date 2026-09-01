@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.44 - CNPJ PRECISO POR ALUNO)</title>
+    <title>Supervisão Senac 2026 (v9.6.45 - CNPJ PRECISO + VISITAS TECNICAS 1 A 6)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -176,6 +176,8 @@ th {
 <!-- V9.6.19: sequencia rigida DESLOCAMENTO -> ATENDIMENTO -> DESLOCAMENTO; almoco e administrativo apenas cortam atendimento. -->
 <!-- V9.6.21: extrator de deslocamento detecta destino mesmo quando celulas mescladas deslocam o dado para coluna vizinha. -->
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
+
+<!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
 </head>
 <body class="text-slate-800">
 
@@ -1729,42 +1731,8 @@ window.requestRestore = function() {
         // =========================================================================
         
         // 1. Cria o botão de "Novo Registro" automaticamente em qualquer campo de texto
-        function setupObsButton(inputId) {
-            const obsEl = document.getElementById(inputId);
-            if (!obsEl) return;
-            
-            const btnId = 'btnStamp_' + inputId;
-            if (document.getElementById(btnId)) return; // Evita duplicar o botão
-            
-            const btn = document.createElement('button');
-            btn.id = btnId;
-            btn.type = 'button';
-            btn.innerHTML = '🕒 Novo Registro (Data/Hora)';
-            btn.className = 'text-[10px] bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded border border-blue-300 font-bold mb-1 transition-colors block';
-            btn.onclick = () => {
-                const now = new Date();
-                const strDate = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
-                const stamp = `[${strDate}] - `;
-                obsEl.value = obsEl.value ? obsEl.value.trim() + '\n\n' + stamp : stamp;
-                obsEl.focus();
-                obsEl.scrollTop = obsEl.scrollHeight; // Rola para o fim
-            };
-            obsEl.parentNode.insertBefore(btn, obsEl);
-        }
 
         // 2. Descobre a região correta baseada na cidade
-        function getRegiaoDaCidade(cidade) {
-            if (!cidade || !DB.regioes_map) return "";
-            const cid = cidade.toUpperCase().trim();
-            for (const [regiao, cidadesDaRegiao] of Object.entries(DB.regioes_map)) {
-                if (Array.isArray(cidadesDaRegiao)) {
-                    if (cidadesDaRegiao.map(c => c.toUpperCase().trim()).includes(cid)) {
-                        return regiao.toUpperCase();
-                    }
-                }
-            }
-            return "";
-        }
         // =========================================================================
         // FUNÇÕES AUXILIARES (Data/Hora nas Obs e Corretor de Região)
         // =========================================================================
@@ -2068,9 +2036,6 @@ ${obs}`;
         };
 
         // (A sua função já existente ficará logo aqui abaixo)
-        function exportData() {
-            // ... seu código atual ...
-        }
 
         function exportData() { 
             if(!STATE.filter || STATE.filter.length === 0) return alert("Sem dados."); 
@@ -2195,21 +2160,6 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             
             updateKpiClasses(); 
             if(typeof runFilter === 'function') runFilter(); 
-        }
-        
-        function updateKpiClasses() { 
-            const map = { 
-                'all': 'kpi-all', 
-                'base_ativa': 'kpi-base', 
-                'atrasado': 'kpi-red', 
-                'ativo': 'kpi-green', 
-                'concluido': 'kpi-blue', 
-                'desligado': 'kpi-gray' 
-            };
-            Object.keys(map).forEach(k => {
-                const el = document.getElementById(map[k]);
-                if(el) el.classList.toggle('active', STATE.kpi === k);
-            });
         }
         
         function updateKpiClasses() { 
@@ -3547,8 +3497,7 @@ window.localizarAlunoMestrePlanejamento =
         
         // Garante que o botão 'Restaurar Manual' acione a mesma trava de força bruta
         window.restaurarManual = window.restoreBackup;
-        window.restaurarManual = window.restoreBackup;
-        function autoFillCC() { const t = document.getElementById('finTurma').value; document.getElementById('finCC').value = DB.cc_map[t] || "Não encontrado"; }
+function autoFillCC() { const t = document.getElementById('finTurma').value; document.getElementById('finCC').value = DB.cc_map[t] || "Não encontrado"; }
         function saveFinanceLog() { const t = document.getElementById('finTurma').value, c = document.getElementById('finCC').value, m = document.getElementById('finMotivo').value, d = document.getElementById('finData').value, v = document.getElementById('finValor').value, s = document.getElementById('finSupervisor').value; if(!t || !d || !v) return alert("Preencha todos os campos."); DB.finance_logs.unshift({ id: Date.now(), turma: t, cc: c, motivo: m, supervisor: s, data: d, valor: parseFloat(v) }); saveToStorage(); renderFinanceLogs(); showToast("Lançamento salvo!"); document.getElementById('finTurma').value = ''; }
         function renderFinanceLogs() { const tbody = document.getElementById('finLogsBody'); const budget = parseFloat(document.getElementById('finBudget') ? document.getElementById('finBudget').value : 0) || 0; const total = DB.finance_logs.reduce((acc, l) => acc + l.valor, 0); if(tbody) tbody.innerHTML = DB.finance_logs.map(l => `<tr class="border-b hover:bg-slate-50"><td class="p-3">${new Date(l.data).toLocaleDateString('pt-BR')}</td><td class="p-3 font-bold">${l.turma}</td><td class="p-3 text-xs italic text-slate-500">${l.motivo || '-'}</td><td class="p-3 text-xs">${l.supervisor||'-'}</td><td class="p-3 text-xs text-slate-400">${l.cc}</td><td class="p-3 text-right font-mono text-emerald-600">R$ ${l.valor.toFixed(2)}</td><td class="p-3 text-center"><button onclick="deleteLog(${l.id})" class="text-red-300 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join(""); lucide.createIcons(); const countEl = document.getElementById('finCount'); if(countEl) countEl.innerText = DB.finance_logs.length; const gastoEl = document.getElementById('finTotalGasto'); if(gastoEl) gastoEl.innerText = "R$ " + total.toLocaleString('pt-BR', {minimumFractionDigits: 2}); const balance = budget - total; const balEl = document.getElementById('finBalance'); if(balEl) { balEl.innerText = "R$ " + balance.toLocaleString('pt-BR', {minimumFractionDigits: 2}); balEl.className = `text-3xl font-black ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`; } const uniqueSup = [...new Set(DB.finance_logs.map(l => l.supervisor).filter(s => s))].sort(); const supEl = document.getElementById('listSupervisors'); if(supEl) supEl.innerHTML = uniqueSup.map(s => `<option value="${s}">`).join(""); }
         function deleteLog(id) { if(!confirm("Remover?")) return; DB.finance_logs = DB.finance_logs.filter(l => l.id !== id); saveToStorage(); renderFinanceLogs(); }
@@ -4299,7 +4248,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     <td class="p-2"><textarea class="plan-input text-[9px] w-full resize-none" rows="2" onchange="updatePlanCompany(${idx}, 'endereco', this.value)">${s.empresa.endereco || ''}</textarea><div class="mt-1">${link}</div></td>
                     <td class="p-2"><input class="plan-input font-bold w-full" value="${s.cidade}" onchange="updatePlanStudent(${idx}, 'cidade', this.value)"></td>
                     <td class="p-2"><input class="plan-input w-full font-bold" value="${s.supervisor.display}" onchange="updatePlanSupervisor(${idx}, 'display', this.value)"><input class="plan-input w-full text-[9px] text-slate-500 mt-1" value="${s.supervisor.tel || ''}" placeholder="Tel" onchange="updatePlanSupervisor(${idx}, 'tel', this.value)"><input class="plan-input w-full text-[9px] text-blue-500 mt-1" value="${s.supervisor.email || ''}" placeholder="Email" onchange="updatePlanSupervisor(${idx}, 'email', this.value)"></td>
-                    <td class="p-1"><select class="plan-input" onchange="validateVisitSelection(${idx}, this)"><option ${item.visitaTipo === '1ª Visita' ? 'selected' : ''}>1ª Visita</option><option ${item.visitaTipo === '2ª Visita' ? 'selected' : ''}>2ª Visita</option><option ${item.visitaTipo === '3ª Visita' ? 'selected' : ''}>3ª Visita</option></select></td>
+                    <td class="p-1"><select class="plan-input" onchange="validateVisitSelection(${idx}, this)">${Array.from({length: isTec ? 6 : 3}, (_, visitIndex) => { const label = `${visitIndex + 1}ª Visita`; return `<option value="${label}" ${item.visitaTipo === label ? 'selected' : ''}>${label}</option>`; }).join('')}</select></td>
                     <td class="p-1"><select class="plan-input border ${statusClass}" onchange="updatePlanItem(${idx}, 'status', this.value); renderPlanningTable();"><option class="text-slate-600 bg-white" value="Realizar" ${item.status === 'Realizar' ? 'selected' : ''}>Realizar</option><option class="text-emerald-600 font-bold bg-white" value="Realizada" ${item.status === 'Realizada' ? 'selected' : ''}>Realizada</option><option class="text-red-500 font-bold bg-white" value="Não realizada" ${item.status === 'Não realizada' ? 'selected' : ''}>Não realizada</option></select></td>
                     <td class="p-1 col-obs"><textarea class="plan-input text-[10px] w-full resize-y min-h-[40px] leading-tight" placeholder="..." onchange="updatePlanItem(${idx}, 'obs', this.value)">${currentObs}</textarea></td>
                     <td class="p-1 text-center no-print"><button onclick="removeFromPlan(${idx})" class="text-red-400 hover:text-red-600"><i data-lucide="x" class="w-3 h-3"></i></button></td>
@@ -4365,9 +4314,36 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             
             reorderPlanArray(currentIdx, toIdx);
         }
+        function validateVisitSelection(idx, selectEl) {
+            if (!STATE.planContext || !DB.planning[STATE.planContext]) return;
+            const planItem = DB.planning[STATE.planContext][idx];
+            if (!planItem || !planItem.student) return;
 
-        function validateVisitSelection(idx, selectEl) { if(!STATE.planContext || !DB.planning[STATE.planContext]) return; const planItem = DB.planning[STATE.planContext][idx]; const student = planItem.student; const newVal = selectEl.value; let visitIdx = -1; if(newVal === '1ª Visita') visitIdx = 0; if(newVal === '2ª Visita') visitIdx = 1; if(newVal === '3ª Visita') visitIdx = 2; if(visitIdx > -1 && student.visits[visitIdx].ok) { alert(`ATENÇÃO: A ${newVal} deste aluno JÁ FOI REALIZADA!`); let correctVisit = '1ª Visita'; if(student.visits[0].ok) correctVisit = '2ª Visita'; if(student.visits[1].ok) correctVisit = '3ª Visita'; selectEl.value = correctVisit; updatePlanItem(idx, 'visitaTipo', correctVisit); } else { updatePlanItem(idx, 'visitaTipo', newVal); } }
-        
+            const student = planItem.student;
+            const isTec = (DB.tec || []).some(t => String(t.id) === String(student.id));
+            const limite = isTec ? 6 : 3;
+            const match = String(selectEl.value || '').match(/([1-6])/);
+            const visitIdx = match ? Number(match[1]) - 1 : -1;
+
+            if (visitIdx < 0 || visitIdx >= limite) {
+                alert(`Seleção inválida. Este aluno permite até ${limite} visita(s).`);
+                selectEl.value = planItem.visitaTipo || '1ª Visita';
+                return;
+            }
+
+            const visits = Array.isArray(student.visits) ? student.visits : [];
+            if (visits[visitIdx]?.ok === true) {
+                alert(`ATENÇÃO: A ${selectEl.value} deste aluno JÁ FOI REALIZADA!`);
+                let firstPending = visits.findIndex((visit, i) => i < limite && visit?.ok !== true);
+                if (firstPending < 0) firstPending = limite - 1;
+                const correctVisit = `${firstPending + 1}ª Visita`;
+                selectEl.value = correctVisit;
+                updatePlanItem(idx, 'visitaTipo', correctVisit);
+                return;
+            }
+
+            updatePlanItem(idx, 'visitaTipo', selectEl.value);
+        }
         function updatePlanItem(idx, field, val) { 
             if(STATE.planContext && DB.planning[STATE.planContext][idx]) { 
                 const plan = DB.planning[STATE.planContext];
