@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.37 - INTEGRIDADE, NUVEM E E-MAILS)</title>
+    <title>Supervisão Senac 2026 (v9.6.44 - CNPJ PRECISO POR ALUNO)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -1285,15 +1285,17 @@ th {
 
             const C = { 
                 turma: findCol(['turma']), 
-                nome: findCol(['apr. nome']), 
+                codigo: findCol(['alunocod', 'aluno cod', 'apr. cod', 'codigo do aluno']),
+                cpf: findCol(['alunocpf', 'aluno cpf', 'apr cpf', 'cpf do aluno']),
+                nome: findCol(['alunonome', 'aluno nome', 'apr. nome', 'nome do aprendiz']), 
                 curso: findCol(['curso']), 
                 ini: findCol(['turdatini']), 
                 fim: findCol(['turdatfim']), 
-                empresa: findCol(['razao social', 'razão social']), 
-                cnpj: findCol(['cnpj', 'c.n.p.j']), // 👑 BUSCA DA COLUNA CNPJ
-                end: findCol(['endereço', 'endereco']), 
+                empresa: findCol(['emprazaosocial', 'emp razao social', 'razao social', 'razão social']), 
+                cnpj: findCol(['empcnpj', 'emp cnpj', 'cnpj', 'c.n.p.j']), // BUSCA DA COLUNA CNPJ
+                end: findCol(['empend', 'emp end', 'endereço', 'endereco']), 
                 mapa: findCol(['link mapa']), 
-                cidade: findCol(['emp. cidade']), 
+                cidade: findCol(['empcidnom', 'emp cid nom', 'emp. cidade']), 
                 regiao: findCol(['atuação senac', 'atuacao senac']), 
                 sup: findCol(['sup. cadastrado']), 
                 tel: findCol(['sup celular']), 
@@ -1331,13 +1333,19 @@ th {
                 
                 // 👑 INSERÇÃO DO CNPJ TRATADO
                 let cnpjTratado = String(val(C.cnpj)).replace(/\D/g, '');
+                if (cnpjTratado.length === 13) {
+                    const candidatoCnpj = '0' + cnpjTratado;
+                    if (typeof cnpjValido9643 === 'function' && cnpjValido9643(candidatoCnpj)) cnpjTratado = candidatoCnpj;
+                }
                 
                 let hrTeoria = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.teoria)) : val(C.teoria);
                 let hrPratica = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.pratica)) : val(C.pratica);
                 
                 alunosLidos.push({ 
                     id: "ID_" + Date.now().toString(36) + Math.random().toString(36).substr(2, 5).toUpperCase(), 
-                    nome: nomeVal, 
+                    nome: nomeVal,
+                    codigo: String(val(C.codigo)).trim().replace(/\.0$/, ''),
+                    cpf: String(val(C.cpf)).replace(/\D/g, ''),
                     turma: turmaVal, 
                     curso: val(C.curso),
                     cnpj: cnpjTratado, // 👑 SALVA O CNPJ AQUI
@@ -11610,15 +11618,16 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
 </script>                
 
 <script id="cnpj-dados-gerais-precisao-v9643">
-/* v9.6.43 - CNPJ por Dados Gerais e endereco oficial vinculado exclusivamente ao CNPJ */
+/* v9.6.44 - CNPJ preciso por AlunoCod/AlunoCPF/Turma; zero inicial apenas quando validado */
 (() => {
 'use strict';
 const N9643=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
 const D9643=v=>String(v??'').replace(/\D/g,'');
 const E9643=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 function cnpjValido9643(v){const c=D9643(v);if(c.length!==14||/^(\d)\1{13}$/.test(c))return false;const calc=t=>{let soma=0,p=t.length-7;for(let i=0;i<t.length;i++){soma+=Number(t[i])*p--;if(p<2)p=9;}const r=soma%11;return r<2?0:11-r;};return calc(c.slice(0,12))===Number(c[12])&&calc(c.slice(0,13))===Number(c[13]);}
-function cabecalho9643(rows){for(let r=0;r<Math.min(30,rows.length);r++){const h=(rows[r]||[]).map(N9643);const find=(...x)=>h.findIndex(v=>x.some(t=>v===N9643(t)||v.includes(N9643(t))));const C={codigo:find('APR. COD','CODIGO DO ALUNO','CODIGO APRENDIZ'),cpf:find('APR CPF','CPF DO ALUNO','CPF APRENDIZ'),nome:find('APR. NOME','NOME DO APRENDIZ','ALUNO'),turma:find('TURMA'),cnpj:find('CNPJ','C.N.P.J'),razao:find('RAZAO SOCIAL','EMPRESA')};if(C.cnpj>=0&&C.nome>=0&&(C.codigo>=0||C.cpf>=0||C.turma>=0))return{r,C};}return null;}
-function lerArquivo9643(file){return new Promise((ok,fail)=>{const fr=new FileReader();fr.onerror=()=>fail(new Error('Falha ao ler o arquivo.'));fr.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});let registros=[];wb.SheetNames.forEach(aba=>{const rows=XLSX.utils.sheet_to_json(wb.Sheets[aba],{header:1,defval:'',raw:false});const h=cabecalho9643(rows);if(!h)return;for(let i=h.r+1;i<rows.length;i++){const row=rows[i]||[],v=k=>h.C[k]>=0?String(row[h.C[k]]??'').trim():'';const nome=v('nome'),cnpj=D9643(v('cnpj'));if(!nome&&!cnpj)continue;registros.push({aba,linha:i+1,codigo:v('codigo').replace(/\.0$/,''),cpf:D9643(v('cpf')),nome,turma:v('turma'),cnpj,razao:v('razao')});}});ok(registros);}catch(err){fail(err);}};fr.readAsArrayBuffer(file);});}
+function normalizarCnpj9643(v){let c=D9643(v);if(c.length===13){const candidato='0'+c;if(cnpjValido9643(candidato))c=candidato;}return cnpjValido9643(c)?c:'';}
+function cabecalho9643(rows){for(let r=0;r<Math.min(30,rows.length);r++){const h=(rows[r]||[]).map(N9643);const find=(...x)=>h.findIndex(v=>x.some(t=>v===N9643(t)||v.includes(N9643(t))));const C={codigo:find('ALUNOCOD','ALUNO COD','APR. COD','CODIGO DO ALUNO','CODIGO APRENDIZ'),cpf:find('ALUNOCPF','ALUNO CPF','APR CPF','CPF DO ALUNO','CPF APRENDIZ'),nome:find('ALUNONOME','ALUNO NOME','APR. NOME','NOME DO APRENDIZ'),turma:find('TURMA'),cnpj:find('EMPCNPJ','EMP CNPJ','CNPJ','C.N.P.J'),razao:find('EMPRAZAOSOCIAL','EMP RAZAO SOCIAL','RAZAO SOCIAL','EMPRESA')};if(C.cnpj>=0&&C.nome>=0&&(C.codigo>=0||C.cpf>=0||C.turma>=0))return{r,C};}return null;}
+function lerArquivo9643(file){return new Promise((ok,fail)=>{const fr=new FileReader();fr.onerror=()=>fail(new Error('Falha ao ler o arquivo.'));fr.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});let registros=[];wb.SheetNames.forEach(aba=>{const rows=XLSX.utils.sheet_to_json(wb.Sheets[aba],{header:1,defval:'',raw:false});const h=cabecalho9643(rows);if(!h)return;for(let i=h.r+1;i<rows.length;i++){const row=rows[i]||[],v=k=>h.C[k]>=0?String(row[h.C[k]]??'').trim():'';const nome=v('nome'),cnpjBruto=D9643(v('cnpj')),cnpj=normalizarCnpj9643(cnpjBruto);if(!nome&&!cnpjBruto)continue;registros.push({aba,linha:i+1,codigo:v('codigo').replace(/\.0$/,''),cpf:D9643(v('cpf')),nome,turma:v('turma'),cnpj,cnpjBruto,razao:v('razao')});}});ok(registros);}catch(err){fail(err);}};fr.readAsArrayBuffer(file);});}
 function alunos9643(){return[...(DB.quali||[]),...(DB.tec||[])];}
 function localizar9643(r,todos){const porCodigo=r.codigo?todos.filter(a=>String(a.codigo_aluno||a.codigo||a.id||'').replace(/\.0$/,'')===r.codigo):[];if(porCodigo.length===1)return{aluno:porCodigo[0],metodo:'codigo'};if(porCodigo.length>1)return{erro:'codigo duplicado'};const porCpf=r.cpf.length===11?todos.filter(a=>D9643(a.cpf||a.CPF)===r.cpf):[];if(porCpf.length===1)return{aluno:porCpf[0],metodo:'cpf'};if(porCpf.length>1)return{erro:'CPF duplicado'};const porNomeTurma=r.nome&&r.turma?todos.filter(a=>N9643(a.nome)===N9643(r.nome)&&N9643(a.turma)===N9643(r.turma)):[];if(porNomeTurma.length===1)return{aluno:porNomeTurma[0],metodo:'nome+turma'};if(porNomeTurma.length>1)return{erro:'nome e turma duplicados'};return{erro:'aluno nao localizado com seguranca'};}
 function propagar9643(a){Object.values(DB.planning||{}).forEach(arr=>(arr||[]).forEach(i=>{if(String(i?.student?.id)===String(a.id)){i.student.cnpj=a.cnpj;i.student.empresa=JSON.parse(JSON.stringify(a.empresa||{}));i.student.cidade=a.cidade;i.student.regiao=a.regiao;}}));}
