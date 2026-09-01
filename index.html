@@ -7886,84 +7886,83 @@ window.atualizarAutocompleteGlobal = function() {
             try {
                 const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
-                
                 const ctx = stateObj ? stateObj.planContext : null;
-                
-                if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
+
+                if (!ctx || !dbObj || !dbObj.planning || !Array.isArray(dbObj.planning[ctx])) {
                     return alert("⚠️ Nenhum roteiro aberto no momento para avançar.");
                 }
 
                 const confirmar = confirm(
-    "🔄 AVANÇAR CICLO DE VISITAS\n\n" +
-    "Os alunos com status 'Realizada' serão preparados " +
-    "para a próxima visita.\n\n" +
-    "Nenhum aluno será removido do planejamento.\n\n" +
-    "Deseja continuar?"
-);
+                    "🔄 AVANÇAR CICLO DE VISITAS\n\n" +
+                    "Os alunos com status 'Realizada' serão preparados para a próxima visita.\n\n" +
+                    "Nenhum aluno será removido do planejamento.\n\n" +
+                    "Deseja continuar?"
+                );
                 if (!confirmar) return;
 
-                let roteiro = dbObj.planning[ctx];
+                const roteiro = dbObj.planning[ctx];
                 let alterados = 0;
-                
-                // 👑 NOVO MAPA SEGURO DE STATUS (Sem falsos positivos)
-                const inativosIds = new Set();
-                [...(dbObj.quali || []), ...(dbObj.tec || [])].forEach(a => {
-                    const statusTxt = String(a.status || a.situacao || "").toUpperCase();
-                    if (a.isDesligado === true || statusTxt.includes('DESLIGADO') || statusTxt.includes('ENCERRAD') || statusTxt.includes('EVADI') || statusTxt.includes('CANCELAD')) {
-                        inativosIds.add(String(a.id));
+
+                roteiro.forEach(item => {
+                    if (!item || !item.student) return;
+
+                    const statusPlano = String(item.status || '')
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .trim()
+                        .toUpperCase();
+
+                    if (statusPlano !== 'REALIZADA') return;
+
+                    item.status = 'Realizar';
+
+                    const limite = (dbObj.tec || []).some(aluno =>
+                        String(aluno.id) === String(item.student.id)
+                    ) ? 6 : 3;
+
+                    const numeroAtual = parseInt(String(item.visitaTipo || '').match(/\d+/)?.[0] || '1', 10);
+                    const proximoNumero = Math.min(numeroAtual + 1, limite);
+                    item.visitaTipo = `${proximoNumero}ª Visita`;
+                    item.date = '';
+                    item.hrAtend = '';
+
+                    if (item.obs) {
+                        item.obs = String(item.obs)
+                            .replace(/🚨 ALERTA:.*?(?=\n|$)/g, '')
+                            .replace(/\[PEDAGÓGICO\].*?(?=\n|$)/g, '')
+                            .replace(/\n{3,}/g, '\n\n')
+                            .trim();
                     }
+
+                    alterados++;
                 });
 
-                for (let i = roteiro.length - 1; i >= 0; i--) {
-                    const item = roteiro[i];
-                    if (!item || !item.student) continue;
-                    
-                    }
-
-                    // 🔄 AVANÇO DE CICLO
-                    const statusPlano = String(item.status || "").trim().toUpperCase();
-                    if (statusPlano === 'REALIZADA') {
-                        item.status = 'Realizar'; 
-                        
-                        if (item.visitaTipo) {
-                            item.visitaTipo = item.visitaTipo.replace(/(\d+)(ª|º|a|o)/i, (match, numero, sufixo) => {
-                                return (parseInt(numero) + 1) + sufixo;
-                            });
-                        }
-                        
-                        item.date = '';
-                        item.hrAtend = '';
-                        if (item.obs) {
-                           item.obs = item.obs.replace(/🚨 ALERTA:(.*?)(?=\n|$)/g, "").trim(); 
-                           item.obs = item.obs.replace(/\[PEDAGÓGICO\](.*?)(\n|$)/g, "").trim();
-                        }
-                        alterados++;
-                    }
-                }
-
                 if (alterados > 0) {
-                    roteiro.forEach((item, idx) => item.ordem = idx + 1);
-                    if(typeof saveToStorage === 'function') saveToStorage();
-                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
+                    roteiro.forEach((item, idx) => {
+                        item.ordem = idx + 1;
+                    });
+
+                    if (typeof saveToStorage === 'function') saveToStorage();
+                    if (typeof renderPlanningTable === 'function') renderPlanningTable();
+                    if (typeof renderPlanningCandidates === 'function') renderPlanningCandidates();
+
                     alert(
-    `✅ Ciclo Avançado!\n\n` +
-    `${alterados} aluno(s) foram movidos para o próximo ciclo.\n\n` +
-    `Nenhum aluno foi removido do planejamento. ` +
-    `A exclusão de encerrados e desligados fica restrita ` +
-    `ao botão Faxina.`
-);
+                        `✅ Ciclo Avançado!\n\n` +
+                        `${alterados} aluno(s) foram movidos para o próximo ciclo.\n\n` +
+                        `Nenhum aluno foi removido do planejamento. ` +
+                        `A exclusão de encerrados e desligados fica restrita ao botão Faxina.`
+                    );
                 } else {
                     alert(
-    "ℹ️ Nenhuma alteração necessária. " +
-    "Não há alunos com status 'Realizada' para avançar."
-);
-                
+                        "ℹ️ Nenhuma alteração necessária. " +
+                        "Não há alunos com status 'Realizada' para avançar."
+                    );
+                }
             } catch (error) {
                 console.error("Erro ao avançar ciclo:", error);
                 alert("Erro técnico ao tentar avançar: " + error.message);
             }
         };
-
         // =========================================================================
         // 🗺️ ORDENADOR LOGÍSTICO + FAXINA GLOBAL DE DESLIGADOS
         // =========================================================================
@@ -9021,6 +9020,13 @@ window.confirmarImportacaoAbaExcel = async function(sheetName){
             const aluno=byName.get(normImp(nome));
             const pareceLinhaAluno = parseTimeImp(r.A) || String(r.C||'').trim().length>=4;
             if(!aluno){ if(pareceLinhaAluno) fantasmas.push(nome); return; }
+            const verificacaoInativo = typeof verificarInativoPlanejamento === 'function'
+                ? verificarInativoPlanejamento(aluno)
+                : { inativo: aluno.isDesligado === true, motivo: 'DESLIGADO' };
+            if (verificacaoInativo.inativo) {
+                inconform.push(`${nome}: não importado, aluno ${verificacaoInativo.motivo || 'DESLIGADO/ENCERRADO'}`);
+                return;
+            }
             const turmaSistema=aluno.turma || '';
             const turmaPlanilha=String(r.C||'').trim();
             const empresaPlanilha=String(r.G||'').trim();
@@ -9190,7 +9196,7 @@ function cleanName(n){return U(String(n||'').replace(/\((DESLIGADA|DESLIGADO)\)/
 function planHeaders(ws){const matrix=rowsMatrix(ws);let header=-1;for(let r=0;r<Math.min(25,matrix.length);r++){const all=(matrix[r]||[]).map(U).join('|');if(all.includes('APR. NOME')||all.includes('APRENDIZ')){header=r;break;}}if(header<0)header=1;const h=(matrix[header]||[]).map(U);const find=tests=>h.findIndex(x=>tests.some(t=>x.includes(t)));return{matrix,header,col:{hrAtend:find(['HORARIO DE ATENDIMENTO','ATENDIMENTO']),teoria:find(['TEORIA HR INI','HORARIO DO JOVEM']),turma:find(['TURMA']),cc:find(['CC','CENTRO DE CUSTO']),nome:find(['APR. NOME','APRENDIZ']),curso:find(['CURSO']),empresa:find(['RAZAO SOCIAL','RAZÃO SOCIAL']),endereco:find(['ENDERECO','ENDEREÇO']),link:find(['LINK MAPA','LINK GOOGLE']),cidade:find(['EMP. CIDADE','CIDADE']),sup:find(['SUP. CADASTRADO','SUP. NA EMPRESA','SUPERVISOR']),tel:find(['SUP CELULAR','SUP. CELULAR','TELEFONE','CELULAR']),email:find(['SUP. EMAIL','EMAIL']),visita:find(['SELECIONE A VISITA','VISITA']),status:find(['STATUS']),obs:find(['OBSERVACAO VISITA','OBSERVAÇÃO VISITA'])}};}
 function get(row,idx){return idx>=0?row[idx]:'';}
 function parsePlan(wb,sheet){const ws=wb.Sheets[sheet], {matrix,header,col}=planHeaders(ws);const logs=extractLogistics(ws);const data=logs[0]?.date||'';const todos=[...(DB.quali||[]),...(DB.tec||[])];const byName=new Map(todos.map(a=>[cleanName(a.nome),a]));const roteiro=[],fantasmas=[],inconform=[];let statusCount=0,obsCount=0;
- for(let r=header+1;r<matrix.length;r++){const row=matrix[r]||[],all=row.map(U).join('|');if(all.includes('TEMPO DE DESLOCAMENTO')||all.includes('HORARIO DE ALMOCO'))break;const nome=S(get(row,col.nome));if(!nome||U(nome).includes('APR. NOME')||U(nome).includes('NOME'))continue;const aluno=byName.get(cleanName(nome));if(!aluno){if(parseTime(get(row,col.hrAtend))||S(get(row,col.turma)).length>=4)fantasmas.push(nome);continue;}const turmaPlan=S(get(row,col.turma));const empPlan=S(get(row,col.empresa));const cidPlan=S(get(row,col.cidade));const erros=[];if(turmaPlan&&U(aluno.turma)!==U(turmaPlan))erros.push(`Turma sistema ${aluno.turma||'-'} / planilha ${turmaPlan}`);if(empPlan&&aluno.empresa&&U(aluno.empresa.razao)!==U(empPlan))erros.push('Empresa divergente');if(cidPlan&&U(aluno.cidade)!==U(cidPlan))erros.push('Cidade divergente');if(erros.length)inconform.push(`${nome}: ${erros.join(', ')}`);let visita=window.calcularProximaVisitaDoSistema(aluno);let statusBruto=S(get(row,col.status));let statusNorm=U(statusBruto);let status=(statusNorm==='VISITADO'||statusNorm==='VISITADA'||statusNorm==='REALIZADA'||statusNorm==='REALIZADO')?'Realizada':((statusNorm.includes('NAO')||statusNorm.includes('NÃO')||statusNorm.includes('CANCEL'))?'Não realizada':'Realizar');if(statusBruto)statusCount++;let obs=S(get(row,col.obs))||aluno.obs_origem||'';if(obs)obsCount++;roteiro.push({ordem:roteiro.length+1,student:aluno,date:data,hrAtend:parseTime(get(row,col.hrAtend)),hrFim:'',hrTeoria:aluno.teoria||parseTime(get(row,col.teoria))||'',hrPratica:aluno.pratica||'',visitaTipo:visita,status,obs,cc_override:''});}
+ for(let r=header+1;r<matrix.length;r++){const row=matrix[r]||[],all=row.map(U).join('|');if(all.includes('TEMPO DE DESLOCAMENTO')||all.includes('HORARIO DE ALMOCO'))break;const nome=S(get(row,col.nome));if(!nome||U(nome).includes('APR. NOME')||U(nome).includes('NOME'))continue;const aluno=byName.get(cleanName(nome));if(!aluno){if(parseTime(get(row,col.hrAtend))||S(get(row,col.turma)).length>=4)fantasmas.push(nome);continue;}const verificacaoInativo=(typeof verificarInativoPlanejamento==='function')?verificarInativoPlanejamento(aluno):{inativo:aluno.isDesligado===true,motivo:'DESLIGADO'};if(verificacaoInativo.inativo){inconform.push(`${nome}: não importado, aluno ${verificacaoInativo.motivo||'DESLIGADO/ENCERRADO'}`);continue;}const turmaPlan=S(get(row,col.turma));const empPlan=S(get(row,col.empresa));const cidPlan=S(get(row,col.cidade));const erros=[];if(turmaPlan&&U(aluno.turma)!==U(turmaPlan))erros.push(`Turma sistema ${aluno.turma||'-'} / planilha ${turmaPlan}`);if(empPlan&&aluno.empresa&&U(aluno.empresa.razao)!==U(empPlan))erros.push('Empresa divergente');if(cidPlan&&U(aluno.cidade)!==U(cidPlan))erros.push('Cidade divergente');if(erros.length)inconform.push(`${nome}: ${erros.join(', ')}`);let visita=window.calcularProximaVisitaDoSistema(aluno);let statusBruto=S(get(row,col.status));let statusNorm=U(statusBruto);let status=(statusNorm==='VISITADO'||statusNorm==='VISITADA'||statusNorm==='REALIZADA'||statusNorm==='REALIZADO')?'Realizada':((statusNorm.includes('NAO')||statusNorm.includes('NÃO')||statusNorm.includes('CANCEL'))?'Não realizada':'Realizar');if(statusBruto)statusCount++;let obs=S(get(row,col.obs))||aluno.obs_origem||'';if(obs)obsCount++;roteiro.push({ordem:roteiro.length+1,student:aluno,date:data,hrAtend:parseTime(get(row,col.hrAtend)),hrFim:'',hrTeoria:aluno.teoria||parseTime(get(row,col.teoria))||'',hrPratica:aluno.pratica||'',visitaTipo:visita,status,obs,cc_override:''});}
  return{roteiro,fantasmas,inconform,statusCount,obsCount};}
 function chooseName(sheet,roteiro){const current=STATE.planContext;if(current&&DB.planning?.[current]?.length){const names=new Set(DB.planning[current].map(x=>cleanName(x.student?.nome)));const overlap=roteiro.filter(x=>names.has(cleanName(x.student?.nome))).length;if(overlap>0)return{name:current,mode:'updated'};}let base=(sheet+' - '+(window.__senacExcelFileName||'ROTEIRO')).toUpperCase().slice(0,80),name=base,n=2;while(DB.planning?.[name])name=`${base} (${n++})`;return{name,mode:'created'};}
 window.processarPlanilhaInstrutor=async function(event){const file=event?.target?.files?.[0];if(!file)return;try{if(typeof XLSX==='undefined')return alert('Motor XLSX não carregado.');const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Lendo abas da planilha...';const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true,bookVBA:true});if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}openSheetModal(wb,file.name.replace(/\.[^.]+$/,''));}catch(e){alert('Erro ao ler planilha: '+e.message);}finally{if(event?.target)event.target.value='';}};
