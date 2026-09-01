@@ -11615,5 +11615,207 @@ window.processarDadosGeraisCnpj=async function(event){const input=event?.target,
 window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos9643(),aptos=todos.filter(a=>cnpjValido9643(a.cnpj||a.empresa?.cnpj));if(!aptos.length)return alert('Nenhum aluno possui CNPJ valido gravado.');if(!confirm(`CONSULTAR ENDERECOS POR CNPJ\n\nAlunos com CNPJ valido: ${aptos.length}\n\nO endereco atual sera substituido somente pelo endereco retornado para o mesmo CNPJ.\nUma falha de consulta nao apaga o endereco existente.\n\nContinuar?`))return;try{if(typeof window.criarVersaoBackup==='function')await window.criarVersaoBackup('pre_endereco_cnpj','Antes de atualizar enderecos por CNPJ',{silent:true});const r=await atualizarEnderecosPorCnpj9643(aptos);await saveToStorage();if(typeof window.forcarSalvamentoV9642==='function')await window.forcarSalvamentoV9642();if(typeof runFilter==='function')runFilter();if(typeof renderPlanningTable==='function')renderPlanningTable();alert(`ATUALIZACAO CONCLUIDA\n\nCNPJs consultados: ${r.cnpjs}\nAlunos atualizados: ${r.alunos}\nFalhas preservadas sem apagar dados: ${r.erros.length}${r.erros.length?'\n\n'+r.erros.slice(0,10).join('\n'):''}`);}catch(e){console.error(e);alert('Atualizacao interrompida: '+e.message);}};
 })();
 </script>
+<script id="correcao-cidade-regiao-v9646">
+/* v9.6.46 - normalizacao segura de cidade e preenchimento automatico de regiao */
+(() => {
+    'use strict';
+
+    window.APP_VERSION = '9.6.46-CIDADE-REGIAO-AUTOMATICA';
+
+    const normalizarCidadeV9646 = valor => String(valor || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Za-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+
+    function distanciaV9646(a, b) {
+        a = normalizarCidadeV9646(a);
+        b = normalizarCidadeV9646(b);
+        if (a === b) return 0;
+        if (!a.length) return b.length;
+        if (!b.length) return a.length;
+        const anterior = Array.from({ length: b.length + 1 }, (_, i) => i);
+        for (let i = 1; i <= a.length; i++) {
+            const atual = [i];
+            for (let j = 1; j <= b.length; j++) {
+                atual[j] = Math.min(
+                    atual[j - 1] + 1,
+                    anterior[j] + 1,
+                    anterior[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+                );
+            }
+            for (let j = 0; j < atual.length; j++) anterior[j] = atual[j];
+        }
+        return anterior[b.length];
+    }
+
+    function montarCatalogoCidadesV9646() {
+        const catalogo = new Map();
+        const ambiguas = new Set();
+
+        const registrar = (cidade, regiao, prioridade) => {
+            const chave = normalizarCidadeV9646(cidade);
+            const nome = String(cidade || '').trim().toUpperCase();
+            const regional = String(regiao || '').trim().toUpperCase();
+            if (!chave || !nome || !regional) return;
+
+            const atual = catalogo.get(chave);
+            if (atual && normalizarCidadeV9646(atual.regiao) !== normalizarCidadeV9646(regional)) {
+                ambiguas.add(chave);
+                return;
+            }
+            if (!atual || prioridade > atual.prioridade) {
+                catalogo.set(chave, { cidade: nome, regiao: regional, prioridade });
+            }
+        };
+
+        Object.entries((window.DB && window.DB.regioes_map) || {}).forEach(([regiao, cidades]) => {
+            if (!Array.isArray(cidades)) return;
+            cidades.forEach(cidade => registrar(cidade, regiao, 100));
+        });
+
+        const alunos = [
+            ...((window.DB && window.DB.quali) || []),
+            ...((window.DB && window.DB.tec) || [])
+        ];
+        alunos.forEach(aluno => {
+            if (aluno && aluno.cidade && aluno.regiao) registrar(aluno.cidade, aluno.regiao, 50);
+        });
+
+        ambiguas.forEach(chave => catalogo.delete(chave));
+        return catalogo;
+    }
+
+    function localizarCidadeV9646(cidade) {
+        const chave = normalizarCidadeV9646(cidade);
+        if (!chave) return null;
+        const catalogo = montarCatalogoCidadesV9646();
+        if (catalogo.has(chave)) return catalogo.get(chave);
+
+        /* Corrige apenas erro pequeno e com resultado unico, evitando trocar municipios por engano. */
+        const limite = chave.length >= 12 ? 2 : 1;
+        let melhorDistancia = Infinity;
+        let candidatos = [];
+        catalogo.forEach((dados, chaveCatalogo) => {
+            if (Math.abs(chaveCatalogo.length - chave.length) > limite) return;
+            const distancia = distanciaV9646(chave, chaveCatalogo);
+            if (distancia < melhorDistancia) {
+                melhorDistancia = distancia;
+                candidatos = [dados];
+            } else if (distancia === melhorDistancia) {
+                candidatos.push(dados);
+            }
+        });
+        return melhorDistancia <= limite && candidatos.length === 1 ? candidatos[0] : null;
+    }
+
+    window.getRegiaoDaCidade = function(cidade) {
+        const localizado = localizarCidadeV9646(cidade);
+        return localizado ? localizado.regiao : '';
+    };
+
+    window.corrigirCidadesERegioesV9646 = async function(opcoes = {}) {
+        const silencioso = opcoes.silencioso !== false;
+        const salvar = opcoes.salvar !== false;
+        const alunos = [
+            ...((window.DB && window.DB.quali) || []),
+            ...((window.DB && window.DB.tec) || [])
+        ];
+        let cidadesCorrigidas = 0;
+        let regioesPreenchidas = 0;
+        const alterados = new Map();
+
+        alunos.forEach(aluno => {
+            if (!aluno || !aluno.cidade) return;
+            const localizado = localizarCidadeV9646(aluno.cidade);
+            if (!localizado) return;
+
+            const cidadeAntes = String(aluno.cidade || '').trim();
+            const regiaoAntes = String(aluno.regiao || '').trim();
+            if (normalizarCidadeV9646(cidadeAntes) === normalizarCidadeV9646(localizado.cidade) && cidadeAntes.toUpperCase() !== localizado.cidade) {
+                aluno.cidade = localizado.cidade;
+                cidadesCorrigidas++;
+            } else if (normalizarCidadeV9646(cidadeAntes) !== normalizarCidadeV9646(localizado.cidade)) {
+                aluno.cidade = localizado.cidade;
+                cidadesCorrigidas++;
+            }
+            if (!regiaoAntes || normalizarCidadeV9646(regiaoAntes) !== normalizarCidadeV9646(localizado.regiao)) {
+                aluno.regiao = localizado.regiao;
+                regioesPreenchidas++;
+            }
+            if (cidadeAntes !== aluno.cidade || regiaoAntes !== aluno.regiao) {
+                alterados.set(String(aluno.id), aluno);
+            }
+        });
+
+        if (alterados.size && window.DB && window.DB.planning) {
+            Object.values(window.DB.planning).forEach(roteiro => {
+                if (!Array.isArray(roteiro)) return;
+                roteiro.forEach(item => {
+                    const mestre = alterados.get(String(item && item.student && item.student.id));
+                    if (mestre && item.student) {
+                        item.student.cidade = mestre.cidade;
+                        item.student.regiao = mestre.regiao;
+                    }
+                });
+            });
+        }
+
+        if (alterados.size && salvar && typeof saveToStorage === 'function') {
+            await saveToStorage();
+        }
+        if (!silencioso && typeof alert === 'function') {
+            alert(
+                'CORRECAO DE CIDADES E REGIOES CONCLUIDA\n\n' +
+                'Cadastros corrigidos: ' + alterados.size + '\n' +
+                'Cidades padronizadas: ' + cidadesCorrigidas + '\n' +
+                'Regioes preenchidas/corrigidas: ' + regioesPreenchidas + '\n\n' +
+                'Casos ambiguos foram preservados sem alteracao.'
+            );
+        }
+        return { alterados: alterados.size, cidadesCorrigidas, regioesPreenchidas };
+    };
+
+    /* A importacao incremental passa a usar a mesma busca sem acentos e com erro pequeno seguro. */
+    if (typeof V9626 !== 'undefined' && V9626) {
+        V9626.regiaoCidade = function(cidade) {
+            const localizado = localizarCidadeV9646(cidade);
+            return localizado ? localizado.regiao : '';
+        };
+    }
+
+    /* Corrige a base imediatamente depois de qualquer carregamento/restauracao. */
+    if (typeof processDataLoad === 'function') {
+        const processDataLoadAnteriorV9646 = processDataLoad;
+        processDataLoad = function(parsed) {
+            const retorno = processDataLoadAnteriorV9646.apply(this, arguments);
+            setTimeout(async () => {
+                const resultado = await window.corrigirCidadesERegioesV9646({ silencioso: true, salvar: true });
+                if (resultado.alterados && typeof setupFilters === 'function') setupFilters();
+                if (resultado.alterados && typeof runFilter === 'function') runFilter();
+            }, 80);
+            return retorno;
+        };
+    }
+
+    /* Ao sair do campo Cidade na ficha, corrige a grafia e seleciona a regiao automaticamente. */
+    document.addEventListener('DOMContentLoaded', () => {
+        const cidade = document.getElementById('editCidade');
+        if (cidade && !cidade.dataset.regiaoAutomaticaV9646) {
+            cidade.dataset.regiaoAutomaticaV9646 = '1';
+            cidade.addEventListener('blur', () => {
+                const localizado = localizarCidadeV9646(cidade.value);
+                if (!localizado) return;
+                cidade.value = localizado.cidade;
+                const regiao = document.getElementById('editRegiao');
+                if (regiao) regiao.value = localizado.regiao;
+            });
+        }
+        setTimeout(() => window.corrigirCidadesERegioesV9646({ silencioso: true, salvar: true }), 1800);
+    });
+})();
+</script>
 </body>
 </html>
