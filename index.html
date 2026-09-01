@@ -2304,7 +2304,156 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 return { status: 'base_ativa', color: 'blue', label: 'SEM ATENDIMENTO', subLabel: 'No Prazo', alert: alertObj, delay: 0 }; 
             }
         }
+// =========================================================================
+// REGRA ÚNICA DE SEGURANÇA PARA PLANEJAMENTO E FAXINA
+// Remove somente desligados manuais ou contratos realmente encerrados.
+// =========================================================================
+function verificarInativoPlanejamento(item) {
+    if (!item || typeof item !== 'object') {
+        return {
+            inativo: false,
+            motivo: '',
+            origem: ''
+        };
+    }
 
+    /*
+     * 1. DESLIGAMENTO MANUAL
+     *
+     * Somente o valor booleano true é aceito.
+     * Não pesquisa palavras em observações, empresa,
+     * supervisor, endereço ou outros campos.
+     */
+    if (item.isDesligado === true) {
+        return {
+            inativo: true,
+            motivo: 'DESLIGADO',
+            origem: 'marcacao_manual'
+        };
+    }
+
+    /*
+     * 2. STATUS EXPLÍCITO DA FICHA
+     *
+     * Aceita apenas status próprios do aluno.
+     * Não faz varredura em todo o objeto.
+     */
+    const statusDireto = String(
+        item.statusAluno ||
+        item.situacaoAluno ||
+        item.situacao ||
+        item['situação'] ||
+        ''
+    )
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+
+    const statusPermitidos = [
+        'DESLIGADO',
+        'ENCERRADO'
+    ];
+
+    if (statusPermitidos.includes(statusDireto)) {
+        return {
+            inativo: true,
+            motivo: statusDireto,
+            origem: 'status_explicito'
+        };
+    }
+
+    /*
+     * 3. CONTRATO ENCERRADO PELA DATA
+     *
+     * Esta é a mesma lógica utilizada no painel:
+     * se a data final já passou, o contrato está encerrado.
+     */
+    if (item.fim) {
+        const dataFim = new Date(item.fim);
+
+        if (!isNaN(dataFim.getTime())) {
+            const hoje = new Date();
+
+            hoje.setHours(0, 0, 0, 0);
+            dataFim.setHours(0, 0, 0, 0);
+
+            if (hoje > dataFim) {
+                return {
+                    inativo: true,
+                    motivo: 'ENCERRADO',
+                    origem: 'fim_contrato'
+                };
+            }
+        }
+    }
+
+    /*
+     * Qualquer outra situação fica preservada.
+     *
+     * Não remove por:
+     * - observação contendo palavras;
+     * - empresa;
+     * - endereço;
+     * - supervisor;
+     * - falta de região;
+     * - falta de cidade;
+     * - ausência de visitas;
+     * - aluno concluído;
+     * - aluno evadido;
+     * - aluno cancelado;
+     * - aluno órfão;
+     * - campo vazio.
+     */
+    return {
+        inativo: false,
+        motivo: '',
+        origem: ''
+    };
+}
+
+function localizarAlunoMestrePlanejamento(student) {
+    if (!student || typeof student !== 'object') {
+        return null;
+    }
+
+    const todosAlunos = [
+        ...(DB.quali || []),
+        ...(DB.tec || [])
+    ];
+
+    /*
+     * Prioridade absoluta para a ID.
+     * Não remove por semelhança de nome.
+     */
+    if (
+        student.id !== undefined &&
+        student.id !== null &&
+        String(student.id).trim() !== ''
+    ) {
+        const localizado = todosAlunos.find(aluno =>
+            aluno &&
+            String(aluno.id) === String(student.id)
+        );
+
+        if (localizado) {
+            return localizado;
+        }
+    }
+
+    /*
+     * Se a ID não existir na base, devolve null.
+     * A faxina não deve adivinhar pelo nome.
+     */
+    return null;
+}
+
+window.verificarInativoPlanejamento =
+    verificarInativoPlanejamento;
+
+window.localizarAlunoMestrePlanejamento =
+    localizarAlunoMestrePlanejamento;
         function checkGlobalAlerts() {
             const banner = document.getElementById('globalAlertBanner');
             if (!banner) return;
@@ -3799,9 +3948,12 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
                 if(cid && s.cidade !== cid) return false;
                 if(currentPlanIds.includes(s.id)) return false;
                 
-                // Inteligência real: bloqueia alunos encerrados por contrato ou manual
-                const st = analyzeStatus(s);
-                return st.status !== 'desligado'; 
+                // Bloqueio único e seguro para o Planejamento.
+// Não exibe desligados manuais nem contratos encerrados.
+const verificacao =
+    verificarInativoPlanejamento(s);
+
+return verificacao.inativo === false; 
             });
             
             if(candidates.length === 0) { 
@@ -3856,14 +4008,36 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             const allStudents = [...(DB.quali || []), ...(DB.tec || [])]; 
             
             if (!DB.planning[STATE.planContext]) DB.planning[STATE.planContext] = []; 
-            let addedCount = 0; 
+            let addedCount = 0;
+let blockedCount = 0; 
             
             selectedIds.forEach(id => { 
                 // Evita colocar o mesmo aluno duas vezes
                 if(DB.planning[STATE.planContext].find(p => String(p.student.id).trim() === id)) return; 
                 
-                const student = allStudents.find(s => String(s.id).trim() === id); 
-                if(student) { 
+                const student = allStudents.find(
+    s => String(s.id).trim() === id
+);
+
+if (student) {
+    /*
+     * Segunda barreira de segurança:
+     * mesmo que o nome ainda esteja aparecendo na tela,
+     * não permite adicionar encerrado ou desligado.
+     */
+    const verificacao =
+        verificarInativoPlanejamento(student);
+
+    if (verificacao.inativo) {
+        console.warn(
+            'Inclusão bloqueada:',
+            student.nome,
+            verificacao.motivo,
+            verificacao.origem
+        );
+blockedCount++;
+        return;
+    } 
                     // 🔥 A BLINDAGEM CONTRA O ERRO: Só verifica se a visita está ok se ela de fato existir!
                     let nextVisit = window.calcularProximaVisitaDoSistema(student);
                     
@@ -3892,9 +4066,27 @@ function debouncedFilter() { clearTimeout(TIMEOUT_DEBOUNCE); TIMEOUT_DEBOUNCE = 
             if (typeof renderAdminTable === 'function') renderAdminTable(); 
             
             if (typeof showToast === 'function') {
-                showToast(`${addedCount} alunos adicionados ao roteiro.`); 
+                let mensagem =
+    `${addedCount} aluno(s) adicionado(s) ao roteiro.`;
+
+if (blockedCount > 0) {
+    mensagem +=
+        ` ${blockedCount} encerrado(s) ou desligado(s) ` +
+        `foram bloqueados.`;
+}
+
+showToast(mensagem); 
             } else {
-                alert(`${addedCount} alunos adicionados ao roteiro.`);
+                let mensagem =
+    `${addedCount} aluno(s) adicionado(s) ao roteiro.`;
+
+if (blockedCount > 0) {
+    mensagem +=
+        `\n\n${blockedCount} encerrado(s) ou desligado(s) ` +
+        `não foram incluídos.`;
+}
+
+alert(mensagem);
             }
         }
 
@@ -7910,33 +8102,12 @@ window.atualizarAutocompleteGlobal = function() {
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
                 if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
 
-                // 1. Mapeia os status de todos os alunos na base central do Senac
-                const todos = [...(dbObj.quali || []), ...(dbObj.tec || [])];
-                const statusMap = {};
-                todos.forEach(a => statusMap[a.id] = String(a.status || a.situacao || "").toUpperCase());
-
-                let totalRemovidos = 0;
-
-                // 2. FAXINA GLOBAL: Varre TODOS os roteiros salvos no sistema
-                Object.keys(dbObj.planning).forEach(nomeRoteiro => {
-                    let roteiro = dbObj.planning[nomeRoteiro];
-                    
-                    // Varre de trás para frente para deletar em segurança
-                    for (let i = roteiro.length - 1; i >= 0; i--) {
-                        const item = roteiro[i];
-                        if (!item.student) continue;
-
-                        const statusDb = statusMap[item.student.id] || "";
-                        
-                        // Se estiver inativo, remove do planejamento
-                        if (statusDb.includes('DESLIGADO') || statusDb.includes('ENCERRAD') || statusDb.includes('EVADI') || statusDb.includes('CONCLU') || statusDb.includes('CANCELAD')) {
-                            roteiro.splice(i, 1);
-                            totalRemovidos++;
-                        }
-                    }
-                    // Refaz a numeração interna daquele roteiro
-                    roteiro.forEach((item, idx) => item.ordem = idx + 1);
-                });
+                /*
+ * O botão Organizar somente organiza.
+ * A remoção de encerrados e desligados fica restrita
+ * ao botão Faxina, que possui backup e prévia.
+ */
+let totalRemovidos = 0;
 
                 // 3. ORDENAÇÃO: Pega o Roteiro que está aberto na tela e organiza (Cidade -> Visita)
                 const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
@@ -7966,11 +8137,7 @@ window.atualizarAutocompleteGlobal = function() {
                 if(typeof renderPlanningTable === 'function') renderPlanningTable();
                 
                 let msg = "✅ Roteiro atual organizado com sucesso (Cidades e Prioridades)!";
-                if (totalRemovidos > 0) {
-                    msg += `\n\n🧹 FAXINA GLOBAL CONCLUÍDA:\n${totalRemovidos} aluno(s) Desligados/Encerrados foram removidos de TODOS os seus planejamentos!`;
-                }
-                alert(msg);
-                
+                                
             } catch (error) {
                 console.error("Erro na organização:", error);
                 alert("Erro ao tentar organizar o roteiro: " + error.message);
@@ -7979,109 +8146,426 @@ window.atualizarAutocompleteGlobal = function() {
         // =========================================================================
         // 🧹 MOTOR DEDICADO: FAXINA GLOBAL BLINDADA COM BACKUP INSTANTÂNEO
         // =========================================================================
-        window.executarFaxinaGlobal = function() {
-            try {
-                const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
-                if (!dbObj || !dbObj.planning) return alert("⚠️ Nenhum roteiro no sistema.");
+        window.executarFaxinaGlobal = async function () {
+    try {
+        const dbObj =
+            typeof DB !== 'undefined'
+                ? DB
+                : window.DB;
 
-                const confirmar = confirm("🧹 INICIAR FAXINA GLOBAL COM RELATÓRIO\n\nO sistema vai vasculhar todas as abas procurando pelos status 'Desligado' ou 'Encerrado'.\n\nDeseja continuar?");
-                if (!confirmar) return;
+        if (
+            !dbObj ||
+            !dbObj.planning ||
+            typeof dbObj.planning !== 'object'
+        ) {
+            alert(
+                'Nenhum planejamento foi encontrado no sistema.'
+            );
 
-                // 📸 1. SALVA O ESTADO ATUAL NA MÁQUINA DO TEMPO ANTES DE QUALQUER COISA
-                if (typeof salvarEstadoParaDesfazer === 'function') salvarEstadoParaDesfazer();
+            return;
+        }
 
-                const limparNome = (str) => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+        /*
+         * ETAPA 1
+         * Faz somente uma prévia.
+         * Nenhum dado é removido nesta etapa.
+         */
+        const encontrados = [];
 
-                // FUNÇÃO DE RAIO-X SEGURO: Extrai APENAS os textos digitados (valores), ignorando os nomes das colunas
-                const extrairApenasValores = (obj) => {
-                    let valores = "";
-                    for (let chave in obj) {
-                        if (obj[chave] !== null && typeof obj[chave] === 'object') {
-                            valores += extrairApenasValores(obj[chave]) + " ";
-                        } else {
-                            valores += String(obj[chave] || "").toUpperCase() + " ";
-                        }
-                    }
-                    return valores;
-                };
+        Object.keys(dbObj.planning)
+            .forEach(nomeRoteiro => {
+                const roteiro =
+                    dbObj.planning[nomeRoteiro];
 
-                const listaNegraIds = new Set();
-                const listaNegraNomes = new Set();
-
-                // 2. Criar a "Lista Negra" (Quem deve sair)
-                Object.keys(dbObj).forEach(key => {
-                    if (Array.isArray(dbObj[key])) {
-                        const isAbaInativa = key.toLowerCase().includes('desl') || key.toLowerCase().includes('encerr');
-
-                        dbObj[key].forEach(a => {
-                            const valoresDaFicha = extrairApenasValores(a);
-                            
-                            const isStatusInativo = valoresDaFicha.includes('DESL/ENCERRADOS') || 
-                                                    valoresDaFicha.includes('DESLIGADO') || 
-                                                    valoresDaFicha.includes('ENCERRADO') || 
-                                                    valoresDaFicha.includes('EVADIDO');
-
-                            if (isAbaInativa || isStatusInativo) {
-                                if (a.id) listaNegraIds.add(String(a.id));
-                                if (a.nome) listaNegraNomes.add(limparNome(a.nome));
-                            }
-                        });
-                    }
-                });
-
-                let totalRemovidos = 0;
-                let relatorioRemocoes = {};
-
-                // 3. FAXINA REAL
-                Object.keys(dbObj.planning).forEach(nomeRoteiro => {
-                    let roteiro = dbObj.planning[nomeRoteiro];
-                    let removeuDeste = false;
-                    
-                    for (let i = roteiro.length - 1; i >= 0; i--) {
-                        const item = roteiro[i];
-                        if (!item || !item.student) continue;
-
-                        const idAluno = String(item.student.id || "");
-                        const nomeAluno = limparNome(item.student.nome);
-
-                        const valoresPlanejamento = extrairApenasValores(item.student);
-                        const isInativoNoPlanejamento = valoresPlanejamento.includes('DESL/ENCERRADOS') || 
-                                                        valoresPlanejamento.includes('DESLIGADO') || 
-                                                        valoresPlanejamento.includes('ENCERRADO');
-
-                        if (listaNegraIds.has(idAluno) || listaNegraNomes.has(nomeAluno) || isInativoNoPlanejamento) {
-                            if (!relatorioRemocoes[nomeRoteiro]) relatorioRemocoes[nomeRoteiro] = [];
-                            relatorioRemocoes[nomeRoteiro].push(item.student.nome);
-
-                            roteiro.splice(i, 1);
-                            totalRemovidos++;
-                            removeuDeste = true;
-                        }
-                    }
-                    
-                    if (removeuDeste) roteiro.forEach((item, idx) => item.ordem = idx + 1);
-                });
-
-                // 4. Salva e gera o Relatório Visual
-                if (totalRemovidos > 0) {
-                    if(typeof saveToStorage === 'function') saveToStorage();
-                    if(typeof renderPlanningTable === 'function') renderPlanningTable();
-                    
-                    let msgRelatorio = `✅ FAXINA CONCLUÍDA!\n\nForam retirados ${totalRemovidos} aluno(s).\n\n📋 DETALHAMENTO:\n`;
-                    Object.keys(relatorioRemocoes).forEach(plan => {
-                        msgRelatorio += `\n📅 ${plan}:\n`;
-                        relatorioRemocoes[plan].forEach(nome => { msgRelatorio += `   ❌ ${nome}\n`; });
-                    });
-                    alert(msgRelatorio);
-                } else {
-                    alert("✨ Varredura Completa!\n\nNenhum aluno inativo foi encontrado misturado nos seus planejamentos.");
+                if (!Array.isArray(roteiro)) {
+                    return;
                 }
-                
-            } catch (error) {
-                console.error("Erro na faxina:", error);
-                alert("Erro técnico ao tentar executar a faxina: " + error.message);
+
+                roteiro.forEach((item, indice) => {
+                    if (!item || !item.student) {
+                        return;
+                    }
+
+                    /*
+                     * A identificação é feita exclusivamente
+                     * pela ID do aluno na base principal.
+                     *
+                     * Não há comparação por nome.
+                     */
+                    const alunoMestre =
+                        localizarAlunoMestrePlanejamento(
+                            item.student
+                        );
+
+                    /*
+                     * Se não localizar na base principal,
+                     * preserva o registro.
+                     *
+                     * Aluno órfão não é sinônimo de desligado.
+                     */
+                    if (!alunoMestre) {
+                        return;
+                    }
+
+                    const verificacao =
+                        verificarInativoPlanejamento(
+                            alunoMestre
+                        );
+
+                    if (!verificacao.inativo) {
+                        return;
+                    }
+
+                    encontrados.push({
+                        roteiro: nomeRoteiro,
+                        indice,
+                        id: String(alunoMestre.id),
+                        nome:
+                            alunoMestre.nome ||
+                            item.student.nome ||
+                            'Nome não informado',
+                        turma:
+                            alunoMestre.turma ||
+                            item.student.turma ||
+                            '-',
+                        motivo: verificacao.motivo,
+                        origem: verificacao.origem
+                    });
+                });
+            });
+
+        if (encontrados.length === 0) {
+            alert(
+                'FAXINA SEGURA\n\n' +
+                'Nenhum aluno oficialmente DESLIGADO ' +
+                'ou com contrato ENCERRADO foi encontrado.\n\n' +
+                'Nenhuma alteração foi realizada.'
+            );
+
+            return;
+        }
+
+        /*
+         * Organiza a prévia por planejamento.
+         */
+        const porRoteiro = {};
+
+        encontrados.forEach(registro => {
+            if (!porRoteiro[registro.roteiro]) {
+                porRoteiro[registro.roteiro] = [];
             }
-        };
+
+            porRoteiro[registro.roteiro]
+                .push(registro);
+        });
+
+        let relatorioPrevio = '';
+
+        Object.keys(porRoteiro)
+            .forEach(nomeRoteiro => {
+                relatorioPrevio +=
+                    `\nPLANEJAMENTO: ${nomeRoteiro}\n`;
+
+                porRoteiro[nomeRoteiro]
+                    .forEach(registro => {
+                        relatorioPrevio +=
+                            `• ${registro.nome}` +
+                            ` | Turma: ${registro.turma}` +
+                            ` | ${registro.motivo}\n`;
+                    });
+            });
+
+        /*
+         * Evita que uma lista enorme ultrapasse o limite
+         * do confirm do navegador.
+         */
+        const linhasPrevias =
+            relatorioPrevio.split('\n');
+
+        const relatorioExibido =
+            linhasPrevias
+                .slice(0, 70)
+                .join('\n');
+
+        const avisoLista =
+            linhasPrevias.length > 70
+                ? '\n\nA lista foi resumida porque possui muitos registros.'
+                : '';
+
+        const confirmou = confirm(
+            'FAXINA SEGURA DOS PLANEJAMENTOS\n\n' +
+            `Foram encontrados ${encontrados.length} ` +
+            'registro(s) para remoção.\n\n' +
+            'A faxina removerá SOMENTE:\n' +
+            '• cadastro com isDesligado igual a true;\n' +
+            '• status direto exatamente DESLIGADO;\n' +
+            '• status direto exatamente ENCERRADO;\n' +
+            '• contrato cuja data final já passou.\n\n' +
+            'A faxina NÃO removerá por nome, observação, ' +
+            'empresa, endereço, supervisor, falta de região, ' +
+            'falta de visita, aluno órfão ou campos vazios.\n' +
+            relatorioExibido +
+            avisoLista +
+            '\n\nDeseja criar o backup e continuar?'
+        );
+
+        if (!confirmou) {
+            alert(
+                'Faxina cancelada.\n\n' +
+                'Nenhuma alteração foi realizada.'
+            );
+
+            return;
+        }
+
+        /*
+         * ETAPA 2
+         * Backup obrigatório.
+         */
+        try {
+            if (
+                typeof window.criarVersaoBackup ===
+                'function'
+            ) {
+                await window.criarVersaoBackup(
+                    'pre_faxina_planejamento',
+                    'Antes da faxina segura dos planejamentos',
+                    {
+                        silent: true
+                    }
+                );
+            } else if (
+                typeof salvarEstadoParaDesfazer ===
+                'function'
+            ) {
+                salvarEstadoParaDesfazer();
+            } else {
+                throw new Error(
+                    'Nenhum mecanismo de backup foi localizado.'
+                );
+            }
+        } catch (erroBackup) {
+            console.error(
+                'Falha no backup da faxina:',
+                erroBackup
+            );
+
+            alert(
+                'FAXINA CANCELADA\n\n' +
+                'O backup de segurança não foi criado.\n' +
+                'Nenhum aluno foi removido.\n\n' +
+                erroBackup.message
+            );
+
+            return;
+        }
+
+        /*
+         * ETAPA 3
+         * Revalidação imediatamente antes da remoção.
+         */
+        let totalRemovidos = 0;
+        const removidosPorRoteiro = {};
+
+        Object.keys(dbObj.planning)
+            .forEach(nomeRoteiro => {
+                const roteiro =
+                    dbObj.planning[nomeRoteiro];
+
+                if (!Array.isArray(roteiro)) {
+                    return;
+                }
+
+                for (
+                    let indice = roteiro.length - 1;
+                    indice >= 0;
+                    indice--
+                ) {
+                    const item = roteiro[indice];
+
+                    if (!item || !item.student) {
+                        continue;
+                    }
+
+                    const alunoMestre =
+                        localizarAlunoMestrePlanejamento(
+                            item.student
+                        );
+
+                    /*
+                     * Proteção absoluta:
+                     * não encontrou a ID na base principal,
+                     * não remove.
+                     */
+                    if (!alunoMestre) {
+                        continue;
+                    }
+
+                    const verificacao =
+                        verificarInativoPlanejamento(
+                            alunoMestre
+                        );
+
+                    /*
+                     * Verificação dupla.
+                     * Só estes dois motivos podem remover.
+                     */
+                    if (
+                        verificacao.motivo !==
+                            'DESLIGADO' &&
+                        verificacao.motivo !==
+                            'ENCERRADO'
+                    ) {
+                        continue;
+                    }
+
+                    if (
+                        !removidosPorRoteiro[
+                            nomeRoteiro
+                        ]
+                    ) {
+                        removidosPorRoteiro[
+                            nomeRoteiro
+                        ] = [];
+                    }
+
+                    removidosPorRoteiro[
+                        nomeRoteiro
+                    ].push({
+                        nome:
+                            alunoMestre.nome ||
+                            item.student.nome ||
+                            'Nome não informado',
+                        turma:
+                            alunoMestre.turma ||
+                            item.student.turma ||
+                            '-',
+                        motivo:
+                            verificacao.motivo
+                    });
+
+                    /*
+                     * Remove somente este índice,
+                     * validado pela ID da base principal.
+                     */
+                    roteiro.splice(indice, 1);
+                    totalRemovidos++;
+                }
+
+                /*
+                 * Renumera somente o roteiro processado.
+                 */
+                roteiro.forEach(
+                    (item, indice) => {
+                        item.ordem = indice + 1;
+                    }
+                );
+            });
+
+        if (totalRemovidos === 0) {
+            alert(
+                'Nenhum registro passou pela verificação ' +
+                'final de segurança.\n\n' +
+                'Nenhuma remoção foi realizada.'
+            );
+
+            return;
+        }
+
+        /*
+         * ETAPA 4
+         * Salva localmente e força a conclusão do
+         * salvamento consolidado v9.6.42.
+         */
+        if (
+            typeof saveToStorage ===
+            'function'
+        ) {
+            await saveToStorage();
+        }
+
+        if (
+            typeof window.forcarSalvamentoV9642 ===
+            'function'
+        ) {
+            await window.forcarSalvamentoV9642();
+        }
+
+        /*
+         * Atualiza as telas.
+         */
+        if (
+            typeof renderPlanningTable ===
+            'function'
+        ) {
+            renderPlanningTable();
+        }
+
+        if (
+            typeof renderPlanningCandidates ===
+            'function'
+        ) {
+            renderPlanningCandidates();
+        }
+
+        if (
+            typeof renderAdminTable ===
+            'function'
+        ) {
+            renderAdminTable();
+        }
+
+        if (
+            typeof runFilter ===
+            'function'
+        ) {
+            runFilter();
+        }
+
+        /*
+         * Relatório final.
+         */
+        let relatorioFinal =
+            'FAXINA CONCLUÍDA COM SEGURANÇA\n\n' +
+            `Total removido dos planejamentos: ` +
+            `${totalRemovidos}\n`;
+
+        Object.keys(removidosPorRoteiro)
+            .forEach(nomeRoteiro => {
+                relatorioFinal +=
+                    `\nPLANEJAMENTO: ${nomeRoteiro}\n`;
+
+                removidosPorRoteiro[nomeRoteiro]
+                    .forEach(registro => {
+                        relatorioFinal +=
+                            `• ${registro.nome}` +
+                            ` | ${registro.turma}` +
+                            ` | ${registro.motivo}\n`;
+                    });
+            });
+
+        relatorioFinal +=
+            '\nOs alunos não foram apagados da base geral.' +
+            '\nForam retirados somente dos planejamentos.' +
+            '\nUm backup foi criado antes da operação.';
+
+        alert(relatorioFinal);
+    } catch (erro) {
+        console.error(
+            'Erro na faxina segura:',
+            erro
+        );
+
+        alert(
+            'A faxina foi interrompida por segurança.\n\n' +
+            'Erro: ' +
+            erro.message +
+            '\n\nUse o botão Desfazer ou restaure o ' +
+            'backup anterior, caso alguma alteração ' +
+            'tenha sido iniciada.'
+        );
+    }
+};
         // =========================================================================
         // 📊 EXPORTAR DADOS COMPLETOS PARA EXCEL (BOTÃO DA LISTAGEM) - CORRIGIDO
         // =========================================================================
