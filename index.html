@@ -9109,10 +9109,178 @@ async function sincronizarNuvemV9637(){
  catch(e){console.warn('Nuvem pendente:',e);statusV9637('<i data-lucide="cloud-off" class="w-3 h-3"></i> <span>Local seguro; falha na nuvem</span>','text-senac-orange');}
  finally{v9637NuvemExecutando=false;if(v9637NuvemPendente||v9637UltimoSnapshot?.updatedAt!==data.updatedAt){v9637NuvemPendente=false;setTimeout(sincronizarNuvemV9637,150);}}
 }
-saveToStorage=function(){
- const data=snapshotV9637();v9637UltimoSnapshot=data;statusV9637('<i data-lucide="hard-drive" class="w-3 h-3"></i> <span>Salvando no computador...</span>','text-senac-orange');
- const tarefa=v9637LocalFila=v9637LocalFila.catch(()=>{}).then(()=>gravarLocalV9637(data)).then(()=>statusV9637('<i data-lucide="check-circle" class="w-3 h-3"></i> <span>Salvo no computador; nuvem pendente</span>','text-emerald-600')).catch(e=>{statusV9637('<i data-lucide="alert-circle" class="w-3 h-3"></i> <span>Falha ao salvar no computador</span>','text-red-500');throw e;});
- clearTimeout(v9637Timer);v9637Timer=setTimeout(sincronizarNuvemV9637,V9637_ATRASO_NUVEM);return tarefa;
+/*
+ * SALVAMENTO CONSOLIDADO V9.6.42
+ *
+ * Agrupa alterações consecutivas antes de criar o snapshot integral.
+ * O salvamento local permanece prioritário.
+ * A sincronização da nuvem acontece somente depois.
+ */
+
+const V9642_ATRASO_LOCAL = 220;
+
+let v9642TimerLocal = null;
+let v9642SalvamentoExecutando = false;
+let v9642SalvamentoPendente = false;
+let v9642Aguardando = [];
+
+async function executarSalvamentoLocalV9642() {
+    /*
+     * Se já houver um salvamento em andamento, não cria outro
+     * snapshot simultaneamente.
+     */
+    if (v9642SalvamentoExecutando) {
+        v9642SalvamentoPendente = true;
+        return;
+    }
+
+    v9642SalvamentoExecutando = true;
+    v9642SalvamentoPendente = false;
+
+    /*
+     * Apanha somente as chamadas que serão atendidas
+     * por este ciclo de salvamento.
+     */
+    const aguardandoDesteCiclo =
+        v9642Aguardando.splice(0);
+
+    try {
+        statusV9637(
+            '<i data-lucide="hard-drive" class="w-3 h-3"></i> ' +
+            '<span>Salvando alterações...</span>',
+            'text-senac-orange'
+        );
+
+        /*
+         * O snapshot integral passa a ser criado somente aqui.
+         * Antes, era criado em todas as chamadas de saveToStorage.
+         */
+        const data = snapshotV9637();
+
+        v9637UltimoSnapshot = data;
+
+        /*
+         * Mantém a fila local já utilizada pelo sistema.
+         * Isso preserva IndexedDB, Electron e demais proteções.
+         */
+        v9637LocalFila = v9637LocalFila
+            .catch(() => {})
+            .then(() => gravarLocalV9637(data));
+
+        await v9637LocalFila;
+
+        statusV9637(
+            '<i data-lucide="check-circle" class="w-3 h-3"></i> ' +
+            '<span>Salvo no computador; nuvem pendente</span>',
+            'text-emerald-600'
+        );
+
+        /*
+         * Todas as funções que usaram await saveToStorage()
+         * recebem a confirmação depois do salvamento local.
+         */
+        aguardandoDesteCiclo.forEach(item => {
+            item.resolve(true);
+        });
+
+        /*
+         * Reinicia o prazo da nuvem.
+         * A nuvem recebe somente o estado mais recente.
+         */
+        clearTimeout(v9637Timer);
+
+        v9637Timer = setTimeout(
+            sincronizarNuvemV9637,
+            V9637_ATRASO_NUVEM
+        );
+    } catch (erro) {
+        console.error(
+            'Falha no salvamento consolidado:',
+            erro
+        );
+
+        statusV9637(
+            '<i data-lucide="alert-circle" class="w-3 h-3"></i> ' +
+            '<span>Falha ao salvar no computador</span>',
+            'text-red-500'
+        );
+
+        aguardandoDesteCiclo.forEach(item => {
+            item.reject(erro);
+        });
+    } finally {
+        v9642SalvamentoExecutando = false;
+
+        /*
+         * Se houve outra mudança enquanto o snapshot anterior
+         * estava sendo gravado, executa mais um único ciclo
+         * consolidado com os dados atualizados.
+         */
+        if (
+            v9642SalvamentoPendente ||
+            v9642Aguardando.length > 0
+        ) {
+            v9642SalvamentoPendente = false;
+
+            clearTimeout(v9642TimerLocal);
+
+            v9642TimerLocal = setTimeout(
+                executarSalvamentoLocalV9642,
+                V9642_ATRASO_LOCAL
+            );
+        }
+    }
+}
+
+saveToStorage = function () {
+    return new Promise((resolve, reject) => {
+        /*
+         * Cada rotina que chamou saveToStorage continua recebendo
+         * a própria Promise. As chamadas próximas serão atendidas
+         * pelo mesmo salvamento.
+         */
+        v9642Aguardando.push({
+            resolve,
+            reject
+        });
+
+        statusV9637(
+            '<i data-lucide="clock-3" class="w-3 h-3"></i> ' +
+            '<span>Alteração registrada...</span>',
+            'text-senac-orange'
+        );
+
+        /*
+         * Uma nova alteração reinicia o intervalo curto.
+         * Assim, vários campos alterados seguidamente geram
+         * somente um snapshot integral.
+         */
+        clearTimeout(v9642TimerLocal);
+
+        v9642TimerLocal = setTimeout(
+            executarSalvamentoLocalV9642,
+            V9642_ATRASO_LOCAL
+        );
+    });
+};
+
+/*
+ * Função opcional para importação, backup ou ação crítica que
+ * precise concluir imediatamente qualquer salvamento pendente.
+ */
+window.forcarSalvamentoV9642 = async function () {
+    clearTimeout(v9642TimerLocal);
+
+    if (
+        v9642Aguardando.length > 0 ||
+        v9642SalvamentoPendente
+    ) {
+        await executarSalvamentoLocalV9642();
+    } else if (v9642SalvamentoExecutando) {
+        await v9637LocalFila.catch(() => {});
+    }
+
+    return true;
 };
 window.addEventListener('online',()=>{if(v9637UltimoSnapshot)setTimeout(sincronizarNuvemV9637,100);});
 function chaveDataVisitaV9637(v){if(!v?.date)return'';const d=new Date(v.date);return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
