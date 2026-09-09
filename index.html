@@ -10057,18 +10057,11 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                     a.startMin - b.startMin
                 );
 
-            /*
-             * V9.6.47 - REGRA DO ALMOCO NO DESLOCAMENTO
-             * O almoco pode ocorrer em qualquer local. Se um deslocamento se
-             * sobrepor ao intervalo, o trecho inteiro fica fora do rateio e nao
-             * gera sobra artificial apos o almoco, como 13:28-13:30 (00:02).
-             * Atendimentos continuam sendo recortados normalmente pelo almoco.
-             */
             const deslocamentoSobrepostoAoAlmoco =
-                evento.type === 'DESLOCAMENTO' &&
+                normalizarV9639(evento.type) === 'DESLOCAMENTO' &&
                 almocosDoDia.some(almoco =>
-                    almoco.startMin < fimEvento &&
-                    almoco.endMin > inicioEvento
+                    almoco.endMin > inicioEvento &&
+                    almoco.startMin < fimEvento
                 );
 
             if (deslocamentoSobrepostoAoAlmoco) {
@@ -10515,9 +10508,49 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                 )
                 : [];
 
+        const eventosSemGapAposAlmoco =
+            eventosOriginais.map(evento => ({ ...evento }));
+
+        almocos.forEach(almoco => {
+            const primeiroAposAlmoco =
+                eventosSemGapAposAlmoco
+                    .filter(evento =>
+                        evento.date === almoco.date &&
+                        normalizarV9639(evento.type) === 'ATENDIMENTO' &&
+                        horaMinutosV9639(evento.start) !== null &&
+                        horaMinutosV9639(evento.start) > almoco.endMin
+                    )
+                    .sort((a, b) =>
+                        horaMinutosV9639(a.start) -
+                        horaMinutosV9639(b.start)
+                    )[0];
+
+            if (!primeiroAposAlmoco) return;
+
+            const inicioOriginal =
+                horaMinutosV9639(primeiroAposAlmoco.start);
+            const fimOriginal =
+                horaMinutosV9639(primeiroAposAlmoco.end);
+
+            if (
+                inicioOriginal === null ||
+                fimOriginal === null ||
+                inicioOriginal <= almoco.endMin ||
+                fimOriginal <= almoco.endMin
+            ) {
+                return;
+            }
+
+            primeiroAposAlmoco.start =
+                minutosRelogioV9639(almoco.endMin);
+            primeiroAposAlmoco.hours =
+                (fimOriginal - almoco.endMin) / 60;
+            primeiroAposAlmoco.gapAfterLunchAdjusted = true;
+        });
+
         const eventosViagem =
             descontarIntervalosV9639(
-                eventosOriginais,
+                eventosSemGapAposAlmoco,
                 almocos
             );
 
@@ -11692,7 +11725,7 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
 (() => {
     'use strict';
 
-    window.APP_VERSION = '9.6.48-RATEIO-ALMOCO-E-TOTAL-KM-EMAIL';
+    window.APP_VERSION = '9.6.49-RATEIO-SEM-GAP-APOS-ALMOCO-E-TOTAL-KM';
 
     const normalizarCidadeV9646 = valor => String(valor || '')
         .normalize('NFD')
