@@ -10049,10 +10049,6 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                 return;
             }
 
-            let segmentos = [
-                [inicioEvento, fimEvento]
-            ];
-
             const almocosDoDia = almocos
                 .filter(almoco =>
                     almoco.date === evento.date
@@ -10060,6 +10056,28 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                 .sort((a, b) =>
                     a.startMin - b.startMin
                 );
+
+            /*
+             * V9.6.47 - REGRA DO ALMOCO NO DESLOCAMENTO
+             * O almoco pode ocorrer em qualquer local. Se um deslocamento se
+             * sobrepor ao intervalo, o trecho inteiro fica fora do rateio e nao
+             * gera sobra artificial apos o almoco, como 13:28-13:30 (00:02).
+             * Atendimentos continuam sendo recortados normalmente pelo almoco.
+             */
+            const deslocamentoSobrepostoAoAlmoco =
+                evento.type === 'DESLOCAMENTO' &&
+                almocosDoDia.some(almoco =>
+                    almoco.startMin < fimEvento &&
+                    almoco.endMin > inicioEvento
+                );
+
+            if (deslocamentoSobrepostoAoAlmoco) {
+                return;
+            }
+
+            let segmentos = [
+                [inicioEvento, fimEvento]
+            ];
 
             almocosDoDia.forEach(almoco => {
                 segmentos = segmentos.flatMap(segmento => {
@@ -10418,6 +10436,19 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
 
         if (!box) return;
 
+        const totalKm = (
+            DB.planning_logistics &&
+            Array.isArray(DB.planning_logistics[STATE.planContext])
+                ? DB.planning_logistics[STATE.planContext]
+                : []
+        ).reduce((total, trecho) => {
+            const km = Number(String(trecho && trecho.km || '').replace(',', '.'));
+            return total + (Number.isFinite(km) ? km : 0);
+        }, 0);
+        const totalKmTexto = totalKm.toLocaleString('pt-BR', {
+            maximumFractionDigits: 2
+        });
+
         box.innerHTML = `
             <p>
                 <strong class="text-senac-blue">
@@ -10435,6 +10466,13 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                 UEPT: 27 &nbsp;|&nbsp;
                 TEPT: 11348 &nbsp;|&nbsp;
                 Evento: 24
+            </p>
+
+            <p>
+                <strong class="text-slate-700">
+                    Total de KM do roteiro:
+                </strong>
+                ${totalKmTexto} km
             </p>
 
             <p>
@@ -10903,6 +10941,19 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
         totalAlmoco,
         totalAdministrativo
     ) {
+        const totalKm = (
+            DB.planning_logistics &&
+            Array.isArray(DB.planning_logistics[STATE.planContext])
+                ? DB.planning_logistics[STATE.planContext]
+                : []
+        ).reduce((total, trecho) => {
+            const km = Number(String(trecho && trecho.km || '').replace(',', '.'));
+            return total + (Number.isFinite(km) ? km : 0);
+        }, 0);
+        const totalKmTexto = totalKm.toLocaleString('pt-BR', {
+            maximumFractionDigits: 2
+        });
+
         return `
             <div style="
                 background-color: #eff6ff;
@@ -10931,6 +10982,13 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                     UEPT: 27 |
                     TEPT: 11348 |
                     Evento: 24
+                </div>
+
+                <div>
+                    <strong style="color: #334155;">
+                        Total de KM do roteiro:
+                    </strong>
+                    ${totalKmTexto} km
                 </div>
 
                 <div>
@@ -11477,6 +11535,19 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                 0
             );
 
+        const totalKm = (
+            DB.planning_logistics &&
+            Array.isArray(DB.planning_logistics[STATE.planContext])
+                ? DB.planning_logistics[STATE.planContext]
+                : []
+        ).reduce((total, trecho) => {
+            const km = Number(String(trecho && trecho.km || '').replace(',', '.'));
+            return total + (Number.isFinite(km) ? km : 0);
+        }, 0);
+        const totalKmTexto = totalKm.toLocaleString('pt-BR', {
+            maximumFractionDigits: 2
+        });
+
         const viagem =
             montarTabelaViagemV9640();
 
@@ -11529,6 +11600,7 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
             `UEPT: 27 | TEPT: 11348 | Evento: 3\n\n` +
             `DADOS PARA ATENDIMENTO\n` +
             `UEPT: 27 | TEPT: 11348 | Evento: 24\n\n` +
+            `TOTAL DE KM DO ROTEIRO: ${totalKmTexto} km\n\n` +
             `ALMOÇO DESCONTADO: ` +
             `${minutosParaHoraV9640(totalAlmoco)}\n\n` +
             `JORNADA DA VIAGEM\n` +
@@ -11620,7 +11692,7 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
 (() => {
     'use strict';
 
-    window.APP_VERSION = '9.6.46-CIDADE-REGIAO-AUTOMATICA';
+    window.APP_VERSION = '9.6.48-RATEIO-ALMOCO-E-TOTAL-KM-EMAIL';
 
     const normalizarCidadeV9646 = valor => String(valor || '')
         .normalize('NFD')
