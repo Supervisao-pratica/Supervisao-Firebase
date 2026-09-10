@@ -3184,8 +3184,30 @@ window.localizarAlunoMestrePlanejamento =
                 alert("Biblioteca Excel (XLSX) não encontrada."); return;
             }
 
+            const dbExportacao = typeof DB !== 'undefined' ? DB : (window.DB || {});
+
+            const identificarTipoAlunoExcel = (aluno) => {
+                if ((dbExportacao.quali || []).includes(aluno)) return 'QUALIFICAÇÃO';
+                if ((dbExportacao.tec || []).includes(aluno)) return 'TÉCNICA';
+                const idAluno = String(aluno && aluno.id || '');
+                if (idAluno && (dbExportacao.quali || []).some(item => String(item && item.id || '') === idAluno)) return 'QUALIFICAÇÃO';
+                if (idAluno && (dbExportacao.tec || []).some(item => String(item && item.id || '') === idAluno)) return 'TÉCNICA';
+                return '';
+            };
+
+            const identificarRegiaoExcel = (aluno) => {
+                const regiaoSalva = String(aluno && aluno.regiao || '').trim();
+                if (regiaoSalva) return regiaoSalva.toUpperCase();
+                if (typeof getRegiaoDaCidade === 'function') {
+                    return String(getRegiaoDaCidade(aluno && aluno.cidade) || '').trim().toUpperCase();
+                }
+                return '';
+            };
+
             const formatRow = (r) => ({
                 'Nome do Aluno': r.item.nome || '',
+                'Modalidade': identificarTipoAlunoExcel(r.item),
+                'Região': identificarRegiaoExcel(r.item),
                 'Cidade': r.item.cidade || '',
                 'Status': r.statusRelatorio === 'urgente' ? 'URGENTE' : r.statusRelatorio === 'atrasado' ? 'ATRASADO' : 'NESTE MÊS',
                 'Data / Previsão': r.dataMostrada || '',
@@ -10064,9 +10086,7 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
                     almoco.startMin < fimEvento
                 );
 
-            if (deslocamentoSobrepostoAoAlmoco) {
-                return;
-            }
+            if (deslocamentoSobrepostoAoAlmoco) return;
 
             let segmentos = [
                 [inicioEvento, fimEvento]
@@ -10512,39 +10532,23 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(auditarDuplicidadesV
             eventosOriginais.map(evento => ({ ...evento }));
 
         almocos.forEach(almoco => {
-            const primeiroAposAlmoco =
-                eventosSemGapAposAlmoco
-                    .filter(evento =>
-                        evento.date === almoco.date &&
-                        normalizarV9639(evento.type) === 'ATENDIMENTO' &&
-                        horaMinutosV9639(evento.start) !== null &&
-                        horaMinutosV9639(evento.start) > almoco.endMin
-                    )
-                    .sort((a, b) =>
-                        horaMinutosV9639(a.start) -
-                        horaMinutosV9639(b.start)
-                    )[0];
+            const primeiroAposAlmoco = eventosSemGapAposAlmoco
+                .filter(evento =>
+                    evento.date === almoco.date &&
+                    normalizarV9639(evento.type) === 'ATENDIMENTO' &&
+                    horaMinutosV9639(evento.start) !== null &&
+                    horaMinutosV9639(evento.start) > almoco.endMin
+                )
+                .sort((a, b) =>
+                    horaMinutosV9639(a.start) - horaMinutosV9639(b.start)
+                )[0];
 
             if (!primeiroAposAlmoco) return;
+            const fimOriginal = horaMinutosV9639(primeiroAposAlmoco.end);
+            if (fimOriginal === null || fimOriginal <= almoco.endMin) return;
 
-            const inicioOriginal =
-                horaMinutosV9639(primeiroAposAlmoco.start);
-            const fimOriginal =
-                horaMinutosV9639(primeiroAposAlmoco.end);
-
-            if (
-                inicioOriginal === null ||
-                fimOriginal === null ||
-                inicioOriginal <= almoco.endMin ||
-                fimOriginal <= almoco.endMin
-            ) {
-                return;
-            }
-
-            primeiroAposAlmoco.start =
-                minutosRelogioV9639(almoco.endMin);
-            primeiroAposAlmoco.hours =
-                (fimOriginal - almoco.endMin) / 60;
+            primeiroAposAlmoco.start = minutosRelogioV9639(almoco.endMin);
+            primeiroAposAlmoco.hours = (fimOriginal - almoco.endMin) / 60;
             primeiroAposAlmoco.gapAfterLunchAdjusted = true;
         });
 
@@ -11725,7 +11729,7 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
 (() => {
     'use strict';
 
-    window.APP_VERSION = '9.6.49-RATEIO-SEM-GAP-APOS-ALMOCO-E-TOTAL-KM';
+    window.APP_VERSION = '9.6.50-EXCEL-VISITAS-MODALIDADE-REGIAO';
 
     const normalizarCidadeV9646 = valor => String(valor || '')
         .normalize('NFD')
