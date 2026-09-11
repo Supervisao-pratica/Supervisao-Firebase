@@ -308,7 +308,9 @@ th {
     </div>
 
     <!-- MODAL EMAIL -->
-    <div id="emailModal" class="hidden modal-overlay z-[80]">
+    <div id="emailModeChoiceModal" class="hidden modal-overlay z-[90] items-center justify-center">
+<div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-6 border border-slate-200"><div class="flex justify-between mb-5"><div><h3 class="text-lg font-bold text-senac-blue">Escolha o modelo de agendamento</h3><p class="text-xs text-slate-500 mt-1">Selecione a modalidade desta mensagem.</p></div><button onclick="closeEmailModeChoice()" class="text-slate-400"><i data-lucide="x"></i></button></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><button onclick="selectEmailVisitMode('presencial')" class="text-left p-5 rounded-xl border-2 border-blue-200 bg-blue-50 hover:border-senac-blue"><strong class="text-senac-blue">Visita presencial</strong><p class="text-xs text-slate-600 mt-2">Modelo com endereço e localização da empresa.</p></button><button onclick="selectEmailVisitMode('online')" class="text-left p-5 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:border-emerald-600"><strong class="text-emerald-800">Supervisão online</strong><p class="text-xs text-slate-600 mt-2">Modelo virtual, formulário e link do Teams.</p></button></div></div></div>
+<div id="emailModal" class="hidden modal-overlay z-[80]">
         <div class="glass-panel w-full max-w-4xl p-6 m-4 shadow-2xl flex flex-col h-[85vh]">
             <div class="flex justify-between items-center mb-4 border-b pb-2">
                 <div><h3 class="text-lg font-bold text-senac-blue flex items-center gap-2"><i data-lucide="mail" class="w-5 h-5"></i> <span id="emailModalTitle">Gerar E-mails</span></h3><p class="text-xs text-slate-500" id="emailModalSubtitle">Verifique e edite as mensagens antes de enviar ou copiar.</p></div>
@@ -4825,12 +4827,22 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             saveToStorage(); renderAdminTable();
         }
 
-        function openEmailModal(mode) { 
+        function openEmailModal(mode) {
+            if ((mode || 'agendamento') === 'feedback') return openEmailModalProcess('feedback');
+            if(!STATE.planContext || !DB.planning[STATE.planContext] || DB.planning[STATE.planContext].length === 0) return alert("Nenhum planejamento neste roteiro.");
+            STATE.pendingEmailMode = mode || 'agendamento';
+            const modal = document.getElementById('emailModeChoiceModal');
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        function closeEmailModeChoice(){ const modal=document.getElementById('emailModeChoiceModal'); if(modal){modal.classList.add('hidden');modal.classList.remove('flex');} }
+        function selectEmailVisitMode(modalidade){ STATE.emailVisitMode = modalidade === 'online' ? 'online' : 'presencial'; closeEmailModeChoice(); openEmailModalProcess(STATE.pendingEmailMode || 'agendamento'); }
+        function openEmailModalProcess(mode) { 
             if(!STATE.planContext || !DB.planning[STATE.planContext] || DB.planning[STATE.planContext].length === 0) return alert("Nenhum planejamento neste roteiro."); 
             STATE.emailMode = mode || 'agendamento'; 
             const targetStatus = mode === 'feedback' ? 'Realizada' : 'Realizar'; 
-            document.getElementById('emailModalTitle').innerText = mode === 'feedback' ? "Gerar E-mails de Feedback" : "Gerar E-mails de Agendamento"; 
-            document.getElementById('emailModalSubtitle').innerText = mode === 'feedback' ? "Agradecimento aos supervisores." : "Solicitação de visitas aos supervisores."; 
+            document.getElementById('emailModalTitle').innerText = mode === 'feedback' ? "Gerar E-mails de Feedback" : (STATE.emailVisitMode === 'online' ? "Agendamento Online" : "Agendamento Presencial"); 
+            document.getElementById('emailModalSubtitle').innerText = mode === 'feedback' ? "Agradecimento aos supervisores." : (STATE.emailVisitMode === 'online' ? "Supervisão virtual com formulário e link do Teams." : "Solicitação de visita presencial aos supervisores."); 
             
             const planningItems = DB.planning[STATE.planContext].filter(i => i.status === targetStatus); 
             if(planningItems.length === 0) return alert(`Nenhuma visita com status '${targetStatus}' para gerar.`); 
@@ -4910,6 +4922,18 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             }
             const ctText = ctDaysStr ? `${aprendizArtigo1} contraturno? Se sim, em qual dia da semana: ${ctDaysStr}\n` : `${aprendizArtigo1} contraturno? Se sim, em qual dia da semana:\n`;
 
+            if (STATE.emailVisitMode === 'online') {
+                const qtdDatas = dates.length;
+                const umaData = qtdDatas === 1;
+                const referenciaData = umaData ? `no dia ${dateString}` : `nos dias ${dateString || '[Data 1] e [Data 2]'}`;
+                const perguntaData = umaData ? `no dia ${dateString}` : `nos dias ${dateString || '[Data 1] e [Data 2]'}`;
+                const desenvolvimento = isPlural ? "dos(as) jovens" : "do(a) jovem";
+                const duvidas = isPlural ? "dos(as) aprendizes" : "do(a) aprendiz";
+                const formularios = isPlural ? "os formulários de supervisão" : "o formulário de supervisão";
+                const documentos = isPlural ? "os documentos sejam impressos, preenchidos fisicamente e assinados" : "o documento seja impresso, preenchido fisicamente e assinado";
+                const arquivos = isPlural ? "os arquivos e os envie" : "o arquivo e o envie";
+                return `ASSUNTO: Agendamento de Supervisão da Prática Profissional (Online)\n\nOlá, ${supervisorName},\n\nTudo bem?\n\nMe chamo Michel.\n\nEstou entrando em contato para informar sobre a supervisão da prática profissional ${jovemArtigo} ${studentNames}.\n\nAtualmente, sou o responsável pela supervisão da prática e, conforme estabelece a Portaria nº 3872, esses acompanhamentos devem ser realizados a cada três meses.\n\nDesta vez, realizaremos a nossa entrevista de forma online, ${referenciaData}. A conversa é breve e será uma ótima oportunidade para acompanharmos o desenvolvimento ${desenvolvimento} e esclarecermos eventuais dúvidas, tanto por parte ${duvidas} quanto da empresa.\n\nComo nosso encontro será virtual, estou encaminhando em anexo ${formularios}. Peço a gentileza de que ${documentos}. Posteriormente, peço que digitalize ${arquivos} como resposta a este e-mail.\n\nAproveito para confirmar algumas informações, a fim de formalizar o nosso agendamento:\n\n1. ${ctText.trim()}\n2. O horário que ${aprendizArtigo2} a teórica é: ${theoryInfo}\n3. Seu contato telefônico/WhatsApp ainda é: ${phone}?\n4. Qual é o melhor horário, ${perguntaData}, para realizarmos a nossa videochamada? A reunião será realizada pelo Teams, através do link: [INSERIR LINK DO TEAMS]\n\nDesde já, agradeço pela atenção e fico no aguardo do seu retorno!\n\nAtenciosamente,\nMichel`;
+            }
             return `Olá, ${supervisorName}\n\nTudo bem?\n\nMe chamo Michel.\n\nEstou entrando em contato para informar sobre a visita técnica referente à prática profissional ${jovemArtigo} ${studentNames}\n\nAtualmente, sou o responsável pela supervisão da prática e, conforme estabelece a Portaria nº 3872, essas visitas devem ser realizadas a cada três meses.\nRealizarei a visita no dia ${dateString}. A visita é breve, envolve o preenchimento de um formulário e a oportunidade de esclarecer eventuais dúvidas, tanto por parte do jovem quanto da empresa.\n\nAproveito para confirmar algumas informações, a fim de formalizar o agendamento por e-mail:\n\n${ctText}O horário que ${aprendizArtigo2} a teórica é: ${theoryInfo}\nSeu contato ainda é: ${phone}?\nO endereço correto para a visita é: ${address}\n\nSe possível, enviar a localização da empresa:\n\nDesde já, agradeço pela atenção!`; 
         }
         
@@ -4925,7 +4949,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
         
         function sendMailTo(elementId, email) { 
             const body = document.getElementById(elementId).value; 
-            const subject = STATE.emailMode === 'feedback' ? "Feedback Visita Senac" : "Agendamento Visita Senac"; 
+            const subject = STATE.emailMode === 'feedback' ? "Feedback Visita Senac" : (STATE.emailVisitMode === 'online' ? "Agendamento de Supervisão da Prática Profissional (Online)" : "Agendamento Visita Senac"); 
             window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; 
         }
         
@@ -11729,7 +11753,7 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
 (() => {
     'use strict';
 
-    window.APP_VERSION = '9.6.50-EXCEL-VISITAS-MODALIDADE-REGIAO';
+    window.APP_VERSION = '9.6.55-PRESENCIAL-ONLINE-PLURAL-AUTOMATICO';
 
     const normalizarCidadeV9646 = valor => String(valor || '')
         .normalize('NFD')
