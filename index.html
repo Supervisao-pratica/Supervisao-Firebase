@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.45 - CNPJ PRECISO + VISITAS TECNICAS 1 A 6)</title>
+    <title>Supervisão Senac 2026 (v9.6.58 - RATEIO SEQUENCIAL ESTRITO)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -11948,6 +11948,110 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
         }
         setTimeout(() => window.corrigirCidadesERegioesV9646({ silencioso: true, salvar: true }), 1800);
     });
+})();
+</script>
+
+<script id="correcao-rateio-cidade-pos-almoco-v9657">
+/* v9.6.57 - preserva a localidade entre chegada e proxima saida, tolera pequenos erros de grafia e nao estica atendimento de outra cidade apos o almoco. */
+(function () {
+  'use strict';
+  window.APP_VERSION = '9.6.58-RATEIO-SEQUENCIAL-ESTRITO';
+  function N(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/gi,' ').replace(/\s+/g,' ').trim().toUpperCase();}
+  function lev(a,b){a=N(a);b=N(b);if(a===b)return 0;const dp=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){let prev=dp[0];dp[0]=i;for(let j=1;j<=b.length;j++){const old=dp[j];dp[j]=Math.min(dp[j]+1,dp[j-1]+1,prev+(a[i-1]===b[j-1]?0:1));prev=old;}}return dp[b.length];}
+  function mesmaCidade(a,b){const x=N(a),y=N(b);if(!x||!y)return false;if(x===y)return true;const limite=Math.max(x.length,y.length)>=12?2:1;return Math.abs(x.length-y.length)<=limite&&lev(x,y)<=limite;}
+  function M(t){const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);if(!m)return null;const h=+m[1],n=+m[2];return h>=0&&h<24&&n>=0&&n<60?h*60+n:null;}
+  function H(m){m=Math.max(0,Math.round(m));return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
+  function okStatus(v){return ['REALIZADA','REALIZADO','VISITADO','VISITADA'].includes(N(v));}
+  function cc(t){try{return typeof obterCentroCustoTurma==='function'?(obterCentroCustoTurma(t)||'-'):'-';}catch(e){return '-';}}
+  function turmas(item){return String(item?.student?.turma||'').split(/[,;/]+/).map(x=>x.trim()).filter(Boolean);}
+  function cortar(segmentos,bloqueios){let out=segmentos;bloqueios.forEach(b=>{out=out.flatMap(([a,z])=>b.e<=a||b.s>=z?[[a,z]]:[[a,Math.max(a,b.s)],[Math.min(z,b.e),z]].filter(x=>x[1]>x[0]));});return out;}
+  window.generateRateio=function(){
+    RATEIO_DATA=[];window.RATEIO_DATA=RATEIO_DATA;
+    const ctx=STATE.planContext, plano=DB.planning?.[ctx]||[], visitas=plano.filter(v=>v?.student?.id&&v.date&&okStatus(v.status));
+    const logs=DB.planning_logistics?.[ctx]||[], almocos=DB.planning_lunch?.[ctx]||[], admins=DB.planning_admin?.[ctx]||[];
+    const eventos=[],avisos=[],datas=[...new Set(visitas.map(v=>v.date))],turmasDesloc=new Set();
+    if(!visitas.length){renderRateioTable([],['Nenhum aluno realizado/visitado no planejamento atual.']);const st=document.getElementById('rateioStatusText');if(st)st.innerText='Rateio vazio: nenhum aluno realizado.';return;}
+    datas.forEach(date=>{
+      const pernas=logs.filter(l=>l.date===date&&M(l.originTime)!==null&&M(l.destTime)!==null&&M(l.destTime)>M(l.originTime)).map(l=>({...l,s:M(l.originTime),e:M(l.destTime)})).sort((a,b)=>a.s-b.s);
+      const vd=visitas.filter(v=>v.date===date);
+      const lunch=almocos.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end),start:x.start,end:x.end}));
+      const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end),raw:x}));
+      if(!pernas.length){avisos.push('Dia '+date.split('-').reverse().join('/')+': não há deslocamentos válidos.');return;}
+      pernas.forEach((p,i)=>{
+        const base=vd.filter(v=>mesmaCidade(v.student?.cidade,p.dest));
+        const td=base.flatMap(turmas).find(t=>!turmasDesloc.has(t))||base.flatMap(turmas)[0]||'-';if(td!=='-')turmasDesloc.add(td);
+        eventos.push({date,type:'DESLOCAMENTO',start:p.originTime,end:p.destTime,origin:p.origin,dest:p.dest,turma:td,cc:td==='-'?'-':cc(td),hours:(p.e-p.s)/60});
+        if(i===pernas.length-1)return;
+        const prox=pernas[i+1];
+        if(!mesmaCidade(p.dest,prox.origin)){avisos.push('Continuidade não reconhecida: '+p.dest+' -> '+prox.origin+' ('+H(p.e)+'-'+H(prox.s)+').');return;}
+        if(prox.s<=p.e)return;
+        const local=p.dest,vl=vd.filter(v=>mesmaCidade(v.student?.cidade,local));
+        if(!vl.length){avisos.push('Sem atendimento em '+local+' ('+H(p.e)+'-'+H(prox.s)+'): nenhum aluno realizado dessa localidade.');return;}
+        const ts=[...new Set(vl.flatMap(turmas))];if(!ts.length)return;
+        const bloqueios=[...lunch,...adm].filter(b=>b.e>p.e&&b.s<prox.s);
+        cortar([[p.e,prox.s]],bloqueios).forEach(([a,z])=>{let cur=a;const fatia=(z-a)/ts.length;ts.forEach((t,k)=>{const fim=k===ts.length-1?z:Math.round(cur+fatia);eventos.push({date,type:'ATENDIMENTO',start:H(cur),end:H(fim),origin:local,dest:'-',turma:t,cc:cc(t),hours:(fim-cur)/60,allocationRule:'permanencia_local_confirmada_v9657'});cur=fim;});});
+      });
+      lunch.forEach(x=>eventos.push({date,type:'DESCANSO',start:x.start,end:x.end,origin:'INTERVALO DE ALMOÇO',dest:'-',turma:'-',cc:'-',hours:(x.e-x.s)/60}));
+    });
+    const pri={DESLOCAMENTO:1,ATENDIMENTO:2,DESCANSO:3};eventos.sort((a,b)=>a.date.localeCompare(b.date)||(M(a.start)-M(b.start))||((pri[a.type]||9)-(pri[b.type]||9)));
+    RATEIO_DATA=eventos;window.RATEIO_DATA=RATEIO_DATA;renderRateioTable(eventos,avisos);
+    const totalAdm=admins.reduce((n,a)=>n+Math.max(0,(M(a.end)||0)-(M(a.start)||0)),0);
+    const st=document.getElementById('rateioStatusText');if(st){const jornada=eventos.filter(e=>e.type!=='DESCANSO').reduce((n,e)=>n+Math.round(e.hours*60),0),desc=eventos.filter(e=>e.type==='DESCANSO').reduce((n,e)=>n+Math.round(e.hours*60),0);st.innerText='Jornada de viagem: '+H(jornada)+' | Almoço descontado: '+H(desc)+' | Alunos realizados: '+visitas.length+' | Administrativo separado: '+H(totalAdm)+'.';}
+    if(typeof window.renderControleRateio==='function')window.renderControleRateio();
+  };
+})();
+</script>
+
+<script id="motor-final-rateio-sequencial-v9658">
+/* v9.6.58 - motor final: DESLOCAMENTO -> ATENDIMENTO -> DESLOCAMENTO, com descanso apenas como corte nao computado. */
+(function(){
+'use strict';
+window.APP_VERSION='9.6.58-RATEIO-SEQUENCIAL-ESTRITO';
+const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/gi,' ').replace(/\s+/g,' ').trim().toUpperCase();
+const M=t=>{const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);if(!m)return null;const h=+m[1],n=+m[2];return h>=0&&h<24&&n>=0&&n<60?h*60+n:null;};
+const H=m=>String(Math.floor(Math.max(0,m)/60)).padStart(2,'0')+':'+String(Math.round(Math.max(0,m)%60)).padStart(2,'0');
+function dist(a,b){a=N(a);b=N(b);if(a===b)return 0;const d=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){let q=d[0];d[0]=i;for(let j=1;j<=b.length;j++){const z=d[j];d[j]=Math.min(d[j]+1,d[j-1]+1,q+(a[i-1]===b[j-1]?0:1));q=z;}}return d[b.length];}
+function cidadeIgual(a,b){const x=N(a),y=N(b);if(!x||!y)return false;if(x===y)return true;const lim=Math.max(x.length,y.length)>=12?2:1;return Math.abs(x.length-y.length)<=lim&&dist(x,y)<=lim;}
+const realizado=v=>['REALIZADA','REALIZADO','VISITADO','VISITADA'].includes(N(v));
+const turmas=v=>String(v?.student?.turma||'').split(/[,;/]+/).map(x=>x.trim()).filter(Boolean);
+const centro=t=>{try{return obterCentroCustoTurma(t)||'-';}catch(_){return '-';}};
+function subtrair(inicio,fim,cortes){let partes=[[inicio,fim]];cortes.sort((a,b)=>a.s-b.s).forEach(c=>{partes=partes.flatMap(([i,f])=>c.e<=i||c.s>=f?[[i,f]]:[[i,Math.max(i,c.s)],[Math.min(f,c.e),f]].filter(x=>x[1]>x[0]));});return partes;}
+window.generateRateio=function(){
+ const ctx=STATE.planContext,plano=DB.planning?.[ctx]||[],visitas=plano.filter(v=>v?.student?.id&&v.date&&realizado(v.status));
+ const logs=DB.planning_logistics?.[ctx]||[],lunches=DB.planning_lunch?.[ctx]||[],admins=DB.planning_admin?.[ctx]||[];
+ let out=[],warnings=[]; RATEIO_DATA=[]; window.RATEIO_DATA=RATEIO_DATA;
+ if(!visitas.length){renderRateioTable([],['Nenhum aluno realizado/visitado no planejamento atual.']);return;}
+ [...new Set(visitas.map(v=>v.date))].sort().forEach(date=>{
+   const pernas=logs.filter(x=>x.date===date&&M(x.originTime)!==null&&M(x.destTime)>M(x.originTime)).map(x=>({...x,s:M(x.originTime),e:M(x.destTime)})).sort((a,b)=>a.s-b.s);
+   const vd=visitas.filter(v=>v.date===date);
+   const descansos=lunches.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end),start:x.start,end:x.end}));
+   const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end)}));
+   pernas.forEach((p,i)=>{
+     const localDestino=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));
+     const td=[...new Set(localDestino.flatMap(turmas))][0]||'-';
+     out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:td,cc:td==='-'?'-':centro(td),sequence:i*2});
+     const prox=pernas[i+1]; if(!prox)return;
+     if(!cidadeIgual(p.dest,prox.origin)){warnings.push(`Quebra logística em ${p.dest}: a próxima saída está como ${prox.origin}. Atendimento não inventado.`);return;}
+     const alunosLocal=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));
+     if(!alunosLocal.length){warnings.push(`Sem aluno realizado em ${p.dest} entre ${H(p.e)} e ${H(prox.s)}.`);return;}
+     const ts=[...new Set(alunosLocal.flatMap(turmas))];
+     const cortes=[...descansos,...adm].filter(c=>c.e>p.e&&c.s<prox.s);
+     subtrair(p.e,prox.s,cortes).forEach(([ini,fim],seg)=>{
+       let cursor=ini;const parcela=(fim-ini)/ts.length;
+       ts.forEach((t,k)=>{const final=k===ts.length-1?fim:Math.round(cursor+parcela);out.push({date,type:'ATENDIMENTO',origin:p.dest,dest:'-',start:H(cursor),end:H(final),hours:(final-cursor)/60,turma:t,cc:centro(t),sequence:i*2+1+seg/10});cursor=final;});
+     });
+   });
+   descansos.forEach((d,i)=>out.push({date,type:'DESCANSO',origin:'INTERVALO DE ALMOÇO',dest:'-',start:d.start,end:d.end,hours:(d.e-d.s)/60,turma:'-',cc:'-',sequence:1000+i}));
+ });
+ out.sort((a,b)=>a.date.localeCompare(b.date)||(M(a.start)-M(b.start))||((a.type==='DESLOCAMENTO'?1:a.type==='DESCANSO'?2:3)-(b.type==='DESLOCAMENTO'?1:b.type==='DESCANSO'?2:3)));
+ // Auditoria final: elimina qualquer atendimento que se sobreponha a deslocamento ou descanso.
+ const bloqueios=out.filter(x=>x.type==='DESLOCAMENTO'||x.type==='DESCANSO');
+ out=out.filter(x=>x.type!=='ATENDIMENTO'||!bloqueios.some(b=>b.date===x.date&&M(b.end)>M(x.start)&&M(b.start)<M(x.end)));
+ RATEIO_DATA=out;window.RATEIO_DATA=out;renderRateioTable(out,warnings);
+ const trabalho=out.filter(x=>x.type!=='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),desc=out.filter(x=>x.type==='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),adm=admins.reduce((n,x)=>n+Math.max(0,(M(x.end)||0)-(M(x.start)||0)),0);
+ const st=document.getElementById('rateioStatusText');if(st)st.innerText=`Jornada de viagem: ${H(trabalho)} | Almoço descontado: ${H(desc)} | Alunos realizados: ${visitas.length} | Administrativo separado: ${H(adm)}.`;
+ if(typeof window.renderControleRateio==='function')window.renderControleRateio();
+};
 })();
 </script>
 </body>
