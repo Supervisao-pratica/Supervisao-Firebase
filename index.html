@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.59 - RATEIO PELO TURNO DO ALUNO)</title>
+    <title>Supervisão Senac 2026 (v9.6.60 - RATEIO PELO TURNO E HERANCA NO DESLOCAMENTO)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -12055,11 +12055,11 @@ window.generateRateio=function(){
 })();
 </script>
 
-<script id="motor-final-rateio-turno-aluno-v9659">
-/* v9.6.59 - turno obtido pela jornada do aluno. hrAtend e ignorado pelo rateio. */
+<script id="motor-final-rateio-turno-aluno-v9660">
+/* v9.6.60 - turno obtido pela jornada do aluno; deslocamento herda a ultima turma atendida na origem quando o destino nao possui turma realizada. */
 (function(){
 'use strict';
-window.APP_VERSION='9.6.59-RATEIO-TURNO-DO-ALUNO';
+window.APP_VERSION='9.6.60-RATEIO-TURNO-E-HERANCA-DESLOCAMENTO';
 const MIN_ATENDIMENTO=15;
 const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/gi,' ').replace(/\s+/g,' ').trim().toUpperCase();
 const M=v=>{const x=String(v||'').match(/(?:^|\D)(\d{1,2})\s*[:H]\s*(\d{2})(?:\D|$)/i);if(!x)return null;const h=+x[1],m=+x[2];return h>=0&&h<24&&m>=0&&m<60?h*60+m:null;};
@@ -12092,8 +12092,17 @@ window.generateRateio=function(){
   const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end)}));
   if(!pernas.length){avisos.push('Dia '+date.split('-').reverse().join('/')+': não há deslocamentos válidos.');return;}
   pernas.forEach((p,i)=>{
-   const local=vd.filter(v=>cidadeIgual(alunoMestre(v).cidade||v.student?.cidade,p.dest)),g0=turmasGrupos(local)[0];
-   out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:g0?.turma||'-',cc:g0?cc(g0.turma):'-'});
+   const local=vd.filter(v=>cidadeIgual(alunoMestre(v).cidade||v.student?.cidade,p.dest));
+   const grupoDestino=turmasGrupos(local)[0]||null;
+   // Regra do deslocamento: usa uma turma realizada no destino quando existir.
+   // Se o destino nao possuir aluno realizado, herda a turma do ultimo atendimento
+   // concluido na cidade de origem, preferencialmente no exato horario da saida.
+   const atendimentosOrigem=out.filter(e=>
+     e.type==='ATENDIMENTO'&&e.date===date&&cidadeIgual(e.origin,p.origin)&&M(e.end)!==null&&M(e.end)<=p.s
+   ).sort((a,b)=>M(b.end)-M(a.end));
+   const atendimentoOrigemExato=atendimentosOrigem.find(e=>M(e.end)===p.s)||atendimentosOrigem[0]||null;
+   const turmaDeslocamento=grupoDestino?.turma||atendimentoOrigemExato?.turma||'-';
+   out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:turmaDeslocamento,cc:turmaDeslocamento==='-'?'-':cc(turmaDeslocamento),allocationRule:grupoDestino?'turma_destino_realizada_v9660':'ultima_turma_atendida_na_origem_v9660'});
    const prox=pernas[i+1];if(!prox)return;
    if(!cidadeIgual(p.dest,prox.origin)){avisos.push(`Quebra logística em ${p.dest}: próxima saída registrada como ${prox.origin}.`);return;}
    const cortes=[...almocos,...adm].filter(c=>c.e>p.e&&c.s<prox.s);
