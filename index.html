@@ -12002,11 +12002,11 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
 })();
 </script>
 
-<script id="motor-final-rateio-flexivel-supervisor-v9661">
-/* v9.6.61 - motor final flexivel: toda permanencia comprovada entre deslocamentos gera atendimento, inclusive entrevista breve ou somente com supervisor. */
+<script id="motor-final-rateio-flexivel-turno-v9662">
+/* v9.6.62 - rateio flexivel por turno: preserva atendimentos breves/somente supervisor, respeita a jornada do jovem e impede duplicidade entre passagens na mesma cidade. */
 (function(){
 'use strict';
-window.APP_VERSION='9.6.61-RATEIO-FLEXIVEL-SUPERVISOR';
+window.APP_VERSION='9.6.62-RATEIO-FLEXIVEL-POR-TURNO';
 const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/gi,' ').replace(/\s+/g,' ').trim().toUpperCase();
 const M=t=>{const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);if(!m)return null;const h=+m[1],n=+m[2];return h>=0&&h<24&&n>=0&&n<60?h*60+n:null;};
 const H=m=>String(Math.floor(Math.max(0,m)/60)).padStart(2,'0')+':'+String(Math.round(Math.max(0,m)%60)).padStart(2,'0');
@@ -12015,6 +12015,15 @@ function cidadeIgual(a,b){const x=N(a),y=N(b);if(!x||!y)return false;if(x===y)re
 const realizado=v=>['REALIZADA','REALIZADO','VISITADO','VISITADA'].includes(N(v));
 const turmas=v=>String(v?.student?.turma||'').split(/[,;/]+/).map(x=>x.trim()).filter(Boolean);
 const centro=t=>{try{return obterCentroCustoTurma(t)||'-';}catch(_){return '-';}};
+function chaveVisita(v){return String(v?.student?.id||v?.student?.codigo||v?.student?.codigo_aluno||[v?.date,v?.student?.turma,v?.student?.nome].join('|'));}
+function faixaJornada(v){
+ const ini=M(v?.student?.ini||v?.student?.inicio||v?.student?.horaInicio||v?.student?.horarioInicio);
+ const fim=M(v?.student?.fim||v?.student?.final||v?.student?.horaFim||v?.student?.horarioFim);
+ if(ini===null&&fim===null)return 'SEM_HORARIO';
+ const ref=ini!==null&&fim!==null?(ini+fim)/2:(ini!==null?ini:fim);
+ return ref<12*60?'MANHA':'TARDE';
+}
+function turnoDoIntervalo(ini,fim){return ((ini+fim)/2)<12*60?'MANHA':'TARDE';}
 function subtrair(inicio,fim,cortes){let partes=[[inicio,fim]];cortes.sort((a,b)=>a.s-b.s).forEach(c=>{partes=partes.flatMap(([i,f])=>c.e<=i||c.s>=f?[[i,f]]:[[i,Math.max(i,c.s)],[Math.min(f,c.e),f]].filter(x=>x[1]>x[0]));});return partes;}
 window.generateRateio=function(){
  const ctx=STATE.planContext,plano=DB.planning?.[ctx]||[],visitas=plano.filter(v=>v?.student?.id&&v.date&&realizado(v.status));
@@ -12026,29 +12035,34 @@ window.generateRateio=function(){
    const vd=visitas.filter(v=>v.date===date);
    const descansos=lunches.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end),start:x.start,end:x.end}));
    const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end)}));
+   const visitasRateadas=new Set();
    pernas.forEach((p,i)=>{
-     const localDestino=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));
-     const turmaDestino=[...new Set(localDestino.flatMap(turmas))][0]||null;
+     const localDestino=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest)&&!visitasRateadas.has(chaveVisita(v)));
+     const prox=pernas[i+1];
+     const turnoParada=prox?turnoDoIntervalo(p.e,prox.s):(p.e<12*60?'MANHA':'TARDE');
+     const destinoTurno=localDestino.filter(v=>faixaJornada(v)===turnoParada);
+     const turmaDestino=[...new Set((destinoTurno.length?destinoTurno:localDestino.filter(v=>faixaJornada(v)==='SEM_HORARIO')).flatMap(turmas))][0]||null;
      const anterior=[...out].reverse().find(e=>e.date===date&&e.type==='ATENDIMENTO'&&cidadeIgual(e.origin,p.origin)&&M(e.end)<=p.s);
      const td=turmaDestino||anterior?.turma||'-';
-     out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:td,cc:td==='-'?'-':centro(td),sequence:i*2,allocationRule:turmaDestino?'turma_destino_realizada_v9661':anterior?'ultima_turma_origem_v9661':'sem_vinculo_v9661'});
-     const prox=pernas[i+1]; if(!prox)return;
+     out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:td,cc:td==='-'?'-':centro(td),sequence:i*2,allocationRule:turmaDestino?'turma_destino_turno_v9662':anterior?'ultima_turma_origem_v9662':'sem_vinculo_v9662'});
+     if(!prox)return;
      if(!cidadeIgual(p.dest,prox.origin)){warnings.push(`Quebra logística em ${p.dest}: a próxima saída está como ${prox.origin}. Atendimento não inventado.`);return;}
-     const alunosLocal=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));
-     if(!alunosLocal.length){warnings.push(`Sem aluno realizado em ${p.dest} entre ${H(p.e)} e ${H(prox.s)}.`);return;}
+     const pendentes=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest)&&!visitasRateadas.has(chaveVisita(v)));
+     const doTurno=pendentes.filter(v=>faixaJornada(v)===turnoParada);
+     const semHorario=pendentes.filter(v=>faixaJornada(v)==='SEM_HORARIO');
+     // Prioridade absoluta para o turno da parada. Sem horario entra como fallback.
+     // Um jovem ja rateado nao volta a aparecer em outra passagem pela mesma cidade.
+     const alunosLocal=doTurno.length?doTurno:semHorario;
+     if(!alunosLocal.length){warnings.push(`Sem atendimento pendente de ${turnoParada==='MANHA'?'manhã':'tarde'} em ${p.dest} entre ${H(p.e)} e ${H(prox.s)}.`);return;}
      const ts=[...new Set(alunosLocal.flatMap(turmas))];
-     if(!ts.length){warnings.push(`Existem registros realizados em ${p.dest}, mas sem turma informada.`);return;}
      const cortes=[...descansos,...adm].filter(c=>c.e>p.e&&c.s<prox.s);
      subtrair(p.e,prox.s,cortes).forEach(([ini,fim],seg)=>{
-       const dur=fim-ini;
-       if(dur<=0)return;
-       // Nao elimina atendimento curto. Divide todos os minutos disponiveis entre as
-       // turmas realizadas, permitindo entrevista breve ou somente com o supervisor.
-       // Quando houver menos minutos que turmas, registra as turmas possiveis e avisa.
+       const dur=fim-ini;if(dur<=0)return;
        const ativas=ts.slice(0,Math.max(1,Math.min(ts.length,dur)));
-       if(ativas.length<ts.length)warnings.push(`${p.dest}: ${dur} min para ${ts.length} turmas; ${ativas.length} atendimento(s) registrado(s). Revise os horarios das demais turmas.`);
+       if(ativas.length<ts.length)warnings.push(`${p.dest}: ${dur} min para ${ts.length} turmas; revise os horários das turmas não rateadas.`);
        let cursor=ini,base=Math.floor(dur/ativas.length),resto=dur-base*ativas.length;
-       ativas.forEach((t,k)=>{const minutos=base+(k<resto?1:0),final=cursor+minutos;out.push({date,type:'ATENDIMENTO',origin:p.dest,dest:'-',start:H(cursor),end:H(final),hours:minutos/60,turma:t,cc:centro(t),sequence:i*2+1+seg/10+k/100,supervisorOnlyCompatible:true,allocationRule:'permanencia_comprovada_v9661'});cursor=final;});
+       ativas.forEach((t,k)=>{const minutos=base+(k<resto?1:0),final=cursor+minutos;out.push({date,type:'ATENDIMENTO',origin:p.dest,dest:'-',start:H(cursor),end:H(final),hours:minutos/60,turma:t,cc:centro(t),sequence:i*2+1+seg/10+k/100,turnoRateio:turnoParada,supervisorOnlyCompatible:true,allocationRule:'turno_jornada_com_flexibilidade_v9662'});cursor=final;});
+       alunosLocal.filter(v=>ativas.some(t=>turmas(v).includes(t))).forEach(v=>visitasRateadas.add(chaveVisita(v)));
      });
    });
    descansos.forEach((d,i)=>out.push({date,type:'DESCANSO',origin:'INTERVALO DE ALMOÇO',dest:'-',start:d.start,end:d.end,hours:(d.e-d.s)/60,turma:'-',cc:'-',sequence:1000+i}));
