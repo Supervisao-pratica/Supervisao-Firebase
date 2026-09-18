@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.60 - RATEIO PELO TURNO E HERANCA NO DESLOCAMENTO)</title>
+    <title>Supervisão Senac 2026 (v9.6.58 - RATEIO SEQUENCIAL ESTRITO)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -12002,11 +12002,11 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
 })();
 </script>
 
-<script id="motor-final-rateio-sequencial-v9658">
-/* v9.6.58 - motor final: DESLOCAMENTO -> ATENDIMENTO -> DESLOCAMENTO, com descanso apenas como corte nao computado. */
+<script id="motor-final-rateio-flexivel-supervisor-v9661">
+/* v9.6.61 - motor final flexivel: toda permanencia comprovada entre deslocamentos gera atendimento, inclusive entrevista breve ou somente com supervisor. */
 (function(){
 'use strict';
-window.APP_VERSION='9.6.58-RATEIO-SEQUENCIAL-ESTRITO';
+window.APP_VERSION='9.6.61-RATEIO-FLEXIVEL-SUPERVISOR';
 const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/gi,' ').replace(/\s+/g,' ').trim().toUpperCase();
 const M=t=>{const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);if(!m)return null;const h=+m[1],n=+m[2];return h>=0&&h<24&&n>=0&&n<60?h*60+n:null;};
 const H=m=>String(Math.floor(Math.max(0,m)/60)).padStart(2,'0')+':'+String(Math.round(Math.max(0,m)%60)).padStart(2,'0');
@@ -12028,17 +12028,27 @@ window.generateRateio=function(){
    const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end)}));
    pernas.forEach((p,i)=>{
      const localDestino=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));
-     const td=[...new Set(localDestino.flatMap(turmas))][0]||'-';
-     out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:td,cc:td==='-'?'-':centro(td),sequence:i*2});
+     const turmaDestino=[...new Set(localDestino.flatMap(turmas))][0]||null;
+     const anterior=[...out].reverse().find(e=>e.date===date&&e.type==='ATENDIMENTO'&&cidadeIgual(e.origin,p.origin)&&M(e.end)<=p.s);
+     const td=turmaDestino||anterior?.turma||'-';
+     out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:td,cc:td==='-'?'-':centro(td),sequence:i*2,allocationRule:turmaDestino?'turma_destino_realizada_v9661':anterior?'ultima_turma_origem_v9661':'sem_vinculo_v9661'});
      const prox=pernas[i+1]; if(!prox)return;
      if(!cidadeIgual(p.dest,prox.origin)){warnings.push(`Quebra logística em ${p.dest}: a próxima saída está como ${prox.origin}. Atendimento não inventado.`);return;}
      const alunosLocal=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));
      if(!alunosLocal.length){warnings.push(`Sem aluno realizado em ${p.dest} entre ${H(p.e)} e ${H(prox.s)}.`);return;}
      const ts=[...new Set(alunosLocal.flatMap(turmas))];
+     if(!ts.length){warnings.push(`Existem registros realizados em ${p.dest}, mas sem turma informada.`);return;}
      const cortes=[...descansos,...adm].filter(c=>c.e>p.e&&c.s<prox.s);
      subtrair(p.e,prox.s,cortes).forEach(([ini,fim],seg)=>{
-       let cursor=ini;const parcela=(fim-ini)/ts.length;
-       ts.forEach((t,k)=>{const final=k===ts.length-1?fim:Math.round(cursor+parcela);out.push({date,type:'ATENDIMENTO',origin:p.dest,dest:'-',start:H(cursor),end:H(final),hours:(final-cursor)/60,turma:t,cc:centro(t),sequence:i*2+1+seg/10});cursor=final;});
+       const dur=fim-ini;
+       if(dur<=0)return;
+       // Nao elimina atendimento curto. Divide todos os minutos disponiveis entre as
+       // turmas realizadas, permitindo entrevista breve ou somente com o supervisor.
+       // Quando houver menos minutos que turmas, registra as turmas possiveis e avisa.
+       const ativas=ts.slice(0,Math.max(1,Math.min(ts.length,dur)));
+       if(ativas.length<ts.length)warnings.push(`${p.dest}: ${dur} min para ${ts.length} turmas; ${ativas.length} atendimento(s) registrado(s). Revise os horarios das demais turmas.`);
+       let cursor=ini,base=Math.floor(dur/ativas.length),resto=dur-base*ativas.length;
+       ativas.forEach((t,k)=>{const minutos=base+(k<resto?1:0),final=cursor+minutos;out.push({date,type:'ATENDIMENTO',origin:p.dest,dest:'-',start:H(cursor),end:H(final),hours:minutos/60,turma:t,cc:centro(t),sequence:i*2+1+seg/10+k/100,supervisorOnlyCompatible:true,allocationRule:'permanencia_comprovada_v9661'});cursor=final;});
      });
    });
    descansos.forEach((d,i)=>out.push({date,type:'DESCANSO',origin:'INTERVALO DE ALMOÇO',dest:'-',start:d.start,end:d.end,hours:(d.e-d.s)/60,turma:'-',cc:'-',sequence:1000+i}));
@@ -12050,81 +12060,6 @@ window.generateRateio=function(){
  RATEIO_DATA=out;window.RATEIO_DATA=out;renderRateioTable(out,warnings);
  const trabalho=out.filter(x=>x.type!=='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),desc=out.filter(x=>x.type==='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),adm=admins.reduce((n,x)=>n+Math.max(0,(M(x.end)||0)-(M(x.start)||0)),0);
  const st=document.getElementById('rateioStatusText');if(st)st.innerText=`Jornada de viagem: ${H(trabalho)} | Almoço descontado: ${H(desc)} | Alunos realizados: ${visitas.length} | Administrativo separado: ${H(adm)}.`;
- if(typeof window.renderControleRateio==='function')window.renderControleRateio();
-};
-})();
-</script>
-
-<script id="motor-final-rateio-turno-aluno-v9660">
-/* v9.6.60 - turno obtido pela jornada do aluno; deslocamento herda a ultima turma atendida na origem quando o destino nao possui turma realizada. */
-(function(){
-'use strict';
-window.APP_VERSION='9.6.60-RATEIO-TURNO-E-HERANCA-DESLOCAMENTO';
-const MIN_ATENDIMENTO=15;
-const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/gi,' ').replace(/\s+/g,' ').trim().toUpperCase();
-const M=v=>{const x=String(v||'').match(/(?:^|\D)(\d{1,2})\s*[:H]\s*(\d{2})(?:\D|$)/i);if(!x)return null;const h=+x[1],m=+x[2];return h>=0&&h<24&&m>=0&&m<60?h*60+m:null;};
-const H=v=>{v=Math.max(0,Math.round(v));return String(Math.floor(v/60)).padStart(2,'0')+':'+String(v%60).padStart(2,'0');};
-function lev(a,b){a=N(a);b=N(b);const d=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){let p=d[0];d[0]=i;for(let j=1;j<=b.length;j++){const q=d[j];d[j]=Math.min(d[j]+1,d[j-1]+1,p+(a[i-1]===b[j-1]?0:1));p=q;}}return d[b.length];}
-function cidadeIgual(a,b){const x=N(a),y=N(b);if(!x||!y)return false;if(x===y)return true;const l=Math.max(x.length,y.length)>=12?2:1;return Math.abs(x.length-y.length)<=l&&lev(x,y)<=l;}
-const realizada=v=>['REALIZADA','REALIZADO','VISITADO','VISITADA'].includes(N(v));
-const cc=t=>{try{return obterCentroCustoTurma(t)||'-';}catch(_){return '-';}};
-function alunoMestre(item){const id=String(item?.student?.id||'');return [...(DB.quali||[]),...(DB.tec||[])].find(a=>String(a?.id||'')===id)||item.student||{};}
-function horaJornada(item){
- const a=alunoMestre(item);
- // A prática representa a permanência do aluno na empresa e tem prioridade.
- // O horário de atendimento foi intencionalmente excluído desta regra.
- const fontes=[item.hrPratica,a.pratica,a.gradePratica,item.hrTeoria,a.teoria];
- for(const fonte of fontes){const m=M(fonte);if(m!==null)return {min:m,fonte};}
- return {min:null,fonte:''};
-}
-function turnoAluno(item){const h=horaJornada(item);return h.min===null?'SEM_HORARIO':h.min<720?'MANHA':'TARDE';}
-function turnoSegmento(ini,fim,almocos){if(almocos.some(a=>a.e===ini))return'TARDE';if(almocos.some(a=>a.s===fim))return'MANHA';return (ini+fim)/2<720?'MANHA':'TARDE';}
-function turmasGrupos(itens){const m=new Map();itens.forEach(v=>{String(alunoMestre(v).turma||v.student?.turma||'').split(/[,;/]+/).map(x=>x.trim()).filter(Boolean).forEach(t=>{if(!m.has(t))m.set(t,[]);m.get(t).push(v);});});return [...m].map(([turma,alunos])=>({turma,alunos}));}
-function cortar(ini,fim,cortes){let partes=[[ini,fim]];cortes.sort((a,b)=>a.s-b.s).forEach(c=>partes=partes.flatMap(([i,f])=>c.e<=i||c.s>=f?[[i,f]]:[[i,Math.max(i,c.s)],[Math.min(f,c.e),f]].filter(x=>x[1]>x[0])));return partes;}
-window.generateRateio=function(){
- const ctx=STATE.planContext,plano=DB.planning?.[ctx]||[],visitas=plano.filter(v=>v?.student?.id&&v.date&&realizada(v.status));
- const logs=DB.planning_logistics?.[ctx]||[],lunches=DB.planning_lunch?.[ctx]||[],admins=DB.planning_admin?.[ctx]||[];
- let out=[],avisos=[];RATEIO_DATA=[];window.RATEIO_DATA=RATEIO_DATA;
- if(!visitas.length){renderRateioTable([],['Nenhum aluno realizado/visitado no planejamento atual.']);return;}
- [...new Set(visitas.map(v=>v.date))].sort().forEach(date=>{
-  const vd=visitas.filter(v=>v.date===date),pernas=logs.filter(x=>x.date===date&&M(x.originTime)!==null&&M(x.destTime)>M(x.originTime)).map(x=>({...x,s:M(x.originTime),e:M(x.destTime)})).sort((a,b)=>a.s-b.s);
-  const almocos=lunches.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end),start:x.start,end:x.end}));
-  const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end)}));
-  if(!pernas.length){avisos.push('Dia '+date.split('-').reverse().join('/')+': não há deslocamentos válidos.');return;}
-  pernas.forEach((p,i)=>{
-   const local=vd.filter(v=>cidadeIgual(alunoMestre(v).cidade||v.student?.cidade,p.dest));
-   const grupoDestino=turmasGrupos(local)[0]||null;
-   // Regra do deslocamento: usa uma turma realizada no destino quando existir.
-   // Se o destino nao possuir aluno realizado, herda a turma do ultimo atendimento
-   // concluido na cidade de origem, preferencialmente no exato horario da saida.
-   const atendimentosOrigem=out.filter(e=>
-     e.type==='ATENDIMENTO'&&e.date===date&&cidadeIgual(e.origin,p.origin)&&M(e.end)!==null&&M(e.end)<=p.s
-   ).sort((a,b)=>M(b.end)-M(a.end));
-   const atendimentoOrigemExato=atendimentosOrigem.find(e=>M(e.end)===p.s)||atendimentosOrigem[0]||null;
-   const turmaDeslocamento=grupoDestino?.turma||atendimentoOrigemExato?.turma||'-';
-   out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:turmaDeslocamento,cc:turmaDeslocamento==='-'?'-':cc(turmaDeslocamento),allocationRule:grupoDestino?'turma_destino_realizada_v9660':'ultima_turma_atendida_na_origem_v9660'});
-   const prox=pernas[i+1];if(!prox)return;
-   if(!cidadeIgual(p.dest,prox.origin)){avisos.push(`Quebra logística em ${p.dest}: próxima saída registrada como ${prox.origin}.`);return;}
-   const cortes=[...almocos,...adm].filter(c=>c.e>p.e&&c.s<prox.s);
-   cortar(p.e,prox.s,cortes).forEach(([ini,fim])=>{
-    const turno=turnoSegmento(ini,fim,almocos);
-    const elegiveis=local.filter(v=>turnoAluno(v)===turno);
-    const semHorario=local.filter(v=>turnoAluno(v)==='SEM_HORARIO');
-    if(semHorario.length)avisos.push(`${p.dest}: ${semHorario.length} aluno(s) sem horário de jornada não entraram automaticamente no rateio.`);
-    const grupos=turmasGrupos(elegiveis),dur=fim-ini;
-    if(!grupos.length){avisos.push(`${p.dest}, ${turno==='MANHA'?'manhã':'tarde'} (${H(ini)}-${H(fim)}): nenhuma turma realizada pertence a esse turno.`);return;}
-    if(dur/grupos.length<MIN_ATENDIMENTO){avisos.push(`${p.dest}, ${turno==='MANHA'?'manhã':'tarde'}: ${grupos.length} turma(s) não cabem em ${dur} min sem gerar atendimento menor que ${MIN_ATENDIMENTO} min. Nenhum atendimento irreal foi criado.`);return;}
-    let cursor=ini,base=Math.floor(dur/grupos.length),resto=dur-base*grupos.length;
-    grupos.forEach((g,k)=>{const minutos=base+(k<resto?1:0),final=cursor+minutos;out.push({date,type:'ATENDIMENTO',origin:p.dest,dest:'-',start:H(cursor),end:H(final),hours:minutos/60,turma:g.turma,cc:cc(g.turma),turnoRateio:turno,sourceStudentIds:g.alunos.map(v=>String(v.student.id)),allocationRule:'turno_jornada_aluno_v9659'});cursor=final;});
-   });
-  });
-  almocos.forEach(a=>out.push({date,type:'DESCANSO',origin:'INTERVALO DE ALMOÇO',dest:'-',start:a.start,end:a.end,hours:(a.e-a.s)/60,turma:'-',cc:'-'}));
- });
- const pri={DESLOCAMENTO:1,DESCANSO:2,ATENDIMENTO:3};out.sort((a,b)=>a.date.localeCompare(b.date)||(M(a.start)-M(b.start))||((pri[a.type]||9)-(pri[b.type]||9)));
- const bloqueios=out.filter(x=>x.type==='DESLOCAMENTO'||x.type==='DESCANSO');out=out.filter(x=>x.type!=='ATENDIMENTO'||!bloqueios.some(b=>b.date===x.date&&M(b.end)>M(x.start)&&M(b.start)<M(x.end)));
- RATEIO_DATA=out;window.RATEIO_DATA=out;renderRateioTable(out,[...new Set(avisos)]);
- const trab=out.filter(x=>x.type!=='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),desc=out.filter(x=>x.type==='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),admMin=admins.reduce((n,x)=>n+Math.max(0,(M(x.end)||0)-(M(x.start)||0)),0);
- const st=document.getElementById('rateioStatusText');if(st)st.innerText=`Jornada de viagem: ${H(trab)} | Almoço descontado: ${H(desc)} | Alunos realizados: ${visitas.length} | Regra: turno da jornada do aluno | Administrativo separado: ${H(admMin)}.`;
  if(typeof window.renderControleRateio==='function')window.renderControleRateio();
 };
 })();
