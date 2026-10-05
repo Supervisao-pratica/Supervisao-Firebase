@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.58 - RATEIO SEQUENCIAL ESTRITO)</title>
+    <title>Supervisão Senac 2026 (v9.6.63 - REGIAO GARANTIDA NA IMPORTACAO)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -1216,42 +1216,46 @@ th {
         // =========================================================================
         // 1. MOTOR DE LEITURA (Leitura Inteligente à prova de espaços ocultos)
         // =========================================================================
-        function readAndParseFile(file) { 
-            return new Promise((resolve, reject) => { 
-                const reader = new FileReader(); 
-                reader.onerror = () => reject("Erro ao ler arquivo"); 
-                reader.onload = (e) => { 
-                    try { 
-                        const data = new Uint8Array(e.target.result); 
-                        const wb = XLSX.read(data, {type:'array', cellDates:true}); 
-                        let newQualiList = [], newTecList = []; 
-                        let regMap = {}, ccMap = {}; 
+        function readAndParseFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
+                reader.onload = (e) => {
+                    try {
+                        if (typeof XLSX === 'undefined') throw new Error("Biblioteca XLSX não carregada.");
+                        const data = new Uint8Array(e.target.result);
+                        const wb = XLSX.read(data, { type: 'array', cellDates: true });
+                        const newQualiList = [], newTecList = [];
+                        const diagnostico = { abasLidas: [], ignoradas: [], semModalidade: [] };
 
-                        for(let sheetName of wb.SheetNames) { 
-                            // Limpa espaços duplos e transforma tudo em minúsculo
-                            const nameLower = String(sheetName).toLowerCase().replace(/\s+/g, ' ').trim(); 
-                            
-                            // LEITURA INTELIGENTE: Procura pelas palavras-chave em vez de exigir o nome exato
-                            const isTec = nameLower.includes("téc") || nameLower.includes("tec");
-                            const isQuali = nameLower.includes("dados gerais") && !isTec; 
-                            
-                            if (!isQuali && !isTec) continue; // Ignora abas vazias ou resumos
-                            
-                            const ws = wb.Sheets[sheetName]; 
-                            const parsed = parseMainSheet(ws, isTec ? 'tec' : 'quali'); 
-                            
-                            if (isTec) {
-                                newTecList.push(...parsed);
-                            } else {
-                                newQualiList.push(...parsed);
+                        for (const sheetName of wb.SheetNames) {
+                            const ws = wb.Sheets[sheetName];
+                            const parsed = parseMainSheet(ws, 'auto');
+                            if (!parsed.length) {
+                                diagnostico.ignoradas.push(sheetName);
+                                continue;
                             }
-                        } 
-                        
-                        resolve({ quali: newQualiList, tec: newTecList, regMap, ccMap }); 
-                    } catch(err) { reject(err); } 
-                }; 
-                reader.readAsArrayBuffer(file); 
-            }); 
+                            diagnostico.abasLidas.push(sheetName);
+                            parsed.forEach(aluno => {
+                                const tipo = aluno._tipoImportacao;
+                                delete aluno._tipoImportacao;
+                                if (tipo === 'tec') newTecList.push(aluno);
+                                else if (tipo === 'quali') newQualiList.push(aluno);
+                                else diagnostico.semModalidade.push(`${aluno.nome} (${aluno.turma})`);
+                            });
+                        }
+
+                        if (!newQualiList.length && !newTecList.length) {
+                            throw new Error('Nenhum aluno válido foi localizado. A planilha precisa conter Turma, Curso e Apr. Nome.');
+                        }
+                        if (diagnostico.semModalidade.length) {
+                            throw new Error('Não foi possível identificar a modalidade pela coluna Curso para: ' + diagnostico.semModalidade.slice(0, 10).join(', '));
+                        }
+                        resolve({ quali: newQualiList, tec: newTecList, regMap: {}, ccMap: {}, diagnostico });
+                    } catch (err) { reject(err); }
+                };
+                reader.readAsArrayBuffer(file);
+            });
         }
 
         // =========================================================================
@@ -1264,118 +1268,92 @@ th {
         // =========================================================================
         // 2. EXTRATOR DE DADOS (Com Leitura Automática da Coluna Z - Situação e CNPJ)
         // =========================================================================
-        function parseMainSheet(ws, type) { 
-            const json = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}); 
-            if(json.length < 1) return []; 
-
-            let headerIdx = -1;
-            let headers = [];
-
-            for (let i = 0; i < Math.min(20, json.length); i++) {
-                if (!json[i] || !Array.isArray(json[i])) continue;
-                const row = json[i].map(h => String(h || "").toLowerCase().trim());
-                if (row.some(h => h.includes('apr. nome') || h.includes('turma'))) {
-                    headerIdx = i;
-                    headers = row;
-                    break;
-                }
+        function parseMainSheet(ws, type = 'auto') {
+            const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+            if (!json.length) return [];
+            const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').toLowerCase().trim();
+            let headerIdx = -1, headers = [];
+            for (let i = 0; i < Math.min(30, json.length); i++) {
+                const row = Array.isArray(json[i]) ? json[i].map(norm) : [];
+                const temNome = row.some(h => h === 'apr. nome' || h === 'apr nome' || h.includes('nome do aprendiz'));
+                const temTurma = row.some(h => h === 'turma');
+                const temCurso = row.some(h => h === 'curso');
+                if (temNome && temTurma && temCurso) { headerIdx = i; headers = row; break; }
             }
-
-            if (headerIdx === -1) return [];
-
-            const findCol = (terms) => { 
-                return headers.findIndex(h => terms.some(t => h.includes(t.toLowerCase()))); 
-            }; 
-
-            const C = { 
-                turma: findCol(['turma']), 
-                codigo: findCol(['alunocod', 'aluno cod', 'apr. cod', 'codigo do aluno']),
-                cpf: findCol(['alunocpf', 'aluno cpf', 'apr cpf', 'cpf do aluno']),
-                nome: findCol(['alunonome', 'aluno nome', 'apr. nome', 'nome do aprendiz']), 
-                curso: findCol(['curso']), 
-                ini: findCol(['turdatini']), 
-                fim: findCol(['turdatfim']), 
-                empresa: findCol(['emprazaosocial', 'emp razao social', 'razao social', 'razão social']), 
-                cnpj: findCol(['empcnpj', 'emp cnpj', 'cnpj', 'c.n.p.j']), // BUSCA DA COLUNA CNPJ
-                end: findCol(['empend', 'emp end', 'endereço', 'endereco']), 
-                mapa: findCol(['link mapa']), 
-                cidade: findCol(['empcidnom', 'emp cid nom', 'emp. cidade']), 
-                regiao: findCol(['atuação senac', 'atuacao senac']), 
-                sup: findCol(['sup. cadastrado']), 
-                tel: findCol(['sup celular']), 
-                email: findCol(['sup. email']), 
-                teoria: findCol(['teoria hr ini']), 
-                pratica: findCol(['pratica hr ini', 'prática hr ini']),
-                situacao: findCol(['situação', 'situacao', 'status']) // <- BUSCA A COLUNA SITUAÇÃO
-            }; 
-
-            const safeStr = (v) => v !== undefined && v !== null ? String(v) : "";
-            let alunosLidos = [];
-
+            if (headerIdx < 0) return [];
+            const findCol = terms => headers.findIndex(h => terms.some(t => h === norm(t) || h.includes(norm(t))));
+            const C = {
+                turma: findCol(['turma']), curso: findCol(['curso']),
+                turIni: findCol(['turdatini']), turFim: findCol(['turdatfim']),
+                empresa: findCol(['razao social', 'emprazaosocial', 'emp razao social']),
+                cnpj: findCol(['cnpj', 'empcnpj', 'emp cnpj']), cidade: findCol(['emp. cidade', 'empcidnom', 'emp cid nom']),
+                ufEmpresa: findCol(['emp. uf', 'emp uf']), regiao: findCol(['atuacao senac', 'atuação senac', 'regiao', 'região']),
+                sup: findCol(['sup. nome', 'sup nome', 'sup. cadastrado', 'supervisor']),
+                supCpf: findCol(['sup. cpf', 'sup cpf']),
+                supTel: findCol(['sup telefone', 'sup. telefone']), supCel: findCol(['sup celular', 'sup. celular']),
+                supEmail: findCol(['sup. email', 'sup email']),
+                contratoIni: findCol(['contrato inicio', 'contrato início']), contratoFim: findCol(['contrato fim']),
+                teoriaIni: findCol(['teoria hr ini']), teoriaFim: findCol(['teoria hr fim']),
+                praticaIni: findCol(['pratica hr ini', 'prática hr ini']), praticaFim: findCol(['pratica hr fim', 'prática hr fim']),
+                alunoUf: findCol(['apr. uf matr.', 'apr uf matr']), codigo: findCol(['apr. cod', 'apr cod', 'alunocod', 'codigo do aluno']),
+                nome: findCol(['apr. nome', 'apr nome', 'nome do aprendiz']), cpf: findCol(['apr cpf', 'alunocpf', 'cpf do aluno']),
+                alunoCel: findCol(['apr celular', 'apr. celular']), alunoEmail: findCol(['apr email', 'apr. email']),
+                nascimento: findCol(['apr nasc', 'apr. nasc']), idadeFinal: findCol(['apr idade final', 'apr. idade final']),
+                situacao: findCol(['situacao matr', 'situação matr', 'situacao matricula', 'situação matrícula', 'situacao', 'situação', 'status']),
+                endereco: findCol(['emp endereco', 'emp. endereco', 'endereco', 'endereço']), mapa: findCol(['link mapa'])
+            };
+            const val = (row, idx) => idx >= 0 && row[idx] != null ? row[idx] : '';
+            const parseDate = v => {
+                if (v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12);
+                if (typeof v === 'number' && isFinite(v)) return new Date(Math.round((v - 25569) * 864e5) + 12 * 3600e3);
+                const txt = String(v || '').trim(); let m;
+                if ((m = txt.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) return new Date(+m[3], +m[2]-1, +m[1], 12);
+                if ((m = txt.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return new Date(+m[1], +m[2]-1, +m[3], 12);
+                return null;
+            };
+            const hora = v => typeof formatExcelTime === 'function' ? formatExcelTime(v) : String(v || '').trim();
+            const faixa = (ini, fim) => { const a = hora(ini), b = hora(fim); return a && b ? `${a} às ${b}` : (a || b || ''); };
+            const identificarTipo = curso => {
+                const c = norm(curso).toUpperCase();
+                if (c.includes('APRENDIZAGEM PROFISSIONAL TECNICA') || c.includes('TECNICA EM') || c.includes('TECNICO EM')) return 'tec';
+                if (c.includes('APRENDIZAGEM PROFISSIONAL DE QUALIFICACAO') || c.includes('QUALIFICACAO')) return 'quali';
+                return type === 'tec' || type === 'quali' ? type : '';
+            };
+            const alunos = [];
             for (let i = headerIdx + 1; i < json.length; i++) {
-                const row = json[i];
-                if (!row || row.length === 0) continue; 
-
-                const val = (idx) => (idx > -1 && row[idx] !== undefined && row[idx] !== null) ? row[idx] : ""; 
-                const nomeVal = String(val(C.nome)).trim();
-                const turmaVal = String(val(C.turma)).trim() || "Sem Turma";
-
-                if(!nomeVal || nomeVal.length < 3 || nomeVal.toLowerCase().includes("nome")) continue; 
-                
-                // --- MÁGICA DA COLUNA Z AQUI ---
-                // Se não achar pelo cabeçalho, vai direto na Coluna Z (índice 25)
-                const idxSituacao = C.situacao > -1 ? C.situacao : 25;
-                const situacaoVal = String(val(idxSituacao)).toLowerCase().trim();
-                const alunoVemDesligado = situacaoVal.includes('desligado');
-                // --------------------------------
-
-                const parseDate = (v) => { 
-                    if (v instanceof Date) return v; 
-                    if (typeof v === 'number') return new Date(Math.round((v - 25569)*864e5)); 
-                    return null; 
-                }; 
-                
-                // 👑 INSERÇÃO DO CNPJ TRATADO
-                let cnpjTratado = String(val(C.cnpj)).replace(/\D/g, '');
-                if (cnpjTratado.length === 13) {
-                    const candidatoCnpj = '0' + cnpjTratado;
-                    if (typeof cnpjValido9643 === 'function' && cnpjValido9643(candidatoCnpj)) cnpjTratado = candidatoCnpj;
-                }
-                
-                let hrTeoria = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.teoria)) : val(C.teoria);
-                let hrPratica = typeof formatExcelTime === 'function' ? formatExcelTime(val(C.pratica)) : val(C.pratica);
-                
-                alunosLidos.push({ 
-                    id: "ID_" + Date.now().toString(36) + Math.random().toString(36).substr(2, 5).toUpperCase(), 
-                    nome: nomeVal,
-                    codigo: String(val(C.codigo)).trim().replace(/\.0$/, ''),
-                    cpf: String(val(C.cpf)).replace(/\D/g, ''),
-                    turma: turmaVal, 
-                    curso: val(C.curso),
-                    cnpj: cnpjTratado, // 👑 SALVA O CNPJ AQUI
-                    empresa: { 
-                        razao: String(val(C.empresa)).trim() || "Não Inf.", 
-                        endereco: val(C.end), 
-                        link: normalizarLinkMapa(val(C.mapa), val(C.end)), 
-                        cnpj: cnpjTratado // 👑 SALVA O CNPJ AQUI TAMBÉM
-                    }, 
-                    supervisor: { 
-                        display: val(C.sup) || "Não Inf.", 
-                        tel: val(C.tel), 
-                        email: val(C.email) 
-                    }, 
-                    regiao: String(val(C.regiao)).toUpperCase().trim(), 
-                    cidade: String(val(C.cidade)).toUpperCase().trim(), 
-                    ini: parseDate(val(C.ini)), 
-                    fim: parseDate(val(C.fim)), 
-                    teoria: hrTeoria, 
-                    pratica: hrPratica, 
-                    visits: [], 
-                    isDesligado: alunoVemDesligado, 
-                    obs_origem: alunoVemDesligado ? "Desligado via planilha" : "" 
+                const row = json[i]; if (!Array.isArray(row)) continue;
+                const nome = String(val(row, C.nome)).trim();
+                const turma = String(val(row, C.turma)).trim().replace(/\.0$/, '');
+                const curso = String(val(row, C.curso)).trim();
+                if (!nome || nome.length < 3 || !turma) continue;
+                const tipoDetectado = identificarTipo(curso);
+                const situacaoOriginal = String(val(row, C.situacao)).trim();
+                const situacaoNorm = norm(situacaoOriginal);
+                const desligado = /deslig|cancel|evad|encerr/.test(situacaoNorm);
+                let cnpj = String(val(row, C.cnpj)).replace(/\D/g, '');
+                if (cnpj.length === 13) cnpj = '0' + cnpj;
+                const cidade = String(val(row, C.cidade)).toUpperCase().trim();
+                let regiao = String(val(row, C.regiao)).toUpperCase().trim();
+                if (!regiao && typeof getRegiaoDaCidade === 'function') regiao = String(getRegiaoDaCidade(cidade) || '').toUpperCase().trim();
+                const supTel = String(val(row, C.supCel) || val(row, C.supTel)).trim();
+                const ini = parseDate(val(row, C.contratoIni)) || parseDate(val(row, C.turIni));
+                const fim = parseDate(val(row, C.contratoFim)) || parseDate(val(row, C.turFim));
+                const endereco = String(val(row, C.endereco)).trim();
+                alunos.push({
+                    id: 'ID_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8).toUpperCase(),
+                    _tipoImportacao: tipoDetectado, nome, turma, curso,
+                    codigo: String(val(row, C.codigo)).trim().replace(/\.0$/, ''), cpf: String(val(row, C.cpf)).replace(/\D/g, ''),
+                    celular: String(val(row, C.alunoCel)).trim(), email: String(val(row, C.alunoEmail)).trim(),
+                    nascimento: parseDate(val(row, C.nascimento)), idadeFinal: String(val(row, C.idadeFinal)).trim(), ufMatricula: String(val(row, C.alunoUf)).trim(),
+                    cnpj, empresa: { razao: String(val(row, C.empresa)).trim() || 'Não Inf.', endereco, link: normalizarLinkMapa(val(row, C.mapa), endereco), cnpj, cidade, uf: String(val(row, C.ufEmpresa)).trim() },
+                    supervisor: { display: String(val(row, C.sup)).trim() || 'Não Inf.', cpf: String(val(row, C.supCpf)).replace(/\D/g, ''), tel: supTel, telefone: String(val(row, C.supTel)).trim(), celular: String(val(row, C.supCel)).trim(), email: String(val(row, C.supEmail)).trim() },
+                    regiao, cidade, ini, fim,
+                    teoria: faixa(val(row, C.teoriaIni), val(row, C.teoriaFim)), pratica: faixa(val(row, C.praticaIni), val(row, C.praticaFim)),
+                    visits: [], isDesligado: desligado, statusAluno: situacaoOriginal, situacao: situacaoOriginal,
+                    obs_origem: desligado ? `Situação importada da planilha: ${situacaoOriginal}` : ''
                 });
             }
-            return alunosLidos; 
+            return alunos;
         }
 
         // =========================================================================
@@ -9526,9 +9504,10 @@ window.restoreBackup = function(input){
 /* v9.6.26 - importação incremental, transacional e não destrutiva */
 const V9626={norm:v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase(),dig:v=>String(v??'').replace(/\D/g,''),val:(r,i)=>i>=0?String(r[i]??'').trim():'',date:v=>{if(!v)return null;let m=String(v).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(m)return new Date(+m[3],+m[2]-1,+m[1],12).toISOString();m=String(v).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);return m?new Date(+m[1],+m[2]-1,+m[3],12).toISOString():null;},hour:v=>{let m=String(v??'').match(/(\d{1,2}):(\d{2})/);return m?`${String(+m[1]).padStart(2,'0')}:${m[2]}`:'';}};
 V9626.ct=function(v){let n=this.norm(v);if(!/SABADO/.test(n))return null;let d={seg:/SEGUNDA/.test(n),ter:/TERCA/.test(n),qua:/QUARTA/.test(n),qui:/QUINTA/.test(n),sex:/SEXTA/.test(n)},f=Object.keys(d).filter(k=>!d[k]);if(f.length!==1)return {pending:true};let k=f[0];return {pending:false,map:{seg:k==='seg',ter:k==='ter',qua:k==='qua',qui:k==='qui',sex:k==='sex'},label:{seg:'Segunda',ter:'Terça',qua:'Quarta',qui:'Quinta',sex:'Sexta'}[k]};};
-V9626.read=file=>new Promise((ok,fail)=>{let fr=new FileReader();fr.onerror=()=>fail(new Error('Falha ao ler arquivo'));fr.onload=e=>{try{let b=e.target.result,txt;try{txt=new TextDecoder('utf-8',{fatal:true}).decode(b)}catch(_){txt=new TextDecoder('windows-1252').decode(b)}let rows=txt.replace(/^\uFEFF/,'').replace(/\r/g,'').split('\n').filter(x=>x.trim()).map(x=>x.split('\t'));ok(rows)}catch(x){fail(x)}};fr.readAsArrayBuffer(file)});
-V9626.parse=function(rows){let h=rows[0].map(this.norm.bind(this)),col=(...a)=>h.findIndex(x=>a.some(y=>x===this.norm(y))),C={turma:col('Turma'),curso:col('Curso'),ini:col('TurDatIni'),fim:col('TurDatFim'),razao:col('Razao Social'),cnpj:col('CNPJ'),cidade:col('Emp. Cidade'),uf:col('Emp. UF'),sup:col('Sup. Nome'),supTel:col('Sup Telefone'),supCel:col('Sup Celular'),supEmail:col('Sup. Email'),teoIni:col('Teoria Hr Ini'),teoFim:col('Teoria Hr Fim'),praGrade:col('Pratica Hr Ini'),cod:col('Apr. Cod'),nome:col('Apr. Nome'),cpf:col('Apr CPF'),cel:col('Apr Celular'),email:col('Apr Email'),nasc:col('Apr Nasc'),sit:col('Situacao Matr')};if(C.nome<0||C.cod<0)throw new Error('Cabeçalhos Apr. Nome/Apr. Cod não encontrados.');let out=[],seen=new Set();for(let i=1;i<rows.length;i++){let r=rows[i],cod=this.val(r,C.cod).replace(/\.0$/,''),nome=this.val(r,C.nome);if(!cod||!nome||seen.has(cod))continue;seen.add(cod);let curso=this.val(r,C.curso),ct=this.ct(this.val(r,C.praGrade));out.push({id:cod,codigo_aluno:cod,codigo:cod,nome,turma:this.val(r,C.turma),curso,cpf:this.dig(this.val(r,C.cpf)),celular:this.val(r,C.cel),email:this.val(r,C.email),nascimento:this.date(this.val(r,C.nasc)),cidade:this.norm(this.val(r,C.cidade)),estado:this.val(r,C.uf),ini:this.date(this.val(r,C.ini)),fim:this.date(this.val(r,C.fim)),teoria:this.hour(this.val(r,C.teoIni)),pratica:this.hour(this.val(r,C.teoFim)),gradePratica:this.val(r,C.praGrade),cnpj:this.dig(this.val(r,C.cnpj)),empresa:{razao:this.val(r,C.razao),cnpj:this.dig(this.val(r,C.cnpj)),endereco:'',link:''},supervisor:{display:this.val(r,C.sup),tel:this.val(r,C.supCel)||this.val(r,C.supTel),telefone:this.val(r,C.supTel),celular:this.val(r,C.supCel),email:this.val(r,C.supEmail)},contraTurno:ct&&!ct.pending?ct.map:null,contraturno:ct&&!ct.pending?ct.label:'',contraturnoPendente:!!ct?.pending,isDesligado:/DESLIG|CANCEL|EVAS|ENCERR/.test(this.norm(this.val(r,C.sit))),tipo:/TECNIC/.test(this.norm(curso))?'tec':'quali'});}return out;};
-V9626.regiaoCidade=function(cidade){const c=this.norm(cidade);if(!c)return'';const matches=Object.entries(DB.regioes_map||{}).filter(([,cidades])=>Array.isArray(cidades)&&cidades.some(x=>this.norm(x)===c)).map(([regiao])=>regiao);return matches.length===1?this.norm(matches[0]):'';};
+V9626.read=file=>new Promise((ok,fail)=>{const fr=new FileReader();fr.onerror=()=>fail(new Error('Falha ao ler arquivo'));fr.onload=e=>{try{if(typeof XLSX==='undefined')throw new Error('Biblioteca XLSX não carregada.');const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});const candidatos=[];for(const nome of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[nome],{header:1,defval:'',raw:true});if(!rows.length)continue;let hi=-1;for(let i=0;i<Math.min(30,rows.length);i++){const h=(rows[i]||[]).map(V9626.norm);if(h.includes('TURMA')&&h.includes('CURSO')&&(h.includes('APR. NOME')||h.includes('APR NOME'))){hi=i;break;}}if(hi<0)continue;const h=(rows[hi]||[]).map(V9626.norm),ci=h.indexOf('CURSO'),ni=h.includes('APR. NOME')?h.indexOf('APR. NOME'):h.indexOf('APR NOME');const validas=rows.slice(hi+1).filter(r=>String(r[ci]??'').trim()&&String(r[ni]??'').trim()).length;candidatos.push({nome,rows:rows.slice(hi),validas,planilha1:V9626.norm(nome)==='PLANILHA1'});}if(!candidatos.length)throw new Error('Nenhuma aba com Turma, Curso e Apr. Nome foi encontrada.');candidatos.sort((a,b)=>(b.planilha1-a.planilha1)||(b.validas-a.validas));ok(candidatos[0].rows);}catch(x){fail(x)}};fr.readAsArrayBuffer(file)});
+V9626.parse=function(rows){const h=(rows[0]||[]).map(this.norm.bind(this)),col=(...a)=>h.findIndex(x=>a.some(y=>x===this.norm(y))),C={turma:col('Turma'),curso:col('Curso'),turIni:col('TurDatIni'),turFim:col('TurDatFim'),razao:col('Razao Social'),cnpj:col('CNPJ'),cidade:col('Emp. Cidade'),uf:col('Emp. UF'),sup:col('Sup. Nome'),supCpf:col('Sup. CPF'),supTel:col('Sup Telefone'),supCel:col('Sup Celular'),supEmail:col('Sup. Email'),contratoIni:col('Contrato Inicio'),contratoFim:col('Contrato Fim'),teoIni:col('Teoria Hr Ini'),teoFim:col('Teoria Hr Fim'),praIni:col('Pratica Hr Ini'),praFim:col('Pratica Hr Fim'),aprUf:col('Apr. UF Matr.'),cod:col('Apr. Cod'),nome:col('Apr. Nome'),cpf:col('Apr CPF'),cel:col('Apr Celular'),email:col('Apr Email'),nasc:col('Apr Nasc'),idade:col('Apr Idade Final'),sit:col('Situacao Matr')};if(C.nome<0||C.cod<0||C.curso<0||C.turma<0)throw new Error('Cabeçalhos Turma, Curso, Apr. Nome ou Apr. Cod não encontrados.');const date=v=>{if(!v)return null;if(v instanceof Date&&!isNaN(v))return new Date(v.getFullYear(),v.getMonth(),v.getDate(),12).toISOString();if(typeof v==='number'&&isFinite(v)){const d=new Date(Math.round((v-25569)*864e5)+12*36e5);return isNaN(d)?null:d.toISOString();}return this.date(v);},time=v=>{if(v instanceof Date&&!isNaN(v))return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;if(typeof v==='number'&&isFinite(v)){const m=Math.round(v*1440)%(24*60);return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;}return this.hour(v);},faixa=(a,b)=>{a=time(a);b=time(b);return a&&b?`${a} às ${b}`:(a||b||'');},out=[],seen=new Set();for(let i=1;i<rows.length;i++){const r=rows[i],cod=this.val(r,C.cod).replace(/\.0$/,''),nome=this.val(r,C.nome),turma=this.val(r,C.turma).replace(/\.0$/,''),curso=this.val(r,C.curso);if(!cod||!nome||!turma||!curso)continue;const tipoNorm=this.norm(curso);let tipo='';if(tipoNorm.includes('APRENDIZAGEM PROFISSIONAL TECNICA')||tipoNorm.includes('TECNICA EM')||tipoNorm.includes('TECNICO EM'))tipo='tec';else if(tipoNorm.includes('APRENDIZAGEM PROFISSIONAL DE QUALIFICACAO')||tipoNorm.includes('QUALIFICACAO'))tipo='quali';else throw new Error(`Modalidade não identificada na linha ${i+1}: ${curso}`);const chave=`${cod}|${turma}`;if(seen.has(chave))continue;seen.add(chave);const cnpj=this.dig(this.val(r,C.cnpj)).padStart(14,'0'),cidade=this.norm(this.val(r,C.cidade)),situacao=this.val(r,C.sit),sitNorm=this.norm(situacao),ct=this.ct(this.val(r,C.praIni)),teoria=faixa(r[C.teoIni],r[C.teoFim]),pratica=faixa(r[C.praIni],r[C.praFim]);out.push({id:cod,codigo_aluno:cod,codigo:cod,nome,cpf:this.dig(this.val(r,C.cpf)),celular:this.val(r,C.cel),email:this.val(r,C.email),nascimento:date(r[C.nasc]),idadeFinal:this.val(r,C.idade),ufMatricula:this.val(r,C.aprUf),turma,curso,tipo,ini:date(r[C.contratoIni])||date(r[C.turIni]),fim:date(r[C.contratoFim])||date(r[C.turFim]),teoria,pratica,gradePratica:this.val(r,C.praIni),cnpj,cidade,estado:this.val(r,C.uf),regiao:this.regiaoCidade?this.regiaoCidade(cidade):'',empresa:{razao:this.val(r,C.razao)||'Não Inf.',cnpj,cidade,uf:this.val(r,C.uf),endereco:'',link:''},supervisor:{display:this.val(r,C.sup)||'Não Inf.',cpf:this.dig(this.val(r,C.supCpf)),tel:this.val(r,C.supCel)||this.val(r,C.supTel),telefone:this.val(r,C.supTel),celular:this.val(r,C.supCel),email:this.val(r,C.supEmail)},statusAluno:situacao,situacao,isDesligado:/DESLIG|CANCEL|EVAD|ENCERR/.test(sitNorm),contraTurno:ct&&!ct.pending?ct.map:null,contraturno:ct&&!ct.pending?ct.map:null,contraturnoPendente:!!(ct&&ct.pending),visits:[],obs_origem:/DESLIG|CANCEL|EVAD|ENCERR/.test(sitNorm)?`Situação importada: ${situacao}`:''});}return out;};
+const SENAC_CIDADE_REGIAO_V9662=Object.freeze({"ANDIRA": "CORNELIO PROCOPIO", "ARARUNA": "CAMPO MOURAO", "ASSAI": "CORNELIO PROCOPIO", "ASSIS CHATEAUBRIAND": "TOLEDO", "ASTORGA": "ARAPONGAS", "BRASILANDIA DO SUL": "UMUARAMA", "CAMBARA": "JACAREZINHO", "CAMBE": "LONDRINA CENTRO", "CAMPO DO TENENTE": "RIO NEGRO", "CAMPINA DA LAGOA": "CASCAVEL", "CANTAGALO": "GUARAPUAVA", "CHOPINZINHO": "PATO BRANCO", "CIANORTE": "CAMPO MOURAO", "CORONEL DOMINGOS SOARES": "PALMAS", "CRUZEIRO DO OESTE": "UMUARAMA", "CRUZMALTINA": "IVAIPORA", "CURITIBA": "CURITIBA PORTAO", "DOUTOR CAMARGO": "MARINGA", "ENGENHEIRO BELTRAO": "CAMPO MOURAO", "FENIX": "CAMPO MOURAO", "FLORESTA": "MARINGA", "GOIOERE": "GOIOERE", "GUAIRA": "MARECHAL CANDIDO RONDON", "HONORIO SERPA": "PATO BRANCO", "IPORA": "UMUARAMA", "IRETAMA": "CAMPO MOURAO", "ITAMBARACA": "CORNELIO PROCOPIO", "JANIOPOLIS": "CAMPO MOURAO", "JURANDA": "CAMPO MOURAO", "LOANDA": "NOVA LONDRINA", "LUPIONOPOLIS": "LONDRINA NORTE", "MAMBORE": "CAMPO MOURAO", "MANGUEIRINHA": "PALMAS", "MANOEL RIBAS": "IVAIPORA", "MARIPA": "TOLEDO", "MERCEDES": "MARECHAL CANDIDO RONDON", "NOVA CANTU": "CASCAVEL", "NOVA LARANJEIRAS": "CASCAVEL", "NOVA PRATA DO IGUACU": "FRANCISCO BELTRAO", "NOVA SANTA ROSA": "MARECHAL CANDIDO RONDON", "OURIZONA": "MARINGA", "PARAISO DO NORTE": "PARANAVAI", "PEABIRU": "CAMPO MOURAO", "PITANGA": "GUARAPUAVA", "RENASCENCA": "FRANCISCO BELTRAO", "RONCADOR": "CAMPO MOURAO", "SALTO DO LONTRA": "FRANCISCO BELTRAO", "SANTA AMELIA": "CORNELIO PROCOPIO", "SANTA CECILIA DO PAVAO": "CORNELIO PROCOPIO", "SANTA FE": "MARINGA", "SANTA MARIANA": "CORNELIO PROCOPIO", "SAO JORGE DOESTE": "FRANCISCO BELTRAO", "SAO SEBASTIAO DA AMOREIRA": "CORNELIO PROCOPIO", "TAMARANA": "LONDRINA CENTRO", "TERRA RICA": "NOVA LONDRINA", "TRES BARRAS DO PARANA": "CASCAVEL", "TUPASSI": "TOLEDO", "WENCESLAU BRAZ": "CASTRO"});
+V9626.regiaoCidade=function(cidade){const c=this.norm(cidade);if(!c)return'';const alvo=SENAC_CIDADE_REGIAO_V9662[c];if(alvo){const chave=Object.keys(DB.regioes_map||{}).find(r=>this.norm(r)===alvo);if(chave)return chave;const nomes={'CORNELIO PROCOPIO':'CORNÉLIO PROCÓPIO','CAMPO MOURAO':'CAMPO MOURÃO','IVAIPORA':'IVAIPORÃ','CURITIBA PORTAO':'CURITIBA PORTÃO','MARINGA':'MARINGÁ','GOIOERE':'GOIOERÊ','MARECHAL CANDIDO RONDON':'MARECHAL CÂNDIDO RONDON','NOVA LONDRINA':'NOVA LONDRINA','FRANCISCO BELTRAO':'FRANCISCO BELTRÃO','PARANAVAI':'PARANAVAÍ','LONDRINA CENTRO':'LONDRINA CENTRO','LONDRINA NORTE':'LONDRINA NORTE'};return nomes[alvo]||alvo;}const matches=Object.entries(DB.regioes_map||{}).filter(([,cidades])=>Array.isArray(cidades)&&cidades.some(x=>this.norm(x)===c)).map(([regiao])=>regiao);return matches.length===1?matches[0]:'';};
 const parseBaseV9626=V9626.parse;
 V9626.parse=function(rows){
  const out=parseBaseV9626.call(this,rows),h=(rows[0]||[]).map(this.norm.bind(this));
@@ -9551,7 +9530,15 @@ window.runMergeImport=async function(input){
   const find=n=>all.find(a=>String(a.codigo_aluno||a.codigo||a.id)===n.codigo_aluno)||all.find(a=>D(a.cpf).length===11&&D(a.cpf)===n.cpf)||all.find(a=>N(a.nome)===N(n.nome)&&N(a.turma)===N(n.turma));
   const addr=V9626.addrMap();
   incoming.forEach(n=>{const known=addr.get(n.cnpj);if(known){n.empresa.endereco=n.empresa.endereco||known.endereco;n.empresa.link=n.empresa.link||known.link;n.cidade=n.cidade||known.cidade;n.regiao=n.regiao||known.regiao||V9626.regiaoCidade(n.cidade);n.empresa.razao=n.empresa.razao||known.razao;}else n.regiao=n.regiao||V9626.regiaoCidade(n.cidade);});
-  const novos=incoming.filter(n=>!find(n)),semRegiao=novos.filter(n=>!n.regiao);
+  /* Garantia final antes da validação: aplica o mapa SENAC mesmo se o banco local estiver desatualizado. */
+  incoming.forEach(n=>{
+   const cidade=N(n.cidade||n.empresa?.cidade||'');
+   if(cidade==='CURITIBA')n.regiao='CURITIBA PORTÃO';
+   else if(cidade==='LUPIONOPOLIS')n.regiao='LONDRINA NORTE';
+   else if(cidade==='JANIOPOLIS')n.regiao='CAMPO MOURÃO';
+   else if(!n.regiao)n.regiao=V9626.regiaoCidade(cidade);
+  });
+  const novos=incoming.filter(n=>!find(n)),semRegiao=novos.filter(n=>!String(n.regiao||'').trim());
   if(semRegiao.length){const lista=semRegiao.slice(0,15).map(n=>`- ${n.nome}: ${n.cidade||'cidade ausente'}`).join('\n');throw new Error(`Existem ${semRegiao.length} aluno(s) novo(s) sem região segura. A importação foi bloqueada para não criar cadastros incompletos.\n\n${lista}${semRegiao.length>15?'\n...':''}\n\nCadastre essas cidades no mapa de regiões e tente novamente.`);}
   const preview={add:novos.length,upd:incoming.length-novos.length,ct:incoming.filter(n=>n.contraTurno).length,pend:incoming.filter(n=>n.contraturnoPendente).length,end:novos.filter(n=>!n.empresa?.endereco).length,contato:novos.filter(n=>!n.supervisor?.tel&&!n.supervisor?.email).length};
   const msg=`PRÉVIA DA IMPORTAÇÃO\n\nBase atual: ${all.length} alunos\nRegistros da planilha: ${incoming.length}\nNovos: ${preview.add}\nExistentes a atualizar: ${preview.upd}\nRegiões validadas: ${incoming.length}\nContraturnos identificados: ${preview.ct}\nSábados para revisão manual: ${preview.pend}\nNovos sem endereço na origem/CNPJ interno: ${preview.end}\nNovos sem contato de supervisor: ${preview.contato}\n\nPlanejamentos, visitas, observações e endereços manuais serão preservados.\n\nAplicar agora?`;
@@ -11803,6 +11790,9 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
                 catalogo.set(chave, { cidade: nome, regiao: regional, prioridade });
             }
         };
+
+        registrar('CURITIBA', 'CURITIBA PORTAO', 1000);
+        registrar('JANIÓPOLIS', 'CAMPO MOURÃO', 1000);
 
         Object.entries((window.DB && window.DB.regioes_map) || {}).forEach(([regiao, cidades]) => {
             if (!Array.isArray(cidades)) return;
