@@ -2010,10 +2010,10 @@ window.requestRestore = function() {
                 let isDesl = !!document.getElementById('editDesligado')?.checked;
                 let obsText = getVal('editObs');
                 
-                // MUDANÇA AQUI: Se a caixa estiver DESMARCADA, apaga as palavras que forçam o desligamento
+                // Preserva integralmente o texto digitado nas observações.
                 let baseStatus = "Ativo";
                 if (!isDesl) {
-                    obsText = obsText.replace(/desligamento|desligado|cancelado|evasão/gi, "").trim();
+                    obsText = obsText.trim();
                 } else {
                     baseStatus = "Encerrado";
                 }
