@@ -12744,21 +12744,31 @@ window.addEventListener('DOMContentLoaded',()=>setTimeout(install,900));setTimeo
 })();
 </script>
 
-<style id="estabilidade-menu-modal-v10-style">
-#alunosActionMenus.menu-modal-hide,#processoDesligamentoAlertas.menu-modal-hide{display:none!important;visibility:hidden!important;pointer-events:none!important}
-#alunosActionMenus{z-index:35!important}#alunosActionMenus .amenu-list{z-index:45!important}
-#modalRelatorioMes,.pend-overlay,.desl-overlay,#respUfModalV4{z-index:230000!important}
+<style id="estabilidade-menu-modal-v11-style">
+#alunosActionMenus{position:relative!important;z-index:35!important;display:flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+#alunosActionMenus .amenu-list{z-index:45!important}
+#processoDesligamentoAlertas{visibility:visible!important;opacity:1!important}
+.modal-overlay,#modalRelatorioMes,.pend-overlay,.desl-overlay,#respUfModalV4,#studentModal,#addCCModal,#modalCidadesRede,#financeModal,#print-area{z-index:230000!important;backdrop-filter:blur(4px)!important;-webkit-backdrop-filter:blur(4px)!important}
 #btnRestaurarManualLogin{display:flex!important;visibility:visible!important;opacity:1!important}
 </style>
-<script id="estabilidade-menu-modal-v10">
+<script id="estabilidade-menu-modal-v11">
 (function(){'use strict';
-const IDS=['modalRelatorioMes','centralPendenciasModal','desligamentosPreview','respUfModalV4','studentModal','addCCModal','modalCidadesRede','financeModal','print-area'];
-function visible(e){if(!e||e.classList.contains('hidden'))return false;const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&s.opacity!=='0'&&(e.classList.contains('open')||s.position==='fixed'||s.position==='absolute')}
-function updateMenuModal(){const open=IDS.some(id=>visible(document.getElementById(id)));const menu=document.getElementById('alunosActionMenus'),alerta=document.getElementById('processoDesligamentoAlertas');if(menu){menu.classList.toggle('menu-modal-hide',open);if(open)menu.querySelectorAll('.amenu.open').forEach(m=>m.classList.remove('open'))}if(alerta)alerta.classList.toggle('menu-modal-hide',open)}
+function garantirMenuVisivel(){
+ const menu=document.getElementById('alunosActionMenus');
+ if(menu){
+  menu.classList.remove('menu-modal-hide','menu-responsavel-aberto');
+  menu.style.removeProperty('display');
+  menu.style.removeProperty('visibility');
+  menu.style.removeProperty('opacity');
+  menu.style.removeProperty('pointer-events');
+ }
+}
 function cleanContacts(){const list=document.querySelector('#alunosActionMenus [data-menu="con"] .amenu-list');if(!list)return;const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase(),seen=new Set();[...list.children].forEach(el=>{const t=norm(el.textContent);if(t.includes('responsaveis senac pr')||t.includes('1 contato'))return el.remove();const k=t.replace(/[▾▼]/g,'').trim();if(k&&seen.has(k))el.remove();else if(k)seen.add(k)});const buscas=[...list.querySelectorAll('button')].filter(b=>norm(b.textContent).includes('buscar responsavel'));buscas.slice(1).forEach(b=>b.remove())}
-// Event-driven immediate response plus a low-cost safety check. No MutationObserver.
-document.addEventListener('click',()=>requestAnimationFrame(updateMenuModal),true);document.addEventListener('keydown',()=>requestAnimationFrame(updateMenuModal),true);window.addEventListener('resize',updateMenuModal);setInterval(updateMenuModal,500);
-window.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{cleanContacts();updateMenuModal()},900);setTimeout(cleanContacts,2200)});setTimeout(()=>{cleanContacts();updateMenuModal()},1500);
+document.addEventListener('click',()=>requestAnimationFrame(garantirMenuVisivel),true);
+document.addEventListener('keydown',()=>requestAnimationFrame(garantirMenuVisivel),true);
+window.addEventListener('resize',garantirMenuVisivel);
+window.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{cleanContacts();garantirMenuVisivel()},900);setTimeout(cleanContacts,2200)});
+setTimeout(()=>{cleanContacts();garantirMenuVisivel()},1500);
 })();
 </script>
 <script id="versao-final-homologada">window.APP_VERSION='FINAL-HOMOLOGADO-SUPERVISAO-2026-ESTAVEL-MENU-RESTAURAR-LOGIN';</script>
