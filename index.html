@@ -9770,23 +9770,66 @@ async function carregarNuvemV9633(f,meta){
  const raw=LZString.decompressFromBase64(payload);if(!raw)throw new Error('Falha ao descompactar a nuvem');return JSON.parse(raw);
 }
 async function salvarNuvemIntegralV9637(data){
- if(typeof firebase==='undefined'||!navigator.onLine)return false;if(typeof LZString==='undefined')throw new Error('Compactador indisponível');
- const f=firebase.firestore(),ref=f.collection('banco_senac').doc('dados_principais'),payload=LZString.compressToBase64(JSON.stringify(data)),generation=String(data.updatedAt),partes=[];
- for(let i=0;i<payload.length;i+=V9637_PARTE)partes.push(payload.slice(i,i+V9637_PARTE));
- const anterior=await ref.get(),metaAnterior=anterior.exists?anterior.data():null;
- for(let ini=0;ini<partes.length;ini+=400){const b=f.batch();partes.slice(ini,ini+400).forEach((conteudo,j)=>{const indice=ini+j;b.set(ref.collection('partes').doc(`${generation}_${String(indice).padStart(5,'0')}`),{generation,indice,conteudo,updatedAt:data.updatedAt});});await b.commit();}
- const resumo={quali:data.quali?.length||0,tec:data.tec?.length||0,roteiros:Object.keys(data.planning||{}).length,itensPlanejamento:Object.values(data.planning||{}).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0)};
- await ref.set({chunked:true,generation,chunkCount:partes.length,totalLength:payload.length,checksum:hashV9637(payload),updatedAt:data.updatedAt,schema:'senac-cloud-v4',resumo});
- const confirmado=await ref.get(),restaurado=await carregarNuvemV9633(f,confirmado.data()),qtd=(restaurado.quali?.length||0)+(restaurado.tec?.length||0);
- if(qtd!==resumo.quali+resumo.tec||Object.keys(restaurado.planning||{}).length!==resumo.roteiros)throw new Error('Validação integral da nuvem falhou');
- if(metaAnterior?.generation&&metaAnterior.generation!==generation){for(let ini=0;ini<Number(metaAnterior.chunkCount||0);ini+=400){const b=f.batch();for(let i=ini;i<Math.min(ini+400,Number(metaAnterior.chunkCount||0));i++)b.delete(ref.collection('partes').doc(`${metaAnterior.generation}_${String(i).padStart(5,'0')}`));await b.commit().catch(()=>{});}}
+ if(typeof firebase==='undefined'||!firebase.firestore)throw new Error('Firebase/Firestore nao carregado');
+ if(typeof LZString==='undefined')throw new Error('Compactador LZString indisponivel');
+ const f=firebase.firestore();
+ const ref=f.collection('banco_senac').doc('dados_principais');
+ const json=JSON.stringify(data);
+ const payload=LZString.compressToBase64(json);
+ if(!payload)throw new Error('Falha ao compactar os dados');
+ const generation=String(data.updatedAt||Date.now());
+ const tamanhoParte=Math.min(Number(V9637_PARTE)||700000,700000);
+ const partes=[];
+ for(let i=0;i<payload.length;i+=tamanhoParte)partes.push(payload.slice(i,i+tamanhoParte));
+ if(!partes.length)throw new Error('Nenhuma parte foi criada para gravacao');
+ const lerComTentativas=async(fn,tentativas=3)=>{let ultimo;for(let i=1;i<=tentativas;i++){try{return await fn();}catch(e){ultimo=e;if(i<tentativas)await new Promise(r=>setTimeout(r,500*i));}}throw ultimo;};
+ const anterior=await lerComTentativas(()=>ref.get());
+ const metaAnterior=anterior.exists?anterior.data():null;
+ for(let ini=0;ini<partes.length;ini+=400){
+  await lerComTentativas(async()=>{
+   const batch=f.batch();
+   partes.slice(ini,ini+400).forEach((conteudo,j)=>{
+    const indice=ini+j;
+    batch.set(ref.collection('partes').doc(`${generation}_${String(indice).padStart(5,'0')}`),{generation,indice,conteudo,updatedAt:data.updatedAt||Date.now()});
+   });
+   await batch.commit();
+  });
+ }
+ const resumo={quali:data.quali?.length||0,tec:data.tec?.length||0,roteiros:Object.keys(data.planning||{}).length,itensPlanejamento:Object.values(data.planning||{}).reduce((n,x)=>n+(Array.isArray(x)?x.length:0),0)};
+ const meta={chunked:true,generation,chunkCount:partes.length,totalLength:payload.length,checksum:hashV9637(payload),updatedAt:data.updatedAt||Date.now(),schema:'senac-cloud-v5',resumo};
+ await lerComTentativas(()=>ref.set(meta));
+ const confirmado=await lerComTentativas(()=>ref.get());
+ if(!confirmado.exists)throw new Error('Documento principal nao foi confirmado na nuvem');
+ const mc=confirmado.data()||{};
+ if(mc.generation!==generation||Number(mc.chunkCount)!==partes.length||Number(mc.totalLength)!==payload.length)throw new Error('Manifesto da nuvem divergente');
+ let payloadConfirmado='';
+ for(let ini=0;ini<partes.length;ini+=20){
+  const leituras=[];
+  for(let i=ini;i<Math.min(ini+20,partes.length);i++)leituras.push(ref.collection('partes').doc(`${generation}_${String(i).padStart(5,'0')}`).get());
+  const docs=await lerComTentativas(()=>Promise.all(leituras));
+  docs.forEach((doc,j)=>{if(!doc.exists)throw new Error(`Parte ${ini+j+1} ausente na nuvem`);const p=doc.data()||{};if(p.generation!==generation||Number(p.indice)!==ini+j)throw new Error(`Parte ${ini+j+1} invalida`);payloadConfirmado+=p.conteudo||'';});
+ }
+ if(payloadConfirmado.length!==payload.length||hashV9637(payloadConfirmado)!==meta.checksum)throw new Error('Validacao do conteudo gravado falhou');
+ const jsonConfirmado=LZString.decompressFromBase64(payloadConfirmado);
+ if(!jsonConfirmado)throw new Error('Validacao da descompactacao falhou');
+ const restaurado=JSON.parse(jsonConfirmado);
+ const qtd=(restaurado.quali?.length||0)+(restaurado.tec?.length||0);
+ if(qtd!==resumo.quali+resumo.tec||Object.keys(restaurado.planning||{}).length!==resumo.roteiros)throw new Error('Validacao integral da nuvem falhou');
+ if(metaAnterior?.generation&&metaAnterior.generation!==generation){
+  for(let ini=0;ini<Number(metaAnterior.chunkCount||0);ini+=400){
+   const batch=f.batch();
+   for(let i=ini;i<Math.min(ini+400,Number(metaAnterior.chunkCount||0));i++)batch.delete(ref.collection('partes').doc(`${metaAnterior.generation}_${String(i).padStart(5,'0')}`));
+   await batch.commit().catch(e=>console.warn('Nao foi possivel limpar geracao antiga:',e));
+  }
+ }
  return true;
 }
+
 async function sincronizarNuvemV9637(){
  if(v9637NuvemExecutando){v9637NuvemPendente=true;return;}v9637NuvemExecutando=true;v9637NuvemPendente=false;
  const data=v9637UltimoSnapshot||snapshotV9637();statusV9637('<i data-lucide="cloud-upload" class="w-3 h-3"></i> <span>Local seguro; sincronizando nuvem...</span>','text-senac-orange');
  try{const ok=await salvarNuvemIntegralV9637(data);if(ok&&v9637UltimoSnapshot?.updatedAt===data.updatedAt)statusV9637('<i data-lucide="cloud-check" class="w-3 h-3"></i> <span>Salvo no computador e na nuvem</span>','text-emerald-600');else if(!ok)statusV9637('<i data-lucide="hard-drive" class="w-3 h-3"></i> <span>Salvo no computador; nuvem pendente</span>','text-senac-orange');}
- catch(e){console.warn('Nuvem pendente:',e);statusV9637('<i data-lucide="cloud-off" class="w-3 h-3"></i> <span>Local seguro; falha na nuvem</span>','text-senac-orange');}
+ catch(e){console.error('Falha real no salvamento da nuvem:',e);window.__ULTIMO_ERRO_NUVEM__={codigo:e?.code||'erro',mensagem:e?.message||String(e),data:new Date().toISOString()};const detalhe=String(e?.code||e?.message||'erro desconhecido').replace(/[<>]/g,'');statusV9637('<i data-lucide="cloud-off" class="w-3 h-3"></i> <span>Local seguro; falha na nuvem: '+detalhe+'</span>','text-senac-orange');}
  finally{v9637NuvemExecutando=false;if(v9637NuvemPendente||v9637UltimoSnapshot?.updatedAt!==data.updatedAt){v9637NuvemPendente=false;setTimeout(sincronizarNuvemV9637,150);}}
 }
 /*
