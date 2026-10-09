@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.64 - FIREBASE OFICIAL)</title>
+    <title>Supervisão Senac 2026 (v9.6.65 - NUVEM DEFINITIVA E RÁPIDA)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -1144,17 +1144,8 @@ th {
                 // 1. Tenta salvar na nuvem
                 if (typeof firebase !== 'undefined' && navigator.onLine) {
                     try {
-                        const firestoreDB = firebase.firestore();
-                        const cleanData = JSON.parse(JSON.stringify(dataToSave));
-                        
-                        if(typeof LZString === 'undefined') throw new Error("O compactador (LZString) falhou ao carregar.");
-                        
-                        const compressedData = LZString.compressToBase64(JSON.stringify(cleanData));
-                        
-                        await firestoreDB.collection('banco_senac').doc('dados_principais').set({ 
-                            payload: compressedData,
-                            updatedAt: timestamp // Anota a hora exata na nuvem
-                        });
+                        // Sempre usa gravacao segmentada e validada para nao exceder o limite por documento.
+                        await salvarNuvemIntegralV9637(dataToSave);
                     } catch(err) {
                         alert("⚠️ AVISO DA NUVEM: Não foi possível enviar os dados (" + err.message + "). O sistema salvou no seu Computador!");
                         console.warn("Falha ao salvar na Nuvem:", err);
@@ -12837,6 +12828,7 @@ setTimeout(()=>{cleanContacts();garantirMenuVisivel()},1500);
  function estaAberto(el){
   if(!el)return false;
   if(el.classList.contains('hidden'))return false;
+  if((el.getAttribute('style')||'').replace(/\s/g,'').toLowerCase().includes('display:none'))return false;
   if(stateClasses.some(c=>el.classList.contains(c)))return true;
   if(el.tagName==='DIALOG')return !!el.open;
   const s=getComputedStyle(el);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0;
@@ -12872,10 +12864,12 @@ setTimeout(()=>{cleanContacts();garantirMenuVisivel()},1500);
   corrigida.__fluxoV14=true;window[nome]=corrigida;
  }
  function instalarWrappers(){
+  envolver('gerarRelatorioVisitasMes','modalRelatorioMes','flex');
   envolver('abrirCentralPendencias','centralPendenciasModal','open');
   envolver('openRateioModal','rateioModal','flex');
   envolver('openCCModal','addCCModal','flex');
-  envolver('openEmailModal','emailModal','flex');
+  // openEmailModal decide entre escolha de modalidade e editor final; nao force um alvo aqui.
+  const emailFn=window.openEmailModal;if(typeof emailFn==='function'&&!emailFn.__fluxoV14){const emailSafe=function(){restaurarMenu();const r=emailFn.apply(this,arguments);requestAnimationFrame(()=>{sincronizar();restaurarMenu()});return r};emailSafe.__fluxoV14=true;window.openEmailModal=emailSafe;}
   envolver('openHistoryModal','historyPlanModal','flex');
   envolver('openGlobalReportModal','globalReportModal','flex');
   envolver('openAddModal','studentModal','flex');
@@ -12891,14 +12885,57 @@ setTimeout(()=>{cleanContacts();garantirMenuVisivel()},1500);
    segura.__fluxoV14=true;window.atualizarVisibilidadeMenus=segura;
   }
   instalarWrappers();sincronizar();
-  const obs=new MutationObserver(()=>requestAnimationFrame(sincronizar));
-  obs.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','open','hidden']});
+  // Leve: reage somente aos cliques e teclas; nao observa toda a arvore DOM.
   document.addEventListener('click',function(e){
-   if(e.target.closest('#'+MENU)){restaurarMenu();setTimeout(()=>{instalarWrappers();sincronizar()},0);setTimeout(sincronizar,80)}
+   if(e.target.closest('#'+MENU)){restaurarMenu();requestAnimationFrame(sincronizar);setTimeout(sincronizar,80)}
   },true);
-  setInterval(()=>{instalarWrappers();sincronizar()},1000);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')requestAnimationFrame(sincronizar)},true);
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',instalar,{once:true});else instalar();
+})();
+</script>
+
+
+<!-- NUVEM DEFINITIVA E DESEMPENHO V15 -->
+<script id="nuvem-definitiva-desempenho-v15">
+(function(){'use strict';
+  let ultimoAgendamento=0;
+  function status(txt, cls){if(typeof statusV9637==='function')statusV9637(txt,cls)}
+
+  // Uma unica porta de salvamento para chamadas com e sem window.
+  if(typeof saveToStorage==='function') window.saveToStorage=saveToStorage;
+
+  window.sincronizarAgoraNuvem=async function(){
+    if(!navigator.onLine)throw new Error('Sem conexao com a internet');
+    if(typeof firebase==='undefined'||!firebase.firestore)throw new Error('Firebase/Firestore nao carregado');
+    const agora=Date.now();
+    if(agora-ultimoAgendamento<800&&window.__PROMESSA_SINC_NUVEM__)return window.__PROMESSA_SINC_NUVEM__;
+    ultimoAgendamento=agora;
+    status('<i data-lucide="cloud-upload" class="w-3 h-3"></i> <span>Sincronizando nuvem...</span>','text-senac-orange');
+    const tarefa=(async()=>{
+      const data=typeof snapshotV9637==='function'?snapshotV9637():JSON.parse(JSON.stringify(DB||{}));
+      if(!data.updatedAt)data.updatedAt=Date.now();
+      await salvarNuvemIntegralV9637(data);
+      const meta=await firebase.firestore().collection('banco_senac').doc('dados_principais').get({source:'server'});
+      if(!meta.exists)throw new Error('Documento principal nao foi confirmado no servidor');
+      const m=meta.data()||{};
+      if(!m.chunked||String(m.generation)!==String(data.updatedAt))throw new Error('Servidor nao confirmou a geracao gravada');
+      window.__ULTIMO_SALVAMENTO_NUVEM__={updatedAt:data.updatedAt,generation:m.generation,chunkCount:m.chunkCount,confirmadoEm:new Date().toISOString()};
+      window.__ULTIMO_ERRO_NUVEM__=null;
+      status('<i data-lucide="cloud-check" class="w-3 h-3"></i> <span>Salvo e confirmado na nuvem</span>','text-emerald-600');
+      return window.__ULTIMO_SALVAMENTO_NUVEM__;
+    })();
+    window.__PROMESSA_SINC_NUVEM__=tarefa;
+    try{return await tarefa}finally{setTimeout(()=>{if(window.__PROMESSA_SINC_NUVEM__===tarefa)window.__PROMESSA_SINC_NUVEM__=null},1000)}
+  };
+
+  // Se uma gravacao ficou pendente offline, tenta uma vez quando a conexao voltar.
+  window.addEventListener('online',()=>setTimeout(()=>window.sincronizarAgoraNuvem().catch(e=>console.warn('Sincronizacao ao reconectar:',e)),1200));
+
+  // Salva antes de ocultar a pagina sem bloquear a navegacao.
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden'&&typeof saveToStorage==='function')saveToStorage().catch(()=>{});
+  },{passive:true});
 })();
 </script>
 
