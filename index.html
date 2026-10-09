@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.65 - CHECKBOX E FIREBASE DEFINITIVOS)</title>
+    <title>Supervisão Senac 2026 (v9.6.64 - FIREBASE OFICIAL)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -1253,20 +1253,16 @@ th {
                 // 3. DECISÃO INTELIGENTE (O ÁRBITRO)
                 let finalData = null;
 
-                if (cloudData && cloudQtd > 0 && cloudTime >= localTime && !(localQtd > cloudQtd + 50)) {
+                // NUVEM E A FONTE OFICIAL: ao abrir, usa sempre o Firestore quando a leitura for valida.
+                // A copia local somente e usada como contingencia se a nuvem estiver indisponivel.
+                if (cloudData) {
                     finalData = cloudData;
-                    origin = `NUVEM (${cloudQtd} alunos)`;
-                } 
-                else if (localData && localQtd > 0) {
+                    origin = cloudQtd > 0 ? `NUVEM (${cloudQtd} alunos)` : "NUVEM (Vazia)";
+                }
+                else if (localData) {
                     finalData = localData;
-                    origin = `COMPUTADOR (${localQtd} alunos)`;
-                    
-                    if (cloudQtd === 0 || cloudTime < localTime) {
-                        setTimeout(() => saveToStorage(), 3000); 
-                    }
-                } 
-                else if (cloudData) { finalData = cloudData; origin = "NUVEM (Vazia)"; } 
-                else if (localData) { finalData = localData; origin = "COMPUTADOR (Vazio)"; }
+                    origin = localQtd > 0 ? `COMPUTADOR - CONTINGENCIA (${localQtd} alunos)` : "COMPUTADOR - CONTINGENCIA (Vazio)";
+                }
 
                 if(finalData) finalData._origin = origin; 
                 return finalData;
@@ -9752,7 +9748,7 @@ function gerarBackupIntegralManual(){
 /* v9.6.37 - persistência integral: local imediata e nuvem versionada em segundo plano */
 window.APP_VERSION='9.6.37-INTEGRIDADE-NUVEM-EMAILS';
 let v9637Timer=null,v9637LocalFila=Promise.resolve(),v9637NuvemExecutando=false,v9637NuvemPendente=false,v9637UltimoSnapshot=null;
-const V9637_PARTE=300000,V9637_ATRASO_NUVEM=250;
+const V9637_PARTE=300000,V9637_ATRASO_NUVEM=1800;
 function hashV9637(text){let h=2166136261;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619);}return('00000000'+(h>>>0).toString(16)).slice(-8);}
 function snapshotV9637(){const d=JSON.parse(JSON.stringify(DB||{}));d.updatedAt=Date.now();if(typeof criarManifestoBackupIntegral==='function')d._backup_manifest=criarManifestoBackupIntegral(d,'persistencia-v9.6.37');return d;}
 function statusV9637(html,cor){const e=document.getElementById('saveStatus');if(!e)return;e.innerHTML=html;e.classList.remove('text-senac-orange','text-red-500','text-emerald-600');if(cor)e.classList.add(cor);try{lucide.createIcons();}catch(_){}}
@@ -9774,17 +9770,8 @@ async function carregarNuvemV9633(f,meta){
  const raw=LZString.decompressFromBase64(payload);if(!raw)throw new Error('Falha ao descompactar a nuvem');return JSON.parse(raw);
 }
 async function salvarNuvemIntegralV9637(data){
- if(typeof firebase==='undefined')throw new Error('Firebase não carregado');
- if(!navigator.onLine)throw new Error('Sem conexão com a internet');
- if(typeof LZString==='undefined')throw new Error('Compactador indisponível');
+ if(typeof firebase==='undefined'||!navigator.onLine)return false;if(typeof LZString==='undefined')throw new Error('Compactador indisponível');
  const f=firebase.firestore(),ref=f.collection('banco_senac').doc('dados_principais'),payload=LZString.compressToBase64(JSON.stringify(data)),generation=String(data.updatedAt),partes=[];
- /* Grava primeiro no documento oficial, formato compatível com a base já usada. */
- if(payload.length<900000){
-   await ref.set({payload,updatedAt:data.updatedAt,storageMode:'single'});
-   const confirmacao=await ref.get({source:'server'});
-   if(!confirmacao.exists||Number(confirmacao.data().updatedAt)!==Number(data.updatedAt))throw new Error('Firebase não confirmou o salvamento');
-   return true;
- }
  for(let i=0;i<payload.length;i+=V9637_PARTE)partes.push(payload.slice(i,i+V9637_PARTE));
  const anterior=await ref.get(),metaAnterior=anterior.exists?anterior.data():null;
  for(let ini=0;ini<partes.length;ini+=400){const b=f.batch();partes.slice(ini,ini+400).forEach((conteudo,j)=>{const indice=ini+j;b.set(ref.collection('partes').doc(`${generation}_${String(indice).padStart(5,'0')}`),{generation,indice,conteudo,updatedAt:data.updatedAt});});await b.commit();}
@@ -9795,8 +9782,6 @@ async function salvarNuvemIntegralV9637(data){
  if(metaAnterior?.generation&&metaAnterior.generation!==generation){for(let ini=0;ini<Number(metaAnterior.chunkCount||0);ini+=400){const b=f.batch();for(let i=ini;i<Math.min(ini+400,Number(metaAnterior.chunkCount||0));i++)b.delete(ref.collection('partes').doc(`${metaAnterior.generation}_${String(i).padStart(5,'0')}`));await b.commit().catch(()=>{});}}
  return true;
 }
-window.addEventListener('online',()=>setTimeout(()=>sincronizarNuvemV9637(),300));
-setInterval(()=>{const el=document.getElementById('saveStatus');if(navigator.onLine&&el&&/(pendente|falha na nuvem)/i.test(el.textContent||''))sincronizarNuvemV9637();},15000);
 async function sincronizarNuvemV9637(){
  if(v9637NuvemExecutando){v9637NuvemPendente=true;return;}v9637NuvemExecutando=true;v9637NuvemPendente=false;
  const data=v9637UltimoSnapshot||snapshotV9637();statusV9637('<i data-lucide="cloud-upload" class="w-3 h-3"></i> <span>Local seguro; sincronizando nuvem...</span>','text-senac-orange');
@@ -12735,5 +12720,37 @@ window.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{cleanContacts();
 </script>
 <script id="versao-final-homologada">window.APP_VERSION='FINAL-HOMOLOGADO-SUPERVISAO-2026-ESTAVEL-MENU-RESTAURAR-LOGIN';</script>
 
+<script id="correcao-status-processo-desligamento-v2">
+(function(){
+  'use strict';
+  const norm = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+  const todos = () => [...(DB.quali || []), ...(DB.tec || [])];
+  function atual(){
+    const nome = document.getElementById('editNome')?.value;
+    const turma = document.getElementById('editTurma')?.value;
+    if(!nome) return null;
+    return todos().find(a => norm(a.nome) === norm(nome) && (!turma || norm(a.turma) === norm(turma))) || null;
+  }
+  function aplicarValor(checkbox){
+    const aluno = atual();
+    if(!aluno || !checkbox) return;
+    const marcado = checkbox.checked === true;
+    const anterior = aluno.processoDesligamento === true;
+    aluno.processoDesligamento = marcado;
+    if(marcado && !anterior) aluno.processoDesligamentoData = new Date().toISOString();
+    if(!marcado) aluno.processoDesligamentoData = null;
+    checkbox.dataset.usuarioAlterou = '1';
+  }
+  document.addEventListener('change', event => {
+    if(event.target?.id === 'editProcessoDesligamento') aplicarValor(event.target);
+    if(event.target?.id === 'editDesligado') event.target.dataset.usuarioAlterou = '1';
+  }, true);
+  const form = document.getElementById('studentForm');
+  if(form) form.addEventListener('submit', () => {
+    const checkbox = document.getElementById('editProcessoDesligamento');
+    aplicarValor(checkbox);
+  }, true);
+})();
+</script>
 </body>
 </html>
