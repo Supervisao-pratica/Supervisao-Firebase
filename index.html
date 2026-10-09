@@ -9776,6 +9776,13 @@ async function carregarNuvemV9633(f,meta){
 async function salvarNuvemIntegralV9637(data){
  if(typeof firebase==='undefined'||!navigator.onLine)return false;if(typeof LZString==='undefined')throw new Error('Compactador indisponível');
  const f=firebase.firestore(),ref=f.collection('banco_senac').doc('dados_principais'),payload=LZString.compressToBase64(JSON.stringify(data)),generation=String(data.updatedAt),partes=[];
+ // Compatibilidade com o salvamento oficial original: evita depender de permissao na subcolecao.
+ if(payload.length<=850000){
+  await ref.set({payload:payload,updatedAt:data.updatedAt,storageMode:'single'});
+  const confirmar=await ref.get();
+  if(!confirmar.exists||Number(confirmar.data()?.updatedAt)!==Number(data.updatedAt))throw new Error('A nuvem nao confirmou a gravacao');
+  return true;
+ }
  for(let i=0;i<payload.length;i+=V9637_PARTE)partes.push(payload.slice(i,i+V9637_PARTE));
  const anterior=await ref.get(),metaAnterior=anterior.exists?anterior.data():null;
  for(let ini=0;ini<partes.length;ini+=400){const b=f.batch();partes.slice(ini,ini+400).forEach((conteudo,j)=>{const indice=ini+j;b.set(ref.collection('partes').doc(`${generation}_${String(indice).padStart(5,'0')}`),{generation,indice,conteudo,updatedAt:data.updatedAt});});await b.commit();}
@@ -9786,6 +9793,7 @@ async function salvarNuvemIntegralV9637(data){
  if(metaAnterior?.generation&&metaAnterior.generation!==generation){for(let ini=0;ini<Number(metaAnterior.chunkCount||0);ini+=400){const b=f.batch();for(let i=ini;i<Math.min(ini+400,Number(metaAnterior.chunkCount||0));i++)b.delete(ref.collection('partes').doc(`${metaAnterior.generation}_${String(i).padStart(5,'0')}`));await b.commit().catch(()=>{});}}
  return true;
 }
+window.addEventListener('online',()=>{if(typeof sincronizarNuvemV9637==='function'){clearTimeout(v9637Timer);v9637Timer=setTimeout(sincronizarNuvemV9637,300);}});
 async function sincronizarNuvemV9637(){
  if(v9637NuvemExecutando){v9637NuvemPendente=true;return;}v9637NuvemExecutando=true;v9637NuvemPendente=false;
  const data=v9637UltimoSnapshot||snapshotV9637();statusV9637('<i data-lucide="cloud-upload" class="w-3 h-3"></i> <span>Local seguro; sincronizando nuvem...</span>','text-senac-orange');
@@ -12725,7 +12733,7 @@ window.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{cleanContacts();
 <script id="versao-final-homologada">window.APP_VERSION='FINAL-HOMOLOGADO-SUPERVISAO-2026-ESTAVEL-MENU-RESTAURAR-LOGIN';</script>
 
 <script id="correcao-status-processo-desligamento-v1">
-(function(){'use strict';const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();const todos=()=>[...(DB.quali||[]),...(DB.tec||[])];function atual(){const n=document.getElementById('editNome')?.value,t=document.getElementById('editTurma')?.value;if(!n)return null;return todos().find(a=>norm(a.nome)===norm(n)&&(!t||norm(a.turma)===norm(t)))||null}function sync(){const a=atual(),d=document.getElementById('editDesligado'),p=document.getElementById('editProcessoDesligamento');if(!a)return;if(d&&d.dataset.usuarioAlterou!=='1')d.checked=a.isDesligado===true;if(p&&p.dataset.usuarioAlterou!=='1')p.checked=a.processoDesligamento===true}document.addEventListener('change',e=>{if(e.target?.id==='editDesligado'||e.target?.id==='editProcessoDesligamento')e.target.dataset.usuarioAlterou='1'},true);document.addEventListener('click',e=>{const box=e.target?.closest?.('#processoDesligamentoBox');if(!box||e.target?.id==='editProcessoDesligamento')return;const p=document.getElementById('editProcessoDesligamento');if(p){p.checked=!p.checked;p.dataset.usuarioAlterou='1'}},true);const f=document.getElementById('studentForm');if(f)f.addEventListener('submit',()=>{const a=atual();if(!a)return;const d=document.getElementById('editDesligado'),p=document.getElementById('editProcessoDesligamento');if(d)a.isDesligado=d.checked===true;if(p){const novo=p.checked===true,antigo=a.processoDesligamento===true;a.processoDesligamento=novo;if(novo&&!antigo)a.processoDesligamentoData=new Date().toISOString();if(!novo)a.processoDesligamentoData=null}},true);new MutationObserver(()=>{const m=document.getElementById('studentModal');if(m&&!m.classList.contains('hidden'))setTimeout(sync,30)}).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});})();
+(function(){'use strict';const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();const todos=()=>[...(DB.quali||[]),...(DB.tec||[])];function atual(){const n=document.getElementById('editNome')?.value,t=document.getElementById('editTurma')?.value;if(!n)return null;return todos().find(a=>norm(a.nome)===norm(n)&&(!t||norm(a.turma)===norm(t)))||null}function sync(){const a=atual(),d=document.getElementById('editDesligado'),p=document.getElementById('editProcessoDesligamento');if(!a)return;if(d&&d.dataset.usuarioAlterou!=='1')d.checked=a.isDesligado===true;if(p&&p.dataset.usuarioAlterou!=='1')p.checked=a.processoDesligamento===true}document.addEventListener('change',e=>{if(e.target?.id==='editDesligado'||e.target?.id==='editProcessoDesligamento')e.target.dataset.usuarioAlterou='1'},true);const f=document.getElementById('studentForm');if(f)f.addEventListener('submit',()=>{const a=atual();if(!a)return;const d=document.getElementById('editDesligado'),p=document.getElementById('editProcessoDesligamento');if(d)a.isDesligado=d.checked===true;if(p){const novo=p.checked===true,antigo=a.processoDesligamento===true;a.processoDesligamento=novo;if(novo&&!antigo)a.processoDesligamentoData=new Date().toISOString();if(!novo)a.processoDesligamentoData=null}},true);new MutationObserver(()=>{const m=document.getElementById('studentModal');if(m&&!m.classList.contains('hidden'))setTimeout(sync,30)}).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});})();
 </script>
 </body>
 </html>
