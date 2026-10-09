@@ -1201,7 +1201,7 @@ th {
                         req.onerror = () => resolve(null); 
                     });
                 }
-                // Contingência local: reutiliza a base oficial do navegador somente se necessário.
+                // AMBIENTE DE TESTE: na primeira abertura, clona a base oficial local para o banco isolado.
                 if (!localData) {
                     try {
                         const oficial = await new Promise((resolve, reject) => {
@@ -1231,7 +1231,7 @@ th {
                 const localQtd = localData ? ((localData.quali?.length||0) + (localData.tec?.length||0)) : 0;
 
                 // 2. LÊ A NUVEM (Firebase)
-                if (true) {
+                if (false) {
                     try {
                         const firestoreDB = firebase.firestore();
                         const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
@@ -12724,5 +12724,8 @@ window.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{cleanContacts();
 </script>
 <script id="versao-final-homologada">window.APP_VERSION='FINAL-HOMOLOGADO-SUPERVISAO-2026-ESTAVEL-MENU-RESTAURAR-LOGIN';</script>
 
+<script id="correcao-status-processo-desligamento-v1">
+(function(){'use strict';const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();const todos=()=>[...(DB.quali||[]),...(DB.tec||[])];function atual(){const n=document.getElementById('editNome')?.value,t=document.getElementById('editTurma')?.value;if(!n)return null;return todos().find(a=>norm(a.nome)===norm(n)&&(!t||norm(a.turma)===norm(t)))||null}function sync(){const a=atual(),d=document.getElementById('editDesligado'),p=document.getElementById('editProcessoDesligamento');if(!a)return;if(d&&d.dataset.usuarioAlterou!=='1')d.checked=a.isDesligado===true;if(p&&p.dataset.usuarioAlterou!=='1')p.checked=a.processoDesligamento===true}document.addEventListener('change',e=>{if(e.target?.id==='editDesligado'||e.target?.id==='editProcessoDesligamento')e.target.dataset.usuarioAlterou='1'},true);document.addEventListener('click',e=>{const box=e.target?.closest?.('#processoDesligamentoBox');if(!box||e.target?.id==='editProcessoDesligamento')return;const p=document.getElementById('editProcessoDesligamento');if(p){p.checked=!p.checked;p.dataset.usuarioAlterou='1'}},true);const f=document.getElementById('studentForm');if(f)f.addEventListener('submit',()=>{const a=atual();if(!a)return;const d=document.getElementById('editDesligado'),p=document.getElementById('editProcessoDesligamento');if(d)a.isDesligado=d.checked===true;if(p){const novo=p.checked===true,antigo=a.processoDesligamento===true;a.processoDesligamento=novo;if(novo&&!antigo)a.processoDesligamentoData=new Date().toISOString();if(!novo)a.processoDesligamentoData=null}},true);new MutationObserver(()=>{const m=document.getElementById('studentModal');if(m&&!m.classList.contains('hidden'))setTimeout(sync,30)}).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});})();
+</script>
 </body>
 </html>
