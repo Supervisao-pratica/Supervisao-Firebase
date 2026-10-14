@@ -13459,5 +13459,64 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
 })();
 </script>
 
+<!-- V28: ORGANIZACAO ADMINISTRATIVA DO HISTORICO POR USUARIO -->
+<style id="roteiros-usuario-v28-style">
+#historyOwnerFilterV28{cursor:pointer!important}
+.history-owner-badge-v28{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.03em}
+.owner-admin-v28{background:#e2e8f0;color:#334155}.owner-kleber-v28{background:#dbeafe;color:#1d4ed8}.owner-michelly-v28{background:#f3e8ff;color:#7e22ce}.owner-fernando-v28{background:#dcfce7;color:#15803d}
+</style>
+<script id="roteiros-usuario-v28-script">
+(function(){'use strict';
+ const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
+ const PERFIS={
+  kleber:{nome:'Kleber',regioes:['UMUARAMA']},
+  michelly:{nome:'Michelly',regioes:['GUARAPUAVA']},
+  fernando:{nome:'Fernando',regioes:['CAMPO MOURAO']},
+  admin:{nome:'Admin',regioes:[]}
+ };
+ const isAdmin=()=>{const e=String(firebase?.auth?.().currentUser?.email||'').toLowerCase();return !!e&&!['kleber.sato@docente.pr.senac.br','michelly.gronkoski@docente.pr.senac.br','fernando.scaraveli@docente.pr.senac.br','visitante@senac.br'].includes(e)};
+ function dono(nome){
+  const nn=N(nome);
+  if(/(^|\b)KLEBER(\b|$)/.test(nn))return 'kleber';
+  if(/(^|\b)MICHELLY(\b|$)/.test(nn))return 'michelly';
+  if(/(^|\b)FERNANDO(\b|$)/.test(nn))return 'fernando';
+  const itens=DB.planning?.[nome]||[],regs=new Set();
+  itens.forEach(x=>{const r=N(x?.student?.regiao||x?.regiao);if(r)regs.add(r)});
+  const encontrados=Object.entries(PERFIS).filter(([k,p])=>k!=='admin'&&p.regioes.some(r=>regs.has(N(r)))).map(([k])=>k);
+  return encontrados.length===1?encontrados[0]:'admin';
+ }
+ window.identificarDonoRoteiroV28=dono;
+ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+ function instalarControles(){
+  const list=document.getElementById('historyPlanList');if(!list)return null;const body=list.parentElement;
+  let box=document.getElementById('historyOwnerControlsV28');
+  if(!box){box=document.createElement('div');box.id='historyOwnerControlsV28';box.className='mb-3 grid grid-cols-1 gap-2';box.innerHTML=`<label class="text-[9px] font-black text-slate-500 uppercase">Exibir planejamentos de</label><select id="historyOwnerFilterV28" class="w-full px-3 py-2 text-sm font-bold border border-slate-300 rounded-lg bg-white text-senac-blue"><option value="todos">Todos os usuários</option><option value="admin">Admin</option><option value="kleber">Kleber</option><option value="michelly">Michelly</option><option value="fernando">Fernando</option></select><div id="historyOwnerSummaryV28" class="text-[9px] font-bold text-slate-400"></div>`;const search=document.getElementById('historySearchInput')?.parentElement;if(search)search.insertAdjacentElement('afterend',box);else body.insertAdjacentElement('afterbegin',box);box.querySelector('select').addEventListener('change',render)}
+  return box;
+ }
+ function render(){
+  if(!isAdmin())return false;const list=document.getElementById('historyPlanList');if(!list)return false;instalarControles();
+  const filtro=document.getElementById('historyOwnerFilterV28')?.value||'todos',termo=N(document.getElementById('historySearchInput')?.value||'');
+  const todos=Object.keys(DB.planning||{}).map(nome=>({nome,dono:dono(nome),qtd:(DB.planning[nome]||[]).length})).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const vis=todos.filter(x=>(filtro==='todos'||x.dono===filtro)&&(!termo||N(x.nome).includes(termo)));
+  const cont={admin:0,kleber:0,michelly:0,fernando:0};todos.forEach(x=>cont[x.dono]++);
+  const resumo=document.getElementById('historyOwnerSummaryV28');if(resumo)resumo.textContent=`Todos: ${todos.length} · Admin: ${cont.admin} · Kleber: ${cont.kleber} · Michelly: ${cont.michelly} · Fernando: ${cont.fernando}`;
+  if(!vis.length){list.innerHTML='<div class="text-center text-sm text-slate-400 py-6">Nenhum roteiro encontrado para este usuário.</div>';return true}
+  list.innerHTML=vis.map(x=>`<div class="history-plan-item-v28 p-3 border border-slate-200 rounded-lg bg-white hover:border-blue-300 transition-colors" data-search="${esc(N(x.nome))}"><div class="flex justify-between items-center gap-3"><div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><p class="font-bold text-sm text-slate-700 truncate">${esc(x.nome)}</p><span class="history-owner-badge-v28 owner-${x.dono}-v28">${PERFIS[x.dono].nome}</span></div><p class="text-[9px] text-slate-500 mt-1">${x.qtd} aluno(s) neste roteiro</p></div><div class="flex gap-2 shrink-0"><button type="button" class="btn-open-plan-v28 bg-senac-blue text-white p-2 rounded hover:bg-blue-800" data-plan="${esc(x.nome)}" title="Abrir roteiro"><i data-lucide="folder-open" class="w-4 h-4"></i></button><button type="button" class="btn-delete-plan-v28 border border-red-200 text-red-500 p-2 rounded hover:bg-red-50" data-plan="${esc(x.nome)}" title="Excluir roteiro"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div></div>`).join('');
+  list.querySelectorAll('.btn-open-plan-v28').forEach(b=>b.onclick=()=>{switchPlan(b.dataset.plan);closeHistoryModal()});
+  list.querySelectorAll('.btn-delete-plan-v28').forEach(b=>b.onclick=()=>{const nome=b.dataset.plan;if(!confirm(`Excluir o roteiro "${nome}"?`))return;delete DB.planning[nome];delete DB.planning_logistics?.[nome];delete DB.planning_lunch?.[nome];delete DB.planning_admin?.[nome];if(DB.planning_processos)delete DB.planning_processos[nome];saveToStorage().then(()=>render()).catch(e=>alert(e.message))});
+  if(window.lucide)lucide.createIcons();return true;
+ }
+ const abrirAnterior=window.openHistoryModal;
+ window.openHistoryModal=function(){
+  if(!isAdmin())return abrirAnterior.apply(this,arguments);
+  const modal=document.getElementById('historyPlanModal');modal?.classList.remove('hidden');modal?.classList.add('flex');
+  if(!document.getElementById('historySearchInput')){const list=document.getElementById('historyPlanList'),body=list?.parentElement;if(body){const d=document.createElement('div');d.className='mb-3 relative';d.innerHTML='<i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i><input type="text" id="historySearchInput" placeholder="Pesquisar roteiro..." class="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-slate-50 focus:bg-white focus:border-senac-blue outline-none">';body.insertAdjacentElement('afterbegin',d);d.querySelector('input').addEventListener('input',render)}}
+  else document.getElementById('historySearchInput').value='';
+  instalarControles();document.getElementById('historyOwnerFilterV28').value='todos';render();setTimeout(()=>document.getElementById('historySearchInput')?.focus(),80);
+ };
+ window.renderHistoricoAdminPorUsuarioV28=render;
+})();
+</script>
+
 </body>
 </html>
