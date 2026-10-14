@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.65 - NUVEM DEFINITIVA E RÁPIDA)</title>
+    <title>Supervisão Senac 2026 (v9.6.66 - PROTEÇÃO ANTIPERDA)</title>
     
     <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     
@@ -1725,9 +1725,22 @@ th {
                 await firebase.auth().signInWithEmailAndPassword(email, senha);
                 await carregarBaseAposAutenticacao(true);
             } catch (e) {
-                console.error('Falha na autenticação:', e);
+                console.error('Falha na autenticação/carga:', e);
+                const msg = String(e?.message || e || '');
+                const usuarioAutenticado = firebase.auth().currentUser;
+                const ehBaseVaziaProtegida = usuarioAutenticado && /PROTEÇÃO ANTIPERDA: a origem retornou zero alunos/i.test(msg);
+                if (ehBaseVaziaProtegida) {
+                    window.MODO_RECUPERACAO_EMERGENCIAL = true;
+                    window.APP_READ_ONLY = true;
+                    startApp('admin', 'Todas');
+                    setTimeout(() => {
+                        alert('MODO DE RECUPERAÇÃO EMERGENCIAL\n\nA autenticação foi aceita, mas a base principal está vazia. O sistema foi aberto em modo somente leitura para permitir a restauração.\n\nAbra VERSÕES E BACKUPS e restaure a versão de 14/10/2026 às 16:44:08, com 3.479 Qualificação, 487 Técnica e 49 roteiros.');
+                        if (typeof abrirHistoricoBackups === 'function') abrirHistoricoBackups();
+                    }, 250);
+                    return;
+                }
                 const mapa = {'auth/invalid-email':'E-mail inválido.','auth/user-not-found':'Usuário não cadastrado.','auth/wrong-password':'Senha incorreta.','auth/invalid-login-credentials':'E-mail ou senha incorretos.','auth/too-many-requests':'Muitas tentativas. Aguarde e tente novamente.'};
-                alert(mapa[e.code] || ('Não foi possível entrar: ' + (e.message || e)));
+                alert(mapa[e.code] || ('Não foi possível entrar: ' + msg));
             } finally { if (botao) botao.disabled = false; }
         }
         function startApp(type, region) {
@@ -13410,6 +13423,39 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
  const render=window.renderPlanning;if(typeof render==='function')window.renderPlanning=function(){const r=render.apply(this,arguments);setTimeout(window.renderControleProcessosV26,0);return r};
  const initSel=window.initPlanSelector;if(typeof initSel==='function')window.initPlanSelector=function(){const r=initSel.apply(this,arguments);setTimeout(window.renderControleProcessosV26,0);return r};
  firebase.auth().onAuthStateChanged(u=>{if(u)setTimeout(window.renderControleProcessosV26,1400)});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(window.renderControleProcessosV26,1600),{once:true});else setTimeout(window.renderControleProcessosV26,1600);
+})();
+</script>
+
+<!-- V27: CAMADA GLOBAL DE PROTECAO ANTIPERDA -->
+<script id="protecao-antiperda-v27-script">
+(function(){'use strict';
+ const KEY_TOTAL='senac_total_base_confirmada_v27',KEY_ROT='senac_roteiros_confirmados_v27';
+ let totalConfirmado=Number(localStorage.getItem(KEY_TOTAL)||0),roteirosConfirmados=Number(localStorage.getItem(KEY_ROT)||0),cargaConcluida=false,autorizacao=null;
+ const metricas=d=>({alunos:(d?.quali?.length||0)+(d?.tec?.length||0),roteiros:Object.keys(d?.planning||{}).length});
+ function confirmar(d){const m=metricas(d);if(m.alunos>0){totalConfirmado=Math.max(totalConfirmado,m.alunos);roteirosConfirmados=Math.max(roteirosConfirmados,m.roteiros);localStorage.setItem(KEY_TOTAL,String(totalConfirmado));localStorage.setItem(KEY_ROT,String(roteirosConfirmados));localStorage.setItem('senac_ultima_base_integra_resumo_v27',JSON.stringify({...m,em:new Date().toISOString()}));cargaConcluida=true}return m}
+ function validar(d,acao='gravação'){const m=metricas(d);if(!cargaConcluida&&autorizacao!=='restauracao')throw new Error(`PROTEÇÃO ANTIPERDA: ${acao} bloqueada porque a carga integral ainda não foi confirmada.`);if(m.alunos===0)throw new Error(`PROTEÇÃO ANTIPERDA: ${acao} com zero alunos foi bloqueada.`);if(totalConfirmado>0&&m.alunos<Math.floor(totalConfirmado*.90)&&autorizacao!=='substituicao'&&autorizacao!=='restauracao'){const q=Math.round((1-m.alunos/totalConfirmado)*100);throw new Error(`PROTEÇÃO ANTIPERDA: queda de ${q}% bloqueada (${totalConfirmado} para ${m.alunos} alunos).`)}if(roteirosConfirmados>0&&m.roteiros===0&&autorizacao!=='substituicao'&&autorizacao!=='restauracao')throw new Error(`PROTEÇÃO ANTIPERDA: desaparecimento de ${roteirosConfirmados} roteiros bloqueado.`);return m}
+ window.PROTECAO_ANTIPERDA_V27={metricas,validar,confirmar,get totalConfirmado(){return totalConfirmado},get roteirosConfirmados(){return roteirosConfirmados},autorizar(tipo,ms=120000){autorizacao=tipo;setTimeout(()=>{if(autorizacao===tipo)autorizacao=null},ms)},encerrar(){autorizacao=null}};
+ // A fonte vazia nunca vence uma cópia local íntegra.
+ const loadOriginal=window.loadFromStorage;
+ if(typeof loadOriginal==='function') window.loadFromStorage=async function(){const r=await loadOriginal.apply(this,arguments);if(metricas(r).alunos>0)return r;try{const db=await dbPromise;const local=await new Promise(resolve=>{const tx=db.transaction(STORE_NAME,'readonly'),st=tx.objectStore(STORE_NAME),q=st.get('last_known_good');q.onsuccess=()=>resolve(q.result||null);q.onerror=()=>resolve(null)});if(metricas(local).alunos>0){local._origin='ÚLTIMA BASE ÍNTEGRA LOCAL';return local}}catch(e){console.warn(e)}return r};
+ // Toda gravação, qualquer que seja o recurso chamador, passa pela mesma barreira.
+ const saveOriginal=window.saveToStorage;
+ if(typeof saveOriginal==='function') window.saveToStorage=function(){try{validar(window.DB||DB,'gravação')}catch(e){console.error(e);alert(e.message);return Promise.reject(e)}return Promise.resolve(saveOriginal.apply(this,arguments)).then(async r=>{const d=window.DB||DB;confirmar(d);try{const db=await dbPromise;await new Promise((resolve,reject)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(JSON.parse(JSON.stringify(d)),'last_known_good');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}catch(e){console.warn('Cópia íntegra local não atualizada:',e)}return r})};
+ // Confirma a carga somente quando houver alunos e mantém gravação bloqueada para origem vazia.
+ const processOriginal=window.processDataLoad;
+ if(typeof processOriginal==='function') window.processDataLoad=function(parsed){const m=metricas(parsed);if(m.alunos===0){cargaConcluida=false;throw new Error('PROTEÇÃO ANTIPERDA: a origem retornou zero alunos. A base não foi aplicada nem liberada para gravação.')}const r=processOriginal.apply(this,arguments);confirmar(window.DB||DB);return r};
+ // Backups vazios deixam de ser criados.
+ function protegerBackup(){const f=window.criarVersaoBackup;if(typeof f!=='function'||f.__v27)return;const w=async function(kind='manual'){const m=metricas(window.DB||DB);if(kind==='pre_restore'&&m.alunos===0){console.warn('PROTEÇÃO ANTIPERDA: pré-backup vazio ignorado para permitir restauração íntegra.');return null}validar(window.DB||DB,'backup');return f.apply(this,arguments)};w.__v27=true;window.criarVersaoBackup=w}
+ // Substituição consciente recebe janela curta; zero continua proibido.
+ const confirmOriginal=window.confirmReplace;
+ if(typeof confirmOriginal==='function')window.confirmReplace=function(){window.PROTECAO_ANTIPERDA_V27.autorizar('substituicao');return confirmOriginal.apply(this,arguments)};
+ // Restauração manual aceita apenas arquivo com alunos e libera somente durante a operação.
+ const restoreOriginal=window.restoreBackup;
+ if(typeof restoreOriginal==='function')window.restoreBackup=function(input){const file=input?.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=e=>{try{const d=JSON.parse(e.target.result);if(metricas(d).alunos===0){input.value='';return alert('PROTEÇÃO ANTIPERDA: restauração bloqueada porque o backup possui zero alunos.')}window.PROTECAO_ANTIPERDA_V27.autorizar('restauracao',180000);restoreOriginal.call(this,input)}catch(err){input.value='';alert('Backup inválido: '+err.message)}};reader.readAsText(file)};
+ // Observa carga já concluída e instala guarda de backup quando o módulo tardio surgir.
+ const timer=setInterval(()=>{protegerBackup();const d=window.DB||DB;if(metricas(d).alunos>0)confirmar(d)},500);setTimeout(()=>clearInterval(timer),30000);
+ document.addEventListener('click',e=>{const b=e.target.closest('.btnRestaurarVersao');if(b){window.PROTECAO_ANTIPERDA_V27.autorizar('restauracao',180000);if(window.MODO_RECUPERACAO_EMERGENCIAL===true)window.APP_READ_ONLY=false;console.info('PROTEÇÃO ANTIPERDA: modo de restauração autorizado por 3 minutos.')}},true);
+ window.addEventListener('beforeunload',()=>{autorizacao=null});
 })();
 </script>
 
