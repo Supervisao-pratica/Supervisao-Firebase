@@ -4319,7 +4319,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
 
                 // 👑 LÓGICA DO CONTRATURNO (Ignora se for vazio, "-" ou inválido)
                 const ct = alunoAoVivo.contraTurno || {}; 
-                const ctString = (alunoAoVivo.contraturno || "").trim();
+                const ctString = String(alunoAoVivo?.contraturno ?? "").trim();
                 
                 const diasCt = [];
                 // Prioriza o que veio da planilha, MAS só se não estiver vazio
@@ -13046,5 +13046,98 @@ body.modo-visitante .visitor-readonly-banner{display:flex!important}
  window.fecharCentralPendencias=function(){const m=document.getElementById('centralPendenciasModal');if(!m)return;m.classList.remove('open');m.classList.add('hidden');m.style.removeProperty('display');m.style.removeProperty('visibility');m.style.removeProperty('opacity')};
 })();
 </script>
+<!-- GESTAO DE USUARIOS, APROVACAO E NOTIFICACOES DO PLANEJAMENTO V20 -->
+<style id="workflow-planejamento-v20-style">
+#workflowPlanBar{margin:10px 0;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;box-shadow:0 4px 14px rgba(15,23,42,.06)}
+.wf-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.wf-badge{padding:5px 9px;border-radius:999px;font-size:10px;font-weight:900}.wf-rascunho{background:#f1f5f9;color:#475569}.wf-pendente{background:#fef3c7;color:#92400e}.wf-aprovado,.wf-legado{background:#dcfce7;color:#166534}.wf-devolvido{background:#fee2e2;color:#991b1b}.wf-btn{padding:7px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font-size:11px;font-weight:900}.wf-btn-primary{background:#075985;color:#fff;border-color:#075985}.wf-btn-ok{background:#15803d;color:#fff;border-color:#15803d}.wf-btn-warn{background:#b45309;color:#fff;border-color:#b45309}.wf-btn-danger{background:#b91c1c;color:#fff;border-color:#b91c1c}.wf-notice{padding:8px 10px;border-radius:8px;background:#eff6ff;color:#075985;font-size:11px;font-weight:800}.wf-modal{display:none;position:fixed;inset:0;z-index:2147483100;background:rgba(15,23,42,.75);align-items:center;justify-content:center;padding:16px}.wf-modal.open{display:flex}.wf-box{width:min(780px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:14px;padding:18px}.wf-list{display:grid;gap:8px}.wf-card{border:1px solid #e2e8f0;border-radius:10px;padding:10px}.wf-pill{font-size:9px;font-weight:900;padding:3px 6px;border-radius:999px;background:#e2e8f0}.wf-notification-count{background:#dc2626;color:#fff;border-radius:999px;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:9px}
+body.workflow-operador #viewDashboard,body.workflow-operador #viewAlunos,body.workflow-operador #viewControle,body.workflow-operador #viewFinanceiro{display:none!important}
+body.workflow-operador [data-admin-planejamento="1"],body.workflow-operador #btnRestaurarManualLogin{display:none!important}
+body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflow-bloqueado-aprovacao button[onclick*="sendFullPlanEmail"],body.workflow-bloqueado-aprovacao button[onclick*="openRateioModal"]{opacity:.45!important;filter:grayscale(1);pointer-events:none!important}
+</style>
+<div id="workflowNotificationsModal" class="wf-modal"><div class="wf-box"><div class="flex justify-between items-center mb-3"><h3 class="font-black text-senac-blue">Notificações do Planejamento</h3><button class="wf-btn" onclick="fecharWorkflowModal('workflowNotificationsModal')">Fechar</button></div><div id="workflowNotificationsList" class="wf-list"></div></div></div>
+<div id="workflowAdminModal" class="wf-modal"><div class="wf-box"><div class="flex justify-between items-center mb-3"><h3 class="font-black text-senac-blue">Usuários e aprovações</h3><button class="wf-btn" onclick="fecharWorkflowModal('workflowAdminModal')">Fechar</button></div><div id="workflowAdminList" class="wf-list"></div></div></div>
+<script id="workflow-planejamento-v20-script">
+(function(){'use strict';
+ const OPS={
+  'kleber.sato@docente.pr.senac.br':{id:'kleber',nome:'Kleber',regioes:['UMUARAMA']},
+  'michelly.gronkoski@docente.pr.senac.br':{id:'michelly',nome:'Michelly',regioes:['GUARAPUAVA']},
+  'fernando.scaraveli@docente.pr.senac.br':{id:'fernando',nome:'Fernando',regioes:['CAMPO MOURAO','CAMPO MOURÃO']}
+ };
+ const VISITANTE='visitante@senac.br';
+ const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
+ const email=()=>String(firebase?.auth?.().currentUser?.email||'').trim().toLowerCase();
+ const operador=()=>OPS[email()]||null; const admin=()=>!!email()&&!operador()&&email()!==VISITANTE;
+ function initDB(){
+  DB.workflow_planejamento=DB.workflow_planejamento&&typeof DB.workflow_planejamento==='object'?DB.workflow_planejamento:{};
+  DB.notificacoes_planejamento=Array.isArray(DB.notificacoes_planejamento)?DB.notificacoes_planejamento:[];
+  DB.solicitacoes_exclusao=Array.isArray(DB.solicitacoes_exclusao)?DB.solicitacoes_exclusao:[];
+  DB.usuarios_planejamento=DB.usuarios_planejamento&&typeof DB.usuarios_planejamento==='object'?DB.usuarios_planejamento:{};
+  Object.entries(OPS).forEach(([e,u])=>DB.usuarios_planejamento[e]={...(DB.usuarios_planejamento[e]||{}),...u,email:e,ativo:true,perfil:'planejamento'});
+ }
+ function contexto(){return String(STATE?.planContext||'').trim()}
+ function itens(ctx=contexto()){return Array.isArray(DB.planning?.[ctx])?DB.planning[ctx]:[]}
+ function regiaoItem(x){return norm(x?.regiao||x?.student?.regiao||x?.aluno?.regiao||x?.student?.cidade||x?.cidade||'')}
+ function responsavelPorItens(arr){
+  const placar={};arr.forEach(x=>{const r=regiaoItem(x);Object.values(OPS).forEach(u=>{if(u.regioes.some(z=>r.includes(norm(z))))placar[u.id]=(placar[u.id]||0)+1})});
+  const order=Object.entries(placar).sort((a,b)=>b[1]-a[1]);return order[0]?.[0]||'';
+ }
+ function usuarioIdPorEmail(e=email()){return OPS[e]?.id||'admin'}
+ function meta(ctx=contexto()){
+  initDB();if(!ctx)return null;
+  if(!DB.workflow_planejamento[ctx]){
+   const rid=responsavelPorItens(itens(ctx));
+   DB.workflow_planejamento[ctx]={contexto:ctx,status:'aprovado_legado',responsavelId:rid||'admin',responsavelNome:Object.values(OPS).find(x=>x.id===rid)?.nome||'Michel',criadoEm:new Date().toISOString(),legado:true,revisao:1,historico:[]};
+  }
+  return DB.workflow_planejamento[ctx];
+ }
+ function pertence(m){const op=operador();if(!op)return true;return m?.responsavelId===op.id||itens(m?.contexto).some(x=>op.regioes.some(r=>regiaoItem(x).includes(norm(r))))}
+ function dataVisita(ctx=contexto()){
+  const ds=itens(ctx).map(x=>x.date||x.data||x.dataVisita).filter(Boolean).sort();const d=ds[0]?new Date(ds[0]+'T12:00:00'):null;return d&&!isNaN(d)?d.toLocaleDateString('pt-BR'):'sem data';
+ }
+ function titulo(m=meta()){const nome=m?.responsavelNome||(operador()?.nome||'Michel');return `${nome} - Data da visita ${dataVisita(m?.contexto)}`}
+ function notificar(dest,tipo,mensagem,ctx=contexto()){
+  DB.notificacoes_planejamento.unshift({id:'ntf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),destinatario:dest,tipo,mensagem,contexto:ctx,criadaEm:new Date().toISOString(),lida:false});
+ }
+ function registrar(m,acao,obs=''){m.historico=Array.isArray(m.historico)?m.historico:[];m.historico.push({acao,obs,por:email(),em:new Date().toISOString()});m.revisao=(m.revisao||0)+1;m.atualizadoEm=new Date().toISOString()}
+ async function persistir(){if(typeof saveToStorage==='function')await saveToStorage();renderBar();}
+ function statusClasse(s){return s==='aprovado'?'wf-aprovado':s==='aprovado_legado'?'wf-legado':s==='pendente'?'wf-pendente':s==='devolvido'?'wf-devolvido':'wf-rascunho'}
+ function aprovado(m){return ['aprovado','aprovado_legado'].includes(m?.status)}
+ function garantirAcesso(){const m=meta();if(!m)return true;if(operador()&&!pertence(m)){alert('Este planejamento não pertence às regiões atribuídas ao usuário.');return false}return true}
+ window.workflowPodeAcaoExterna=function(){const m=meta();if(!garantirAcesso())return false;if(admin())return true;if(!aprovado(m)){alert('Ação bloqueada: o planejamento precisa ser aprovado pelo administrador.');return false}return true};
+ window.enviarWorkflowAprovacao=async function(){const m=meta();if(!m||!garantirAcesso())return;if(!operador())return alert('Apenas usuários do Planejamento enviam para aprovação.');m.status='pendente';m.enviadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'enviado_aprovacao');notificar('admin','aprovacao',`${m.responsavelNome} enviou ${m.titulo} para aprovação.`,m.contexto);await persistir();alert('Planejamento enviado para aprovação.')};
+ window.aprovarWorkflow=async function(ctx=contexto()){if(!admin())return;const m=meta(ctx);m.status='aprovado';m.aprovadoPor=email();m.aprovadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'aprovado');const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'aprovado',`${m.titulo} foi aprovado.`,ctx);await persistir();alert('Planejamento aprovado e usuário notificado.')};
+ window.devolverWorkflow=async function(ctx=contexto()){if(!admin())return;const motivo=prompt('Informe o que precisa ser corrigido:');if(!motivo)return;const m=meta(ctx);m.status='devolvido';m.devolutiva=motivo;registrar(m,'devolvido',motivo);const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'devolvido',`${m.titulo||titulo(m)} foi devolvido: ${motivo}`,ctx);await persistir();alert('Planejamento devolvido e usuário notificado.')};
+ window.solicitarExclusaoWorkflow=async function(){const m=meta();if(!m||!operador())return;const motivo=prompt('Informe o motivo da solicitação de exclusão:');if(!motivo)return;DB.solicitacoes_exclusao.push({id:'exc_'+Date.now(),contexto:m.contexto,titulo:m.titulo||titulo(m),solicitante:email(),motivo,status:'pendente',criadaEm:new Date().toISOString()});notificar('admin','exclusao',`${m.responsavelNome} solicitou exclusão de ${m.titulo||titulo(m)}.`,m.contexto);await persistir();alert('Solicitação enviada ao administrador.')};
+ function invalidarAprovacao(){const m=meta();if(!m||!operador()||!aprovado(m))return;m.status='rascunho';m.aprovadoEm=null;m.aprovadoPor=null;registrar(m,'edicao_pos_aprovacao');notificar('admin','alteracao',`${m.responsavelNome} alterou ${m.titulo||titulo(m)}; nova aprovação será necessária.`,m.contexto)}
+ function renderBar(){
+  const root=document.getElementById('planContent');if(!root)return;initDB();let bar=document.getElementById('workflowPlanBar');if(!bar){bar=document.createElement('div');bar.id='workflowPlanBar';root.prepend(bar)}
+  const m=meta(),op=operador();if(!m){bar.innerHTML='<div class="wf-notice">Selecione um planejamento para visualizar o fluxo de aprovação.</div>';return}
+  if(op&&!pertence(m)){bar.innerHTML='<div class="wf-notice">Planejamento fora das regiões atribuídas a este usuário.</div>';return}
+  const pend=DB.notificacoes_planejamento.filter(n=>!n.lida&&(n.destinatario===email()||(admin()&&n.destinatario==='admin'))).length;
+  const botoes=admin()?`<button class="wf-btn wf-btn-ok" onclick="aprovarWorkflow()">Aprovar</button><button class="wf-btn wf-btn-warn" onclick="devolverWorkflow()">Devolver</button><button class="wf-btn" onclick="abrirWorkflowAdmin()">Painel administrativo</button>`:`<button class="wf-btn wf-btn-primary" onclick="enviarWorkflowAprovacao()">Enviar para aprovação</button><button class="wf-btn wf-btn-danger" onclick="solicitarExclusaoWorkflow()">Solicitar exclusão</button>`;
+  bar.innerHTML=`<div class="wf-row"><b>${m.titulo||titulo(m)}</b><span class="wf-badge ${statusClasse(m.status)}">${String(m.status).replace('_',' ').toUpperCase()}</span><span class="wf-pill">Responsável: ${m.responsavelNome}</span><span class="wf-pill">Revisão ${m.revisao||1}</span>${botoes}<button class="wf-btn" onclick="abrirWorkflowNotificacoes()">Notificações <span class="wf-notification-count">${pend}</span></button></div>${m.devolutiva?`<div class="wf-notice mt-2">Devolutiva: ${m.devolutiva}</div>`:''}`;
+  document.body.classList.toggle('workflow-bloqueado-aprovacao',!!op&&!aprovado(m));
+ }
+ window.abrirWorkflowNotificacoes=function(){initDB();const alvo=admin()?'admin':email(),arr=DB.notificacoes_planejamento.filter(n=>n.destinatario===alvo);const box=document.getElementById('workflowNotificationsList');box.innerHTML=arr.length?arr.map(n=>`<div class="wf-card"><b>${n.tipo.toUpperCase()}</b><div>${n.mensagem}</div><small>${new Date(n.criadaEm).toLocaleString('pt-BR')}</small></div>`).join(''):'<div class="wf-notice">Nenhuma notificação.</div>';arr.forEach(n=>n.lida=true);document.getElementById('workflowNotificationsModal').classList.add('open');if(arr.length)saveToStorage()};
+ window.abrirWorkflowAdmin=function(){if(!admin())return;initDB();const metas=Object.values(DB.workflow_planejamento);const pend=metas.filter(x=>x.status==='pendente');const exc=DB.solicitacoes_exclusao.filter(x=>x.status==='pendente');document.getElementById('workflowAdminList').innerHTML=`<div class="wf-notice">Pendentes de aprovação: ${pend.length} · Solicitações de exclusão: ${exc.length}</div>`+pend.map(m=>`<div class="wf-card"><b>${m.titulo||titulo(m)}</b><div>${m.responsavelNome} · ${m.contexto}</div><button class="wf-btn wf-btn-ok" onclick="aprovarWorkflow('${m.contexto.replace(/'/g,"\\'")}');abrirWorkflowAdmin()">Aprovar</button> <button class="wf-btn wf-btn-warn" onclick="devolverWorkflow('${m.contexto.replace(/'/g,"\\'")}');abrirWorkflowAdmin()">Devolver</button></div>`).join('')+exc.map(x=>`<div class="wf-card"><b>Exclusão solicitada</b><div>${x.titulo}</div><div>${x.motivo}</div><span class="wf-pill">Exclusão definitiva somente pelo administrador</span></div>`).join('');document.getElementById('workflowAdminModal').classList.add('open')};
+ window.fecharWorkflowModal=id=>document.getElementById(id)?.classList.remove('open');
+ function aplicarPerfil(){
+  initDB();const op=operador();document.body.classList.toggle('workflow-operador',!!op);if(!op)return;
+  window.APP_READ_ONLY=false;STATE.userType='planning_user';STATE.userRegion=op.regioes[0];
+  document.getElementById('roleDisplay').innerText=`Planejamento · ${op.nome}`;
+  const reg=document.getElementById('filterRegiao');if(reg){const opt=[...reg.options].find(o=>op.regioes.some(r=>norm(o.value||o.textContent).includes(norm(r))));if(opt){reg.value=opt.value;reg.dispatchEvent(new Event('change'))}reg.disabled=true}
+  setTimeout(()=>{const btn=[...document.querySelectorAll('button')].find(b=>norm(b.textContent).includes('PLANEJAMENTO'));btn?.click()},50);
+ }
+ const externas=['openEmailModal','sendFullPlanEmail','openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'];
+ externas.forEach(nome=>{const fn=window[nome];if(typeof fn==='function'&&!fn.__wf){const w=function(){if(!workflowPodeAcaoExterna())return;return fn.apply(this,arguments)};w.__wf=true;window[nome]=w}});
+ document.addEventListener('change',e=>{if(operador()&&e.target.closest('#planContent')){invalidarAprovacao();setTimeout(renderBar,0)}},true);
+ document.addEventListener('click',e=>{if(!operador())return;const t=norm(e.target.closest('button')?.textContent);if(['LER PEDAGOGICO','ATUALIZAR SUPERVISORES','PROXIMA VISITA','FAXINA','TRACAR ROTA','IMPORTAR EXCEL','SHAREPOINT','APLICAR STATUS GERAL'].some(x=>t.includes(x))){e.preventDefault();e.stopImmediatePropagation()}},true);
+ const rr=window.renderPlanningTable;if(typeof rr==='function')window.renderPlanningTable=function(){const r=rr.apply(this,arguments);setTimeout(renderBar,0);return r};
+ function start(){initDB();aplicarPerfil();setTimeout(()=>{Object.keys(DB.planning||{}).forEach(k=>meta(k));renderBar()},800)}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+ firebase.auth().onAuthStateChanged(u=>{if(u)setTimeout(start,100)});
+})();
+</script>
+
 </body>
 </html>
