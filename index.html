@@ -1697,10 +1697,23 @@ th {
         }
         function initLogin() {
             const sel = document.getElementById('loginRegion');
-            sel.innerHTML = '<option value="">Gestão autorizada</option>';
+            sel.innerHTML = `
+                <option value="usuario">Administrador / Usuário do Planejamento</option>
+                <option value="visitante">Visitante · somente leitura</option>
+            `;
+            sel.value = 'usuario';
             document.getElementById('passField')?.classList.remove('hidden');
         }
-        function checkLoginType() { document.getElementById('passField')?.classList.remove('hidden'); }
+        function checkLoginType() {
+            const tipo = document.getElementById('loginRegion')?.value || 'usuario';
+            const campoEmail = document.getElementById('loginEmail');
+            if (tipo === 'visitante') {
+                if (campoEmail) campoEmail.value = 'visitante@senac.br';
+            } else if (campoEmail && campoEmail.value.trim().toLowerCase() === 'visitante@senac.br') {
+                campoEmail.value = '';
+            }
+            document.getElementById('passField')?.classList.remove('hidden');
+        }
         async function performLogin() {
             const email = document.getElementById('loginEmail')?.value.trim();
             const senha = document.getElementById('loginPass')?.value || '';
@@ -4318,20 +4331,21 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 if (s) s.turma = turmaReal; 
 
                 // 👑 LÓGICA DO CONTRATURNO (Ignora se for vazio, "-" ou inválido)
-                const ct = alunoAoVivo.contraTurno || {}; 
-                const ctString = String(alunoAoVivo?.contraturno ?? "").trim();
-                
+                const ctFonte = alunoAoVivo?.contraTurno;
+                const ctAlternativo = alunoAoVivo?.contraturno;
+                const ct = (ctFonte && typeof ctFonte === 'object' && !Array.isArray(ctFonte))
+                    ? ctFonte
+                    : ((ctAlternativo && typeof ctAlternativo === 'object' && !Array.isArray(ctAlternativo)) ? ctAlternativo : {});
+                const brutoTexto = (typeof ctAlternativo === 'string' || typeof ctAlternativo === 'number') ? String(ctAlternativo).trim() : '';
                 const diasCt = [];
-                // Prioriza o que veio da planilha, MAS só se não estiver vazio
-                if (ctString && ctString !== "-" && ctString !== "") {
-                    diasCt.push(ctString);
-                } else {
-                    // Se não, usa o marcador manual
-                    if (ct.seg) diasCt.push('Seg');
-                    if (ct.ter) diasCt.push('Ter');
-                    if (ct.qua) diasCt.push('Qua');
-                    if (ct.qui) diasCt.push('Qui');
-                    if (ct.sex) diasCt.push('Sex');
+                if (ct.seg) diasCt.push('Segunda');
+                if (ct.ter) diasCt.push('Terça');
+                if (ct.qua) diasCt.push('Quarta');
+                if (ct.qui) diasCt.push('Quinta');
+                if (ct.sex) diasCt.push('Sexta');
+                // Só usa o valor textual quando não existe objeto de dias válido.
+                if (!diasCt.length && brutoTexto && brutoTexto !== '-' && brutoTexto !== '[object Object]') {
+                    diasCt.push(brutoTexto.replace(/<[^>]*>/g, '').trim());
                 }
                 
                 let badgeContraturno = "";
@@ -13136,6 +13150,101 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
  function start(){initDB();aplicarPerfil();setTimeout(()=>{Object.keys(DB.planning||{}).forEach(k=>meta(k));renderBar()},800)}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
  firebase.auth().onAuthStateChanged(u=>{if(u)setTimeout(start,100)});
+})();
+</script>
+
+<!-- NORMALIZACAO VISUAL DE CONTRATURNO V22 -->
+<script id="normalizacao-contraturno-v22-script">
+(function(){'use strict';
+ window.normalizarContraturnoVisualV22=function(a){
+   if(!a)return a;
+   const alt=a.contraturno;
+   if(alt && typeof alt==='object' && !Array.isArray(alt)){
+     a.contraTurno=(a.contraTurno&&typeof a.contraTurno==='object')?{...a.contraTurno,...alt}:{...alt};
+     a.contraturno='';
+   } else if(typeof alt==='string' && (alt.includes('[object Object]')||/<[^>]+>/.test(alt))){
+     a.contraturno=alt.replace(/<[^>]*>/g,'').replace(/\[object Object\]/g,'').replace(/^v$/i,'').trim();
+   }
+   return a;
+ };
+ const original=window.renderPlanningTable;
+ if(typeof original==='function')window.renderPlanningTable=function(){
+   [...(DB.quali||[]),...(DB.tec||[])].forEach(window.normalizarContraturnoVisualV22);
+   Object.values(DB.planning||{}).forEach(lista=>(lista||[]).forEach(it=>window.normalizarContraturnoVisualV22(it?.student)));
+   return original.apply(this,arguments);
+ };
+})();
+</script>
+
+<!-- RESTRICAO REAL DE REGIOES E HISTORICO POR USUARIO V21 -->
+<script id="restricao-regioes-historico-v21-script">
+(function(){'use strict';
+ const PERFIS={
+  'kleber.sato@docente.pr.senac.br':{id:'kleber',nome:'Kleber',regiao:'UMUARAMA'},
+  'michelly.gronkoski@docente.pr.senac.br':{id:'michelly',nome:'Michelly',regiao:'GUARAPUAVA'},
+  'fernando.scaraveli@docente.pr.senac.br':{id:'fernando',nome:'Fernando',regiao:'CAMPO MOURAO'}
+ };
+ const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
+ const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+ const perfil=()=>PERFIS[String(firebase?.auth?.().currentUser?.email||'').trim().toLowerCase()]||null;
+ function alunoVivo(ref){
+  if(!ref)return null;const id=String(ref.id||ref.codigo_aluno||ref.codigo||'');
+  return [...(DB.quali||[]),...(DB.tec||[])].find(a=>String(a.id||a.codigo_aluno||a.codigo||'')===id)||ref;
+ }
+ function itemDaRegiao(item,p){
+  if(!p||!item)return false;const a=alunoVivo(item.student||item.aluno||item);
+  const campos=[item.regiao,item.cidade,item.student?.regiao,item.student?.cidade,a?.regiao,a?.cidade,a?.empresa?.cidade,item.responsavelNome,item.usuarioPlanejamento];
+  return campos.some(v=>norm(v).includes(norm(p.regiao)))||norm(item.responsavelId)===norm(p.id);
+ }
+ function metaDoUsuario(nome,p){
+  const m=DB.workflow_planejamento?.[nome];
+  return norm(m?.responsavelId)===norm(p.id)||norm(m?.responsavelNome).includes(norm(p.nome));
+ }
+ function planoPermitido(nome,p=perfil()){
+  if(!p)return true;const lista=Array.isArray(DB.planning?.[nome])?DB.planning[nome]:[];
+  return norm(nome).includes(norm(p.nome))||metaDoUsuario(nome,p)||lista.some(x=>itemDaRegiao(x,p));
+ }
+ window.planoPermitidoUsuarioV21=planoPermitido;
+ function aplicarRegiaoUnica(){
+  const p=perfil();if(!p)return;
+  const sel=document.getElementById('planRegiao');if(!sel)return;
+  let valor=p.regiao;const existente=[...sel.options].find(o=>norm(o.value||o.textContent)===norm(p.regiao));if(existente)valor=existente.value;
+  sel.innerHTML=`<option value="${esc(valor)}">${esc(p.regiao)}</option>`;sel.value=valor;sel.disabled=true;
+  if(typeof updatePlanCities==='function')updatePlanCities();
+  const cidade=document.getElementById('planCidade');if(cidade)cidade.disabled=false;
+  if(typeof renderPlanningCandidates==='function')renderPlanningCandidates();
+ }
+ const setupOriginal=window.setupPlanningFilters;
+ window.setupPlanningFilters=function(){const r=typeof setupOriginal==='function'?setupOriginal.apply(this,arguments):undefined;aplicarRegiaoUnica();return r};
+ function renderHistoricoUsuario(){
+  const list=document.getElementById('historyPlanList'),p=perfil();if(!list||!p)return false;
+  const plans=Object.keys(DB.planning||{}).filter(nome=>planoPermitido(nome,p));
+  let input=document.getElementById('historySearchInput');
+  if(!input){const wrap=document.createElement('div');wrap.className='mb-4 relative';wrap.innerHTML='<input type="text" id="historySearchInput" placeholder="Pesquisar roteiro..." class="w-full pl-9 pr-4 py-2 text-sm border rounded-lg bg-slate-50 focus:bg-white focus:border-senac-blue focus:ring-1 outline-none transition-all">';list.parentElement.insertBefore(wrap,list);input=wrap.querySelector('input')}
+  input.value='';input.oninput=()=>{const q=norm(input.value);list.querySelectorAll('.history-plan-item').forEach(el=>el.classList.toggle('hidden',!norm(el.dataset.name).includes(q)))};
+  list.innerHTML=plans.length?plans.map(nome=>{const count=(DB.planning[nome]||[]).length;const active=nome===STATE.planContext;return `<div class="history-plan-item flex items-center justify-between p-3 border rounded-lg ${active?'bg-blue-50 border-blue-300':'bg-white border-slate-200'}" data-name="${esc(norm(nome))}"><div class="min-w-0"><div class="font-black text-sm text-slate-700 truncate">${esc(nome)}</div><div class="text-[10px] text-slate-500">${count} aluno(s) neste roteiro</div></div><button type="button" class="p-2 bg-senac-blue text-white rounded shadow-sm" title="Abrir Roteiro" data-plan-v21="${esc(nome)}">📂</button></div>`}).join(''):'<div class="text-center text-sm text-slate-400 py-6">Nenhum roteiro de '+esc(p.regiao)+' ou '+esc(p.nome)+' foi encontrado.</div>';
+  list.querySelectorAll('[data-plan-v21]').forEach(b=>b.onclick=()=>{const nome=b.dataset.planV21;if(!planoPermitido(nome,p))return alert('Este planejamento não pertence à região atribuída.');if(typeof switchPlan==='function')switchPlan(nome);else{STATE.planContext=nome;renderPlanningTable()}closeHistoryModal()});
+  if(window.lucide)window.lucide.createIcons();return true;
+ }
+ const historyOriginal=window.openHistoryModal;
+ window.openHistoryModal=function(){
+  const p=perfil();if(!p)return typeof historyOriginal==='function'?historyOriginal.apply(this,arguments):undefined;
+  renderHistoricoUsuario();const modal=document.getElementById('historyPlanModal');modal?.classList.remove('hidden');modal?.classList.add('flex');setTimeout(()=>document.getElementById('historySearchInput')?.focus(),80);
+ };
+ const switchOriginal=window.switchPlan;
+ window.switchPlan=function(nome){const p=perfil();if(p&&!planoPermitido(nome,p))return alert('Acesso bloqueado: o roteiro não contém alunos de '+p.regiao+' e não está atribuído a '+p.nome+'.');return switchOriginal.apply(this,arguments)};
+ const loadOriginal=window.loadPlanFromHistory;
+ window.loadPlanFromHistory=function(nome){const p=perfil();if(p&&!planoPermitido(nome,p))return alert('Acesso bloqueado para este planejamento.');return loadOriginal.apply(this,arguments)};
+ function corrigirContexto(){
+  const p=perfil();if(!p)return;aplicarRegiaoUnica();
+  if(STATE.planContext&&!planoPermitido(STATE.planContext,p)){
+   const primeiro=Object.keys(DB.planning||{}).find(n=>planoPermitido(n,p));STATE.planContext=primeiro||null;
+   if(primeiro&&typeof switchPlan==='function')switchPlan(primeiro);else if(typeof renderPlanningTable==='function')renderPlanningTable();
+  }
+ }
+ document.addEventListener('click',e=>{if(perfil()&&e.target.closest('#btnOpenHistory'))setTimeout(renderHistoricoUsuario,0)},true);
+ firebase.auth().onAuthStateChanged(u=>{if(u)setTimeout(corrigirContexto,900)});
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(corrigirContexto,1200),{once:true});else setTimeout(corrigirContexto,1200);
 })();
 </script>
 
