@@ -13381,5 +13381,37 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
 })();
 </script>
 
+<!-- V26: CONTROLE ADMINISTRATIVO DO ROTEIRO E ALERTA DE PRAZO -->
+<style id="processos-prazo-v26-style">
+#controleProcessosRoteiroV26{display:none;align-items:center;gap:10px;flex-wrap:wrap;margin-top:7px;padding:7px 10px;background:#fff;border:1px solid #cbd5e1;border-radius:9px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+#controleProcessosRoteiroV26.visivel{display:flex}
+.processo-v26{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:800;color:#334155;cursor:pointer;white-space:nowrap}
+.processo-v26 input{width:16px;height:16px;accent-color:#004587;cursor:pointer}
+.processo-info-v26{font-size:8px;color:#64748b;font-weight:600}
+</style>
+<script id="processos-prazo-v26-script">
+(function(){'use strict';
+ const OPERADORES=new Set(['kleber.sato@docente.pr.senac.br','michelly.gronkoski@docente.pr.senac.br','fernando.scaraveli@docente.pr.senac.br']);
+ const email=()=>String(firebase?.auth?.().currentUser?.email||'').trim().toLowerCase();
+ const admin=()=>!!email()&&!OPERADORES.has(email())&&email()!=='visitante@senac.br';
+ const fmt=d=>d&&!isNaN(d)?d.toLocaleDateString('pt-BR'):'não informada';
+ function dataSegura(v){if(!v)return null;const d=v instanceof Date?new Date(v):new Date(v);return isNaN(d)?null:d}
+ function dataRoteiro(){const t=String(STATE?.planContext||'');let m=t.match(/(\d{2})\/(\d{2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1],12);const itens=DB.planning?.[STATE.planContext]||[];const ds=itens.map(x=>dataSegura(x.date)).filter(Boolean).sort((a,b)=>a-b);return ds[0]||new Date()}
+ function proximaVisita(a){let base=dataSegura(a?.ini),ultima=null,realizadas=0;(a?.visits||[]).forEach(v=>{if(v?.ok){realizadas++;const d=dataSegura(v.date);if(d&&(!ultima||d>ultima))ultima=d}});if(ultima)base=ultima;if(!base)return {data:null,realizadas};const p=new Date(base);p.setMonth(p.getMonth()+3);return {data:p,realizadas,base}}
+ window.avisoPrazoAlunoV26=function(a){const roteiro=dataRoteiro(),p=proximaVisita(a);if(!p.data)return `⚠️ ${a.nome}\nNão foi possível calcular o intervalo de 3 meses porque a data de início do contrato não está cadastrada. O aluno será incluído normalmente.`;roteiro.setHours(0,0,0,0);p.data.setHours(0,0,0,0);if(roteiro>=p.data)return '';const n=p.realizadas+1;return `⚠️ VISITA ANTES DO PRAZO\n\nAluno: ${a.nome}\nVisita prevista: ${n}ª visita\nInício do contrato: ${fmt(dataSegura(a.ini))}\nÚltima visita realizada: ${p.realizadas?fmt(p.base):'não consta'}\nPróxima visita prevista: ${fmt(p.data)}\nData considerada para o roteiro: ${fmt(roteiro)}\n\nO intervalo de 3 meses ainda não foi completado. O aluno será incluído normalmente.`};
+ // Intercepta o clique apenas para avisar. A inclusão original continua sem bloqueio.
+ const addOriginal=window.addToPlan;
+ window.addToPlan=function(){const ids=[...document.querySelectorAll('.candidate-check:checked')].map(x=>String(x.value).trim()),todos=[...(DB.quali||[]),...(DB.tec||[])],avisos=[];ids.forEach(id=>{const a=todos.find(x=>String(x.id).trim()===id);if(a){const msg=window.avisoPrazoAlunoV26(a);if(msg)avisos.push(msg)}});if(avisos.length)alert(avisos.join('\n\n────────────────────────\n\n'));return addOriginal.apply(this,arguments)};
+ function initDB(){DB.planning_processos=DB.planning_processos&&typeof DB.planning_processos==='object'?DB.planning_processos:{}}
+ function registro(){initDB();const c=STATE?.planContext;if(!c)return null;return DB.planning_processos[c]||(DB.planning_processos[c]={orion:false,arquivado:false,historico:[]})}
+ function textoInfo(r,campo){const x=r?.[campo+'Info'];return x?.em?`Concluído em ${new Date(x.em).toLocaleString('pt-BR')} · ${x.por||'admin'}`:'Pendente'}
+ window.atualizarProcessoRoteiroV26=async function(campo,marcado){if(!admin()||!STATE?.planContext)return;const r=registro(),agora=new Date().toISOString();r[campo]=!!marcado;r[campo+'Info']=marcado?{em:agora,por:email()}:null;r.historico=Array.isArray(r.historico)?r.historico:[];r.historico.push({acao:campo,valor:!!marcado,em:agora,por:email()});await saveToStorage();window.renderControleProcessosV26();if(typeof showToast==='function')showToast(marcado?'Processo concluído e salvo.':'Processo reaberto e salvo.')};
+ window.renderControleProcessosV26=function(){let box=document.getElementById('controleProcessosRoteiroV26');const titulo=document.getElementById('activePlanTitle');if(!box&&titulo){box=document.createElement('div');box.id='controleProcessosRoteiroV26';titulo.closest('.flex.flex-col')?.appendChild(box)}if(!box)return;if(!admin()||!STATE?.planContext){box.classList.remove('visivel');box.innerHTML='';return}const r=registro();box.classList.add('visivel');box.innerHTML=`<span class="text-[9px] font-black text-senac-blue uppercase">Controle de processos</span><label class="processo-v26"><input type="checkbox" ${r.orion?'checked':''} onchange="atualizarProcessoRoteiroV26('orion',this.checked)"> Lançar no Órion</label><span class="processo-info-v26">${textoInfo(r,'orion')}</span><label class="processo-v26"><input type="checkbox" ${r.arquivado?'checked':''} onchange="atualizarProcessoRoteiroV26('arquivado',this.checked)"> Arquivar na pasta</label><span class="processo-info-v26">${textoInfo(r,'arquivado')}</span>`};
+ const render=window.renderPlanning;if(typeof render==='function')window.renderPlanning=function(){const r=render.apply(this,arguments);setTimeout(window.renderControleProcessosV26,0);return r};
+ const initSel=window.initPlanSelector;if(typeof initSel==='function')window.initPlanSelector=function(){const r=initSel.apply(this,arguments);setTimeout(window.renderControleProcessosV26,0);return r};
+ firebase.auth().onAuthStateChanged(u=>{if(u)setTimeout(window.renderControleProcessosV26,1400)});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(window.renderControleProcessosV26,1600),{once:true});else setTimeout(window.renderControleProcessosV26,1600);
+})();
+</script>
+
 </body>
 </html>
