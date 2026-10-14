@@ -1222,7 +1222,7 @@ th {
                 const localQtd = localData ? ((localData.quali?.length||0) + (localData.tec?.length||0)) : 0;
 
                 // 2. LÊ A NUVEM (Firebase)
-                if (false) {
+                if (typeof firebase !== 'undefined' && navigator.onLine) {
                     try {
                         const firestoreDB = firebase.firestore();
                         const doc = await firestoreDB.collection('banco_senac').doc('dados_principais').get();
@@ -12286,8 +12286,8 @@ const po=V9626.parse;V9626.parse=function(rows){let L=po.call(this,rows),h=(rows
 const rm=window.runMergeImport;window.runMergeImport=async i=>{await rm(i);migrar();await saveToStorage();pintar();runFilter()};
 const rf=runFilter;runFilter=function(){return temp(rf,this,arguments)};const sf=setupFilters;setupFilters=function(){return temp(sf,this,arguments)};if(typeof setupPlanningFilters==='function'){let pf=setupPlanningFilters;setupPlanningFilters=function(){return temp(pf,this,arguments)}}
 window.abrirCidadesRede=function(){migrar();let arr=Object.values(DB.rede_cidades||{}).sort((a,b)=>(a.uf+a.cidade).localeCompare(b.uf+b.cidade,'pt-BR')),pend=arr.filter(x=>!x.regiao).length,html=arr.map(x=>`<tr><td>${x.uf}</td><td>${x.cidade}</td><td>${x.regiao||'<b style="color:#b45309">Pendente</b>'}</td><td>${x.unidade||''}</td></tr>`).join('');let w=window.open('','_blank','width=900,height=700');w.document.write(`<meta charset="utf-8"><title>Cidades da Rede</title><style>body{font:14px Arial;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#005ca9;color:white}</style><h2>Cidades da Rede</h2><p>Total: ${arr.length} · Região pendente: ${pend}</p><table><thead><tr><th>UF</th><th>Cidade</th><th>Região</th><th>Unidade</th></tr></thead><tbody>${html}</tbody></table>`);w.document.close()};
-try{sincronizarNuvemV9637=async()=>false}catch(e){}try{salvarNuvemIntegralV9637=async()=>false}catch(e){}
-window.addEventListener('DOMContentLoaded',()=>{pintar();setTimeout(()=>{migrar();setupFilters();runFilter();let s=document.getElementById('saveStatus');if(s)s.innerHTML='<span style="color:#7f1d1d">TESTE OFFLINE · banco separado</span>'},1000)});
+/* Firebase ativo: funcoes originais de sincronizacao e salvamento preservadas. */
+window.addEventListener('DOMContentLoaded',()=>{pintar();setTimeout(()=>{migrar();setupFilters();runFilter();let s=document.getElementById('saveStatus');if(s && navigator.onLine)s.innerHTML='<span class="text-emerald-600">Firebase ativo · sincronização em nuvem</span>'},1000)});
 })();</script>
 <script id="mapa-brasil-alunos-v1">
 (function(){'use strict';
