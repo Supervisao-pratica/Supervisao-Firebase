@@ -1132,7 +1132,41 @@ th {
         if (isElectron) { try { fs = window.require('fs'); path = window.require('path'); appDataPath = window.process.env.APPDATA || (window.process.platform == 'darwin' ? window.process.env.HOME + '/Library/Preferences' : window.process.env.HOME + "/.local/share"); appDataPath = path.join(appDataPath, 'SenacBI'); if (!fs.existsSync(appDataPath)) fs.mkdirSync(appDataPath, { recursive: true }); dbFilePath = path.join(appDataPath, 'senac_db.json'); document.title += " (Modo Executável)"; } catch (e) { console.warn("Electron detectado mas falha ao carregar módulos nativos:", e); } }
         const dbPromise = new Promise((resolve, reject) => { const request = indexedDB.open(DB_NAME, 9); request.onupgradeneeded = (event) => { const db = event.target.result; if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME); }; request.onsuccess = (event) => resolve(event.target.result); request.onerror = (event) => reject(event.target.error); });
         
-        async function saveToStorage() { 
+        // Persistencia inteligente: agrega chamadas proximas e grava somente quando o DB mudou.
+        let __saveTimer = null, __saveWaiters = [], __saveRunning = false, __savePending = false;
+        let __lastSavedFingerprint = null;
+        function __snapshotPersistivel(){
+            return JSON.stringify(DB || {}, (k,v) => (k === 'updatedAt' || k === '_backup_manifest' || k === '_origin') ? undefined : v);
+        }
+        function marcarBaseComoSincronizada(){
+            try { __lastSavedFingerprint = __snapshotPersistivel(); } catch(e) { console.warn('Nao foi possivel criar referencia de alteracoes:',e); }
+        }
+        async function __executarSaveInteligente(){
+            if(__saveRunning){ __savePending=true; return; }
+            __saveRunning=true;
+            const waiters=__saveWaiters.splice(0);
+            try{
+                if(window.APP_READ_ONLY===true) throw new Error('Modo visitante: alterações e gravações não são permitidas.');
+                const atual=__snapshotPersistivel();
+                if(atual===__lastSavedFingerprint){ waiters.forEach(x=>x.resolve(false)); return; }
+                await persistStorageNow();
+                __lastSavedFingerprint=atual;
+                waiters.forEach(x=>x.resolve(true));
+            }catch(e){ waiters.forEach(x=>x.reject(e)); }
+            finally{
+                __saveRunning=false;
+                if(__savePending||__saveWaiters.length){__savePending=false;clearTimeout(__saveTimer);__saveTimer=setTimeout(__executarSaveInteligente,450);}
+            }
+        }
+        function saveToStorage(){
+            return new Promise((resolve,reject)=>{
+                __saveWaiters.push({resolve,reject});
+                clearTimeout(__saveTimer);
+                __saveTimer=setTimeout(__executarSaveInteligente,450);
+            });
+        }
+
+        async function persistStorageNow() { 
             if (window.APP_READ_ONLY === true) {
                 console.warn('Modo visitante: gravação bloqueada.');
                 throw new Error('Modo visitante: alterações e gravações não são permitidas.');
@@ -1643,6 +1677,7 @@ th {
                     const savedData = await loadFromStorage();
                     if (!savedData) throw new Error('Nenhuma base foi localizada na nuvem ou no computador.');
                     processDataLoad(savedData);
+                    if (typeof marcarBaseComoSincronizada === 'function') marcarBaseComoSincronizada();
                     firebaseBaseCarregada = true;
                     const totalRecords = (DB.quali?.length || 0) + (DB.tec?.length || 0);
                     const status = document.getElementById('recordCount');
@@ -12965,8 +13000,9 @@ body.modo-visitante .visitor-readonly-banner{display:flex!important}
      if(el.closest('#studentModal,#addCCModal,#modalAddTurmaSeguro,#financeModal'))el.disabled=true;
    });
  };
- const obs=new MutationObserver(()=>{if(window.APP_READ_ONLY===true)window.aplicarModoVisitanteSeguro()});
- function instalar(){obs.observe(document.body,{childList:true,subtree:true});if(visitante())window.aplicarModoVisitanteSeguro()}
+ let visitanteTimer=null;
+ function atualizarVisitanteLeve(){if(window.APP_READ_ONLY!==true)return;clearTimeout(visitanteTimer);visitanteTimer=setTimeout(window.aplicarModoVisitanteSeguro,120)}
+ function instalar(){if(visitante())window.aplicarModoVisitanteSeguro();document.addEventListener('click',atualizarVisitanteLeve,{passive:true})}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',instalar,{once:true});else instalar();
  document.addEventListener('click',e=>{
    if(window.APP_READ_ONLY!==true)return;
@@ -12974,6 +13010,40 @@ body.modo-visitante .visitor-readonly-banner{display:flex!important}
    if(alvo){e.preventDefault();e.stopImmediatePropagation();alert('Acesso de visitante: esta ação altera dados e está bloqueada.');}
  },true);
  window.addEventListener('unhandledrejection',e=>{if(window.APP_READ_ONLY===true&&String(e.reason||'').includes('Modo visitante'))e.preventDefault()});
+})();
+</script>
+
+<!-- COBRANCA E DESEMPENHO V19 -->
+<style id="cobranca-desempenho-v19-style">
+#centralPendenciasModal.pend-overlay.open{display:flex!important;position:fixed!important;inset:0!important;z-index:2147483000!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
+</style>
+<script id="cobranca-desempenho-v19-script">
+(function(){'use strict';
+ function abrirCobrancaV19(){
+   const m=document.getElementById('centralPendenciasModal');
+   if(!m){alert('A janela de Cobrança Supervisor não foi encontrada nesta versão.');return false;}
+   if(m.parentElement!==document.body)document.body.appendChild(m);
+   m.removeAttribute('hidden');m.classList.remove('hidden');m.classList.add('open');
+   m.style.setProperty('display','flex','important');m.style.setProperty('visibility','visible','important');m.style.setProperty('opacity','1','important');
+   try{
+     const escopo=(window.STATE&&STATE.abrangencia==='rede')?'rede':'parana';
+     if(typeof window.setPendScope==='function')window.setPendScope(escopo);
+     else if(typeof window.renderCentralPendencias==='function')window.renderCentralPendencias();
+   }catch(e){
+     console.error('[Cobrança V19]',e);
+     const body=document.getElementById('pendBody');if(body)body.innerHTML='<tr><td colspan="6" style="padding:36px;text-align:center;color:#64748b;font-weight:700">Não há pendências de cobrança no momento.</td></tr>';
+     const resumo=document.getElementById('pendResumo');if(resumo)resumo.textContent='0 pendências encontradas';
+   }
+   return false;
+ }
+ window.abrirCentralPendencias=abrirCobrancaV19;
+ document.addEventListener('click',function(e){
+   const b=e.target.closest('button');if(!b)return;
+   const texto=String(b.textContent||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+   if(texto.includes('cobranca supervisor')){e.preventDefault();e.stopImmediatePropagation();abrirCobrancaV19();}
+ },true);
+ // Fecha sem deixar estilo inline residual.
+ window.fecharCentralPendencias=function(){const m=document.getElementById('centralPendenciasModal');if(!m)return;m.classList.remove('open');m.classList.add('hidden');m.style.removeProperty('display');m.style.removeProperty('visibility');m.style.removeProperty('opacity')};
 })();
 </script>
 </body>
