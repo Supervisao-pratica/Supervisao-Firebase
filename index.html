@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>Supervisão Senac 2026 (v9.6.66 - PROTEÇÃO ANTIPERDA)</title>
-<link href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D" rel="manifest"/>
+<link href="./manifest.webmanifest" rel="manifest"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>if (typeof module === 'object') { window.tempModule = module; module = undefined; }</script>
@@ -287,7 +287,7 @@ th {
 <!-- V9.6.21: extrator de deslocamento detecta destino mesmo quando celulas mescladas deslocam o dado para coluna vizinha. -->
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
 <!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
-</head>
+<meta content="#004587" name="theme-color"/><meta content="yes" name="apple-mobile-web-app-capable"/><meta content="default" name="apple-mobile-web-app-status-bar-style"/><link href="./apple-touch-icon-180.png" rel="apple-touch-icon"/></head>
 <body class="text-slate-800">
 <div id="toast">Notificação</div>
 <div class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center hidden" id="modalRelatorioMes">
@@ -13381,7 +13381,6 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
 })();
 </script>
 <!-- V29: SINCRONIZACAO MULTICOMPUTADOR, CIDADES DOS USUARIOS E RETORNO AUTOMATICO -->
-
 </div></div></div><!-- V30: SINCRONIZACAO IDEMPOTENTE, TEMPO REAL, MOBILE E PWA -->
 <style id="mobile-pwa-v30-style">
 #btnInstalarAppV30{display:none;position:fixed;right:14px;bottom:14px;z-index:2500;background:#004587;color:white;border:0;border-radius:999px;padding:11px 15px;font-size:12px;font-weight:900;box-shadow:0 8px 24px rgba(0,69,135,.35)}
@@ -13402,34 +13401,57 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
 }
 </style>
 <button id="btnInstalarAppV30" type="button">Instalar aplicativo</button>
-<script id="sincronizacao-mobile-pwa-v30-script">
+
+<!-- V31: OPERACAO SEGURA MULTIUSUARIO, PROPRIEDADE, TEMPO REAL E PWA -->
+<script id="operacao-segura-v31-script">
 (function(){'use strict';
  const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
  const USERS={
-  'kleber.sato@docente.pr.senac.br':{id:'kleber',nome:'Kleber',regiao:'UMUARAMA',cidades:['ALTÔNIA','ALTO PIQUIRI','BRASILÂNDIA DO SUL','CAFEZAL DO SUL','CRUZEIRO DO OESTE','DOURADINA','ESPERANÇA NOVA','FRANCISCO ALVES','ICARAÍMA','IPORÃ','MARIA HELENA','MARILUZ','NOVA OLÍMPIA','PEROBAL','PÉROLA','SÃO JORGE DO PATROCÍNIO','TAPEJARA','TAPIRA','UMUARAMA','XAMBRÊ']},
+  'kleber.sato@docente.pr.senac.br':{id:'kleber',nome:'Kleber',regiao:'UMUARAMA'},
   'michelly.gronkoski@docente.pr.senac.br':{id:'michelly',nome:'Michelly',regiao:'GUARAPUAVA'},
   'fernando.scaraveli@docente.pr.senac.br':{id:'fernando',nome:'Fernando',regiao:'CAMPO MOURÃO'}
  };
- const email=()=>String(firebase?.auth?.().currentUser?.email||'').trim().toLowerCase(), user=()=>USERS[email()]||null, isAdmin=()=>!!email()&&!user()&&email()!=='visitante@senac.br';
- const stable=x=>{if(!x)return'';return String(x.id||x.solicitacaoId||[x.tipo,x.contexto,x.criadaEm,x.solicitanteNome,x.statusSolicitado].map(v=>N(v)).join('|'))};
- const mergeStable=(a,b)=>{const m=new Map();[...(a||[]),...(b||[])].forEach(x=>{const k=stable(x);if(k)m.set(k,{...(m.get(k)||{}),...x})});return [...m.values()].sort((x,y)=>String(y.criadaEm||y.updatedAt||'').localeCompare(String(x.criadaEm||x.updatedAt||'')))};
- const doc=id=>firebase.firestore().collection('banco_senac').doc('colaboracao_'+id);
- function profilePlans(p){const names=Object.keys(DB.planning||{}).filter(n=>{const d=typeof identificarDonoRoteiroV28==='function'?identificarDonoRoteiroV28(n):'';return d===p.id||N(n).includes(N(p.nome))});const pick=obj=>Object.fromEntries(names.filter(n=>obj?.[n]!==undefined).map(n=>[n,obj[n]]));return{planning:pick(DB.planning),planning_logistics:pick(DB.planning_logistics),planning_lunch:pick(DB.planning_lunch),planning_admin:pick(DB.planning_admin),planning_processos:pick(DB.planning_processos),planning_approvals:pick(DB.planning_approvals)}}
- let publishing=false,lastFingerprint='';
- async function publish(){const p=user();if(!p||publishing||window.APP_READ_ONLY===true)return false;const routes=profilePlans(p),payload={schema:2,userId:p.id,userName:p.nome,email:email(),region:p.regiao,...routes,solicitacoes_exclusao:(DB.solicitacoes_exclusao||[]).filter(x=>N(x.solicitanteNome||x.solicitante).includes(N(p.nome))),solicitacoes_status:(DB.solicitacoes_status||[]).filter(x=>N(x.solicitanteNome||x.solicitante).includes(N(p.nome))),notificacoes_planejamento:(DB.notificacoes_planejamento||[]).filter(x=>N(x.solicitanteNome||x.mensagem).includes(N(p.nome))),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),clientUpdatedAt:Date.now()};const printable={...payload,updatedAt:null},fp=JSON.stringify(printable);if(fp===lastFingerprint)return false;publishing=true;try{await doc(p.id).set(payload,{merge:false});lastFingerprint=fp;return true}finally{publishing=false}}
- function mergeMap(target,source){target=target||{};Object.entries(source||{}).forEach(([k,v])=>{target[k]=v});return target}
- let applying=false,saveTimer=null,lastApplied={};
- function applyRemote(d){if(!d||!isAdmin())return false;const stamp=Number(d.clientUpdatedAt||0),uid=d.userId||'unknown';if(lastApplied[uid]>=stamp)return false;lastApplied[uid]=stamp;applying=true;try{DB.planning=mergeMap(DB.planning,d.planning);DB.planning_logistics=mergeMap(DB.planning_logistics,d.planning_logistics);DB.planning_lunch=mergeMap(DB.planning_lunch,d.planning_lunch);DB.planning_admin=mergeMap(DB.planning_admin,d.planning_admin);DB.planning_processos=mergeMap(DB.planning_processos,d.planning_processos);DB.planning_approvals=mergeMap(DB.planning_approvals,d.planning_approvals);DB.solicitacoes_exclusao=mergeStable(DB.solicitacoes_exclusao,d.solicitacoes_exclusao);DB.solicitacoes_status=mergeStable(DB.solicitacoes_status,d.solicitacoes_status);DB.notificacoes_planejamento=mergeStable(DB.notificacoes_planejamento,d.notificacoes_planejamento);if(typeof reconciliarExclusoesV24==='function')reconciliarExclusoesV24(false);if(typeof renderWorkflowBar==='function')renderWorkflowBar();if(typeof renderHistoricoAdminPorUsuarioV28==='function')renderHistoricoAdminPorUsuarioV28();if(typeof renderPlanningTable==='function')renderPlanningTable();clearTimeout(saveTimer);saveTimer=setTimeout(()=>{if(window.APP_READ_ONLY!==true)saveOriginal().catch(e=>console.error('Persistência da sincronização:',e))},900);return true}finally{applying=false}}
- let unsub=[];function listen(){unsub.forEach(f=>f());unsub=[];if(isAdmin())Object.values(USERS).forEach(p=>unsub.push(doc(p.id).onSnapshot({includeMetadataChanges:false},s=>{if(s.exists&&!s.metadata.hasPendingWrites)applyRemote(s.data())},e=>console.error('Sincronização em tempo real:',e))))}
- const saveOriginal=window.saveToStorage.bind(window);window.saveToStorage=function(){return Promise.resolve(saveOriginal.apply(this,arguments)).then(async r=>{if(user()&&!applying)await publish();return r})};
- function cities(p){if(p.cidades)return p.cidades;const k=Object.keys(DB.regioes_map||{}).find(x=>N(x)===N(p.regiao));return [...new Set((DB.regioes_map?.[k]||[]).map(x=>String(x).toUpperCase()))].sort((a,b)=>a.localeCompare(b,'pt-BR'))}
- function fill(id,p){const e=document.getElementById(id);if(!e)return;const cur=e.value,cs=cities(p);e.innerHTML='<option value="">Todas as Cidades</option>'+cs.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('');if(cs.includes(cur))e.value=cur}
- function fixCities(){const p=user();if(!p)return;STATE.userRegion=p.regiao;fill('filterCidade',p);fill('planCidade',p);['filterRegiao','planRegiao'].forEach(id=>{const e=document.getElementById(id);if(e){const o=[...e.options].find(x=>N(x.value)===N(p.regiao));if(o)e.value=o.value;e.disabled=true}})}
- firebase.auth().onAuthStateChanged(u=>{if(!u)return;setTimeout(()=>{fixCities();listen();if(user())publish().catch(console.error)},1600)});
- document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user())publish().catch(console.error)});
- // PWA instalável e atualização segura
- let installEvent=null;const installBtn=document.getElementById('btnInstalarAppV30');window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvent=e;installBtn.style.display='block'});installBtn.onclick=async()=>{if(installEvent){installEvent.prompt();await installEvent.userChoice;installEvent=null;installBtn.style.display='none'}else alert('No Android, abra o menu do Chrome e escolha “Instalar aplicativo”. No iPhone, use Compartilhar e “Adicionar à Tela de Início”.')};window.addEventListener('appinstalled',()=>installBtn.style.display='none');if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(e=>console.warn('Service Worker:',e)));
- window.SYNC_V30={publish,listen,applyRemote,mergeStable,fixCities};
+ const email=()=>String(firebase?.auth?.().currentUser?.email||'').trim().toLowerCase();
+ const user=()=>USERS[email()]||null;
+ const isVisitor=()=>email()==='visitante@senac.br';
+ const isAdmin=()=>!!email()&&!user()&&!isVisitor();
+ const ownerFromName=name=>{const n=N(name);for(const p of Object.values(USERS))if(n.startsWith(N(p.nome)+' - '))return p.id;return n.startsWith('ADMIN - ')?'admin':''};
+ const owns=name=>{const p=user();return !p||ownerFromName(name)===p.id};
+ const formatDate=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+ const requiredName=()=>`${user()?.nome||'Admin'} - ${formatDate(new Date())}`;
+ const collab=id=>firebase.firestore().collection('banco_senac').doc('colaboracao_'+id);
+ const response=id=>firebase.firestore().collection('banco_senac').doc('resposta_'+id);
+ const clone=v=>JSON.parse(JSON.stringify(v));
+ const keyOf=x=>String(x?.id||x?.solicitacaoId||[x?.tipo,x?.contexto,x?.criadaEm,x?.solicitanteNome,x?.statusSolicitado].map(N).join('|'));
+ const mergeList=(a,b)=>{const m=new Map();[...(a||[]),...(b||[])].forEach(x=>{const k=keyOf(x);if(k)m.set(k,{...(m.get(k)||{}),...x})});return [...m.values()]};
+ function namesOf(p){return Object.keys(DB.planning||{}).filter(n=>ownerFromName(n)===p.id)}
+ function pick(obj,names){return Object.fromEntries(names.filter(n=>obj?.[n]!==undefined).map(n=>[n,clone(obj[n])]))}
+ function contentFor(p){const names=namesOf(p);return{userId:p.id,userName:p.nome,email:email(),schema:3,planning:pick(DB.planning,names),planning_logistics:pick(DB.planning_logistics,names),planning_lunch:pick(DB.planning_lunch,names),planning_admin:pick(DB.planning_admin,names),planning_processos:pick(DB.planning_processos,names),planning_approvals:pick(DB.planning_approvals,names),solicitacoes_exclusao:(DB.solicitacoes_exclusao||[]).filter(x=>N(x.solicitanteNome||x.solicitante).includes(N(p.nome))),solicitacoes_status:(DB.solicitacoes_status||[]).filter(x=>N(x.solicitanteNome||x.solicitante).includes(N(p.nome))),notificacoes_planejamento:(DB.notificacoes_planejamento||[]).filter(x=>N(x.solicitanteNome||x.mensagem).includes(N(p.nome)))} }
+ function canonical(v){if(Array.isArray(v))return v.map(canonical).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));if(v&&typeof v==='object')return Object.fromEntries(Object.keys(v).sort().filter(k=>!['updatedAt','clientUpdatedAt','serverUpdatedAt'].includes(k)).map(k=>[k,canonical(v[k])]));return v}
+ let lastFingerprint='',publishing=false;
+ async function publishUser(){const p=user();if(!p||publishing||window.APP_READ_ONLY===true)return false;const base=contentFor(p),fp=JSON.stringify(canonical(base));if(fp===lastFingerprint)return false;publishing=true;try{await collab(p.id).set({...base,clientUpdatedAt:Date.now(),serverUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:false});lastFingerprint=fp;return true}finally{publishing=false}}
+ async function localOnlySave(){const d=clone(window.DB||DB);d.updatedAt=new Date().toISOString();const db=await dbPromise;await new Promise((resolve,reject)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(d,'root');tx.objectStore(STORE_NAME).put(d,'last_known_good');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});return true}
+ function addMaps(target,source){target=target||{};Object.entries(source||{}).forEach(([k,v])=>target[k]=v);return target}
+ function removeFormerOwnerPlans(p,incoming){const keep=new Set(Object.keys(incoming||{}));Object.keys(DB.planning||{}).filter(n=>ownerFromName(n)===p.id&&!keep.has(n)).forEach(n=>{delete DB.planning[n];delete DB.planning_logistics?.[n];delete DB.planning_lunch?.[n];delete DB.planning_admin?.[n];delete DB.planning_processos?.[n];delete DB.planning_approvals?.[n]})}
+ let applying=false,centralTimer=null,lastVersion={};
+ function applyCollab(p,d){if(!isAdmin()||!d||d.userId!==p.id)return;const ver=Number(d.clientUpdatedAt||0);if(lastVersion[p.id]>=ver)return;lastVersion[p.id]=ver;applying=true;try{removeFormerOwnerPlans(p,d.planning);DB.planning=addMaps(DB.planning,d.planning);DB.planning_logistics=addMaps(DB.planning_logistics,d.planning_logistics);DB.planning_lunch=addMaps(DB.planning_lunch,d.planning_lunch);DB.planning_admin=addMaps(DB.planning_admin,d.planning_admin);DB.planning_processos=addMaps(DB.planning_processos,d.planning_processos);DB.planning_approvals=addMaps(DB.planning_approvals,d.planning_approvals);DB.solicitacoes_exclusao=mergeList(DB.solicitacoes_exclusao,d.solicitacoes_exclusao);DB.solicitacoes_status=mergeList(DB.solicitacoes_status,d.solicitacoes_status);DB.notificacoes_planejamento=mergeList(DB.notificacoes_planejamento,d.notificacoes_planejamento);if(typeof reconciliarExclusoesV24==='function')reconciliarExclusoesV24(false);if(typeof renderWorkflowBar==='function')renderWorkflowBar();if(typeof renderHistoricoAdminPorUsuarioV28==='function')renderHistoricoAdminPorUsuarioV28();clearTimeout(centralTimer);centralTimer=setTimeout(()=>adminSave().catch(console.error),700)}finally{applying=false}}
+ function responseFor(p){const names=Object.keys(DB.planning||{}).filter(n=>ownerFromName(n)===p.id);return{schema:3,userId:p.id,planning_approvals:pick(DB.planning_approvals,names),solicitacoes_exclusao:(DB.solicitacoes_exclusao||[]).filter(x=>N(x.solicitanteNome||x.solicitante).includes(N(p.nome))),solicitacoes_status:(DB.solicitacoes_status||[]).filter(x=>N(x.solicitanteNome||x.solicitante).includes(N(p.nome))),notificacoes_planejamento:(DB.notificacoes_planejamento||[]).filter(x=>N(x.destinatario||'').includes(N(p.id))||N(x.mensagem).includes(N(p.nome))),serverUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()}}
+ async function publishResponses(){if(!isAdmin())return;await Promise.all(Object.values(USERS).map(p=>response(p.id).set(responseFor(p),{merge:false})))}
+ function applyResponse(d){const p=user();if(!p||!d||d.userId!==p.id)return;DB.planning_approvals=addMaps(DB.planning_approvals,d.planning_approvals);DB.solicitacoes_exclusao=mergeList(DB.solicitacoes_exclusao,d.solicitacoes_exclusao);DB.solicitacoes_status=mergeList(DB.solicitacoes_status,d.solicitacoes_status);DB.notificacoes_planejamento=mergeList(DB.notificacoes_planejamento,d.notificacoes_planejamento);if(typeof renderWorkflowBar==='function')renderWorkflowBar();localOnlySave().catch(console.error)}
+ let unsub=[];function listen(){unsub.forEach(f=>f());unsub=[];if(isAdmin())Object.values(USERS).forEach(p=>unsub.push(collab(p.id).onSnapshot(s=>{if(s.exists&&!s.metadata.hasPendingWrites)applyCollab(p,s.data())},console.error)));const p=user();if(p)unsub.push(response(p.id).onSnapshot(s=>{if(s.exists&&!s.metadata.hasPendingWrites)applyResponse(s.data())},console.error))}
+ const previousSave=window.saveToStorage.bind(window);async function adminSave(){const r=await previousSave();await publishResponses();return r}
+ window.saveToStorage=async function(){if(user()){if(window.APP_READ_ONLY===true)throw new Error('Perfil em modo somente leitura.');await localOnlySave();await publishUser();return true}return adminSave()};
+ const oldOpen=window.openNewPlanInput;window.openNewPlanInput=function(){const r=oldOpen.apply(this,arguments);const i=document.getElementById('newPlanNameInput');if(i){i.value=requiredName();i.readOnly=true;i.title='Padrão obrigatório: Nome do usuário - dia/mês/ano'}return r};
+ window.confirmCreatePlan=function(){const name=requiredName();if(DB.planning?.[name])return alert(`Já existe um planejamento com o nome obrigatório "${name}". Edite o planejamento existente.`);DB.planning=DB.planning||{};DB.planning[name]=[];STATE.planContext=name;saveToStorage().then(()=>{cancelCreatePlan();initPlanSelector();showToast(`Novo roteiro "${name}" iniciado e salvo!`)}).catch(e=>alert(e.message))};
+ const oldSwitch=window.switchPlan;window.switchPlan=function(name){if(user()&&!owns(name))return alert('Acesso bloqueado: cada usuário pode abrir somente planejamentos próprios.');return oldSwitch.apply(this,arguments)};
+ const oldLoad=window.loadPlanFromHistory;window.loadPlanFromHistory=function(name){if(user()&&!owns(name))return alert('Acesso bloqueado: este planejamento pertence a outro usuário.');return oldLoad.apply(this,arguments)};
+ const oldDelete=window.deletePlanFromHistory;window.deletePlanFromHistory=function(name){if(user()&&!owns(name))return alert('Exclusão bloqueada: cada usuário pode excluir somente planejamentos próprios.');return oldDelete.apply(this,arguments)};
+ document.addEventListener('click',e=>{const b=e.target.closest('[data-plan]');if(b&&user()&&!owns(b.dataset.plan)){e.preventDefault();e.stopImmediatePropagation();alert('Ação bloqueada: este planejamento pertence a outro usuário.')}},true);
+ function enforceView(){const p=user();if(!p)return;Object.keys(DB.planning||{}).filter(n=>!owns(n)).forEach(n=>{});if(STATE.planContext&&!owns(STATE.planContext)){STATE.planContext=Object.keys(DB.planning||{}).find(owns)||null}if(typeof renderHistoricoUsuario==='function')renderHistoricoUsuario();if(typeof renderPlanningTable==='function')renderPlanningTable()}
+ firebase.auth().onAuthStateChanged(u=>{if(!u)return;setTimeout(()=>{listen();enforceView();if(user())publishUser().catch(console.error)},1800)});
+ // Instalação PWA
+ let promptEvent=null,btn=document.getElementById('btnInstalarAppV30');window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptEvent=e;if(btn)btn.style.display='block'});if(btn)btn.onclick=async()=>{if(promptEvent){promptEvent.prompt();await promptEvent.userChoice;promptEvent=null;btn.style.display='none'}else alert('Android: menu do Chrome > Instalar aplicativo. iPhone: Compartilhar > Adicionar à Tela de Início.')};if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.warn));
+ window.OPERACAO_SEGURA_V31={publishUser,publishResponses,listen,owns,requiredName};
 })();
 </script>
 
