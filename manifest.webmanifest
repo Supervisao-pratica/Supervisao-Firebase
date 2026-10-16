@@ -1,14 +1,31 @@
 {
+  "id": "./",
   "name": "Supervisão Senac 2026",
   "short_name": "Supervisão",
-  "description": "Planejamento e acompanhamento da supervisão da prática profissional",
-  "start_url": "./index.html",
+  "lang": "pt-BR",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "any",
   "background_color": "#f8fafc",
   "theme_color": "#004587",
   "icons": [
-    {"src": "./app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+    {
+      "src": "./app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./app-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 (v9.6.66 - PROTEÇÃO ANTIPERDA)</title>
+    <title>Supervisão Senac 2026 — Revisão V29</title>
     
-    <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22Supervis%C3%A3o%20Senac%202026%22%2C%22short_name%22%3A%22Supervis%C3%A3o%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f8fafc%22%2C%22theme_color%22%3A%22%23004587%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fupload.wikimedia.org%2Fwikipedia%2Fcommons%2F8%2F86%2FSenac_logo.svg%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+    <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -9019,13 +9019,13 @@ if (typeof showToast === 'function') {
                 const loader = document.getElementById('globalLoader');
                 const login = document.getElementById('loginPage');
                 if(loader) loader.classList.add('hidden');
-                if(login) login.classList.remove('hidden');
+                if(login && !firebase.auth().currentUser) login.classList.remove('hidden');
                 console.log("Sistema Senac 2026 pronto.");
             };
 
             try {
                 if (typeof window.DB !== 'undefined') {
-                    if(typeof loadFromStorage === 'function') loadFromStorage();
+                    // A carga é iniciada exclusivamente após autenticação.
                     if(typeof window.atualizarAutocompleteGlobal === 'function') window.atualizarAutocompleteGlobal();
                 }
 
@@ -9033,7 +9033,7 @@ if (typeof showToast === 'function') {
 
                 setTimeout(() => {
                     forcarEntrada();
-                    if(typeof switchTab === 'function') switchTab('qualificacao');
+                    if(typeof switchTab === 'function' && !firebase.auth().currentUser) switchTab('qualificacao');
                     if(typeof lucide !== 'undefined') lucide.createIcons();
                 }, 600);
             } catch (err) {
@@ -9597,6 +9597,7 @@ async function limparAntigas(){const all=await localList();const weekly=all.filt
 function segundaDaSemana(d=new Date()){const x=new Date(d);x.setHours(8,0,0,0);const diff=(x.getDay()+6)%7;x.setDate(x.getDate()-diff);return x;}
 function chaveSemana(d=new Date()){const x=segundaDaSemana(d);return x.toISOString().slice(0,10);}
  async function cloudPut(item){
+  if(window.SenacV29&&!window.SenacV29.admin())return false;
   if(typeof firebase==='undefined'||!firebase.firestore||!navigator.onLine)return false;
   const raw=JSON.stringify(item.data),compressed=typeof LZString!=='undefined',payload=compressed?LZString.compressToBase64(raw):btoa(unescape(encodeURIComponent(raw))),payloadChecksum=hashBackup(payload);
   const chunkSize=300000,chunks=[];for(let i=0;i<payload.length;i+=chunkSize)chunks.push(payload.slice(i,i+chunkSize));
@@ -12337,9 +12338,9 @@ function el(n,a={}){let x=document.createElementNS(NS,n);Object.entries(a).forEa
 function cor(n,max){if(!n)return '#e2e8f0';let t=n/Math.max(1,max);return t>.75?'#004587':t>.5?'#0063a6':t>.25?'#3b82c4':'#93c5e8'}
 window.renderMapaBrasil=function(){let svg=document.getElementById('mapaBrasilSvg'),rank=document.getElementById('mapaBrasilRanking'),sum=document.getElementById('mapaBrasilResumo');if(!svg||!rank)return;let d=dados(),vals=Object.values(d),max=Math.max(1,...vals.map(x=>x.total)),total=vals.reduce((n,x)=>n+x.total,0);svg.innerHTML='';svg.appendChild(el('path',{d:OUTLINE,fill:'#f8fafc',stroke:'#cbd5e1','stroke-width':'4','stroke-linejoin':'round'}));Object.entries(POS).forEach(([uf,[x,y]])=>{let z=d[uf]||{total:0,quali:0,tec:0,cidades:new Set()},r=z.total?Math.min(32,12+22*Math.sqrt(z.total/max)):10,g=el('g',{'data-uf':uf,tabindex:'0',role:'button','aria-label':`${NOMES[uf]}: ${z.total} alunos`});let c=el('circle',{cx:x,cy:y,r,fill:cor(z.total,max),stroke:z.total?'#fff':'#94a3b8','stroke-width':z.total?'3':'1.5'}),t=el('text',{x,y:y+4,'text-anchor':'middle','font-size':uf==='DF'?'10':'12','font-weight':'800',fill:z.total?'#fff':'#64748b'});t.textContent=uf;g.append(c,t);if(z.total){let n=el('text',{x,y:y+r+13,'text-anchor':'middle','font-size':'10','font-weight':'800',fill:'#334155'});n.textContent=z.total;g.appendChild(n)}g.addEventListener('mouseenter',e=>tip(e,uf,z));g.addEventListener('mousemove',moveTip);g.addEventListener('mouseleave',hideTip);g.addEventListener('focus',e=>tip(e,uf,z));g.addEventListener('blur',hideTip);svg.appendChild(g)});sum.textContent=`${total} alunos · ${Object.keys(d).length} UFs`;rank.innerHTML=Object.entries(d).sort((a,b)=>b[1].total-a[1].total).map(([uf,z])=>`<div class="p-2 rounded-lg border border-slate-200 bg-white"><div class="flex justify-between items-center"><span class="font-black text-senac-blue text-xs">${uf} · ${NOMES[uf]}</span><span class="text-sm font-black text-slate-700">${z.total}</span></div><div class="text-[9px] text-slate-500 mt-1">Qualificação: ${z.quali} · Técnica: ${z.tec} · Cidades: ${z.cidades.size}</div><div class="h-1.5 bg-slate-100 rounded mt-2"><div style="width:${100*z.total/max}%;background:${cor(z.total,max)}" class="h-full rounded"></div></div></div>`).join('')||'<div class="text-xs text-slate-400 p-4 text-center">Nenhum aluno para os filtros selecionados.</div>';if(typeof lucide!=='undefined')lucide.createIcons()}
 function tip(e,uf,z){let q=document.getElementById('mapaBrasilTip');q.innerHTML=`<b>${NOMES[uf]} (${uf})</b><br>Total: ${z.total}<br>Qualificação: ${z.quali}<br>Técnica: ${z.tec}<br>Cidades: ${z.cidades.size}`;q.classList.remove('hidden');moveTip(e)}function moveTip(e){let q=document.getElementById('mapaBrasilTip'),box=document.getElementById('mapaBrasilSvg').parentElement.getBoundingClientRect();q.style.left=Math.min(box.width-170,Math.max(8,e.clientX-box.left+12))+'px';q.style.top=Math.max(8,e.clientY-box.top-10)+'px'}function hideTip(){document.getElementById('mapaBrasilTip')?.classList.add('hidden')}
-const rf=runFilter;runFilter=function(){let r=rf.apply(this,arguments);setTimeout(renderMapaBrasil,0);return r};
-const sa=window.setAbrangenciaRede;window.setAbrangenciaRede=function(v){let r=sa(v);setTimeout(renderMapaBrasil,0);return r};
-window.addEventListener('DOMContentLoaded',()=>setTimeout(renderMapaBrasil,1400));
+const rf=runFilter;runFilter=function(){let r=rf.apply(this,arguments);setTimeout(()=>window.renderMapaBrasil(),0);return r};
+const sa=window.setAbrangenciaRede;window.setAbrangenciaRede=function(v){let r=sa(v);setTimeout(()=>window.renderMapaBrasil(),0);return r};
+window.addEventListener('DOMContentLoaded',()=>setTimeout(()=>window.renderMapaBrasil(),1400));
 })();
 </script>
 <script id="mapa-regioes-e-legenda-v2">(function(){const REG={Norte:['AC','AP','AM','PA','RO','RR','TO'],Nordeste:['AL','BA','CE','MA','PB','PE','PI','RN','SE'],'Centro-Oeste':['DF','GO','MT','MS'],Sudeste:['ES','MG','RJ','SP'],Sul:['PR','RS','SC']},C={Norte:'#16a34a',Nordeste:'#f59e0b','Centro-Oeste':'#a16207',Sudeste:'#2563eb',Sul:'#7c3aed'};function base(){let a=STATE.scope==='tecnico'?(DB.tec||[]):(STATE.scope==='qualificacao'?(DB.quali||[]):[...(DB.quali||[]),...(DB.tec||[])]);if(STATE.abrangencia&&STATE.abrangencia!=='todos')a=a.filter(x=>(x.abrangencia||'parana')===STATE.abrangencia);return a}function counts(){let o={};base().forEach(a=>{let u=String(a.uf||a.estado||a.empresa?.uf||((a.abrangencia||'parana')==='parana'?'PR':'')).trim().toUpperCase();if(!u)return;o[u]??={total:0,q:0,t:0,c:new Set()};o[u].total++;(DB.tec||[]).includes(a)?o[u].t++:o[u].q++;if(a.cidade)o[u].c.add(a.cidade)});return o}function col(n,m){if(!n)return'#e2e8f0';let t=n/Math.max(1,m);return t>.75?'#004587':t>.5?'#0063a6':t>.25?'#3b82c4':'#93c5e8'}window.renderMapaRegioesELista=function(){let d=counts(),max=Math.max(1,...Object.values(d).map(x=>x.total)),l=document.getElementById('mapaBrasilTodasUfs'),lg=document.getElementById('mapaBrasilLegendaMax');if(l)l.innerHTML=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(u=>`<div class="rounded border text-center p-1 text-[9px] font-bold" style="background:${col(d[u]?.total||0,max)};color:${d[u]?.total?'white':'#64748b'}">${u}<br>${d[u]?.total||0}</div>`).join('');if(lg)lg.textContent='máximo: '+max;let g=document.getElementById('mapaRegioesGrid'),r=document.getElementById('mapaRegioesResumo');if(g){let it=Object.entries(REG).map(([n,ufs])=>{let z={total:0,q:0,t:0,c:0,est:0};ufs.forEach(u=>{if(d[u]){z.total+=d[u].total;z.q+=d[u].q;z.t+=d[u].t;z.c+=d[u].c.size;z.est++}});return[n,z,ufs]}),mr=Math.max(1,...it.map(x=>x[1].total));g.innerHTML=it.map(([n,z,ufs])=>`<div class="rounded-xl border bg-white p-3"><div class="flex justify-between"><b class="text-xs">${n}</b><b class="text-xl" style="color:${C[n]}">${z.total}</b></div><div class="h-2 bg-slate-100 rounded my-2"><div class="h-2 rounded" style="width:${100*z.total/mr}%;background:${C[n]}"></div></div><div class="text-[9px] text-slate-500">Qualificação: ${z.q}<br>Técnica: ${z.t}<br>UFs: ${z.est}<br>Cidades: ${z.c}</div><div class="text-[8px] text-slate-400 mt-2">${ufs.join(' · ')}</div></div>`).join('');if(r)r.textContent=it.reduce((n,x)=>n+x[1].total,0)+' alunos · 5 regiões'}};const old=window.renderMapaBrasil;window.renderMapaBrasil=function(){old();renderMapaRegioesELista()};window.addEventListener('DOMContentLoaded',()=>setTimeout(renderMapaRegioesELista,1600))})();</script>
@@ -12360,7 +12361,7 @@ Object.entries(POS).forEach(([uf,[x,y]])=>{let z=d[uf]||{total:0,quali:0,tec:0,c
 ['Norte','Nordeste','Centro-Oeste','Sudeste','Sul'].forEach(reg=>{let pts=Object.entries(POS).filter(([u])=>UFREG[u]===reg).map(([,p])=>p),x=pts.reduce((n,p)=>n+p[0],0)/pts.length,y=pts.reduce((n,p)=>n+p[1],0)/pts.length-28,t=E('text',{x,y,'text-anchor':'middle','font-size':'12','font-weight':'900',fill:'#334155','fill-opacity':'.65','pointer-events':'none'});t.textContent=reg.toUpperCase();svg.appendChild(t)});
 sum.textContent=`${total} alunos · ${Object.keys(d).length} UFs`;rank.innerHTML=Object.entries(d).sort((a,b)=>b[1].total-a[1].total).map(([uf,z])=>`<div class="p-2 rounded-lg border border-slate-200 bg-white"><div class="flex justify-between items-center"><span class="font-black text-senac-blue text-xs">${uf} · ${NOMES[uf]}</span><span class="text-sm font-black text-slate-700">${z.total}</span></div><div class="text-[9px] text-slate-500 mt-1">${UFREG[uf]} · Qualificação: ${z.quali} · Técnica: ${z.tec} · Cidades: ${z.cidades.size}</div><div class="h-1.5 bg-slate-100 rounded mt-2"><div style="width:${100*z.total/max}%;background:${cor(z.total,max)}" class="h-full rounded"></div></div></div>`).join('')||'<div class="text-xs text-slate-400 p-4 text-center">Nenhum aluno para os filtros selecionados.</div>';if(typeof renderMapaRegioesELista==='function')renderMapaRegioesELista();if(typeof lucide!=='undefined')lucide.createIcons()};
 window.APP_VERSION='TESTE-OFFLINE-MAPA-BRASIL-REGIOES-DIVISOES-V3';
-setTimeout(renderMapaBrasil,1700);
+setTimeout(()=>window.renderMapaBrasil(),1700);
 })();
 </script>
 <script id="mapa-estados-poligonos-v4">
@@ -12374,7 +12375,7 @@ function mapData(){let a=STATE.scope==='tecnico'?(DB.tec||[]):(STATE.scope==='qu
 function tip4(e,uf,z){let q=document.getElementById('mapaBrasilTip'),top=[...z.cidades.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]+' ('+x[1]+')').join(', ');q.innerHTML=`<b>${NOMES[uf]} (${uf})</b><br>Macrorregião: ${UF_REGION[uf]}<br>Total: ${z.total}<br>Qualificação: ${z.quali} · Técnica: ${z.tec}<br>Cidades: ${z.cidades.size}${top?'<br>Principais: '+top:''}`;q.classList.remove('hidden');moveTip(e)}
 window.renderMapaBrasil=function(){let svg=document.getElementById('mapaBrasilSvg'),rank=document.getElementById('mapaBrasilRanking'),sum=document.getElementById('mapaBrasilResumo');if(!svg||!rank)return;let d=mapData(),max=Math.max(1,...Object.values(d).map(x=>x.total)),total=Object.values(d).reduce((n,x)=>n+x.total,0);svg.innerHTML='';let defs=mk('defs'),f=mk('filter',{id:'stateShadow',x:'-10%',y:'-10%',width:'120%',height:'120%'}),sh=mk('feDropShadow',{dx:'0',dy:'2',stdDeviation:'2','flood-opacity':'.18'});f.appendChild(sh);defs.appendChild(f);svg.appendChild(defs);Object.keys(UF_PATHS).forEach(uf=>{let z=d[uf]||{total:0,quali:0,tec:0,cidades:new Map()},g=mk('g',{'data-state':uf,tabindex:'0',role:'button','aria-label':`${NOMES[uf]}: ${z.total} alunos`}),p=mk('path',{d:UF_PATHS[uf],fill:REGION_COLOR[UF_REGION[uf]],'fill-opacity':z.total?'.98':'.72',stroke:'#fff','stroke-width':z.total?'2.4':'1.5','stroke-linejoin':'round',style:'filter:url(#stateShadow);cursor:pointer'});g.appendChild(p);let [x,y]=POS[uf],t=mk('text',{x,y:y+3,'text-anchor':'middle','font-size':uf==='DF'?'7':'9','font-weight':'900',fill:'#fff',stroke:'#334155','stroke-width':'2','paint-order':'stroke','pointer-events':'none'});t.textContent=uf;g.appendChild(t);if(z.total){let b=mk('circle',{cx:x+13,cy:y-10,r:'9',fill:'#0f172a',stroke:'#fff','stroke-width':'2','pointer-events':'none'}),n=mk('text',{x:x+13,y:y-7,'text-anchor':'middle','font-size':'7','font-weight':'900',fill:'#fff','pointer-events':'none'});n.textContent=z.total>999?'999+':z.total;g.append(b,n)}g.addEventListener('mouseenter',e=>tip4(e,uf,z));g.addEventListener('mousemove',moveTip);g.addEventListener('mouseleave',hideTip);g.addEventListener('focus',e=>tip4(e,uf,z));g.addEventListener('blur',hideTip);svg.appendChild(g)});svg.appendChild(mk('path',{d:OUTLINE,fill:'none',stroke:'#475569','stroke-width':'3','stroke-linejoin':'round','pointer-events':'none'}));sum.textContent=`${total} alunos · ${Object.keys(d).length} UFs`;rank.innerHTML=Object.entries(d).sort((a,b)=>b[1].total-a[1].total).map(([uf,z])=>{let top=[...z.cidades.entries()].sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=>x[0]+' ('+x[1]+')').join(' · ');return `<div class="estado-aluno-card p-3 rounded-xl border border-slate-200 bg-white shadow-sm"><div class="flex justify-between items-start gap-2"><div><div class="font-black text-senac-blue text-xs">${uf} · ${NOMES[uf]}</div><div class="text-[9px] font-bold mt-0.5" style="color:${REGION_COLOR[UF_REGION[uf]]}">${UF_REGION[uf]}</div></div><span class="text-xl font-black text-slate-800">${z.total}</span></div><div class="grid grid-cols-3 gap-1 mt-2 text-center"><div class="bg-blue-50 rounded p-1"><b class="block text-[10px]">${z.quali}</b><span class="text-[8px] text-slate-500">Qualificação</span></div><div class="bg-orange-50 rounded p-1"><b class="block text-[10px]">${z.tec}</b><span class="text-[8px] text-slate-500">Técnica</span></div><div class="bg-slate-50 rounded p-1"><b class="block text-[10px]">${z.cidades.size}</b><span class="text-[8px] text-slate-500">Cidades</span></div></div>${top?`<div class="text-[8px] text-slate-500 mt-2"><b>Principais cidades:</b> ${top}</div>`:''}<div class="h-1.5 bg-slate-100 rounded mt-2"><div class="h-full rounded" style="width:${100*z.total/max}%;background:${REGION_COLOR[UF_REGION[uf]]}"></div></div></div>`}).join('')||'<div class="text-xs text-slate-400 p-4 text-center border rounded-lg">Nenhum estado possui alunos para os filtros selecionados.</div>';if(typeof renderMapaRegioesELista==='function')renderMapaRegioesELista();if(typeof lucide!=='undefined')lucide.createIcons()};
 window.APP_VERSION='TESTE-OFFLINE-IMPORTACAO-TSV-DATAS-V5';
-setTimeout(renderMapaBrasil,1800);
+setTimeout(()=>window.renderMapaBrasil(),1800);
 })();
 </script>
 <script id="camada-final-mapa-filtros-uf-v6">
@@ -12717,7 +12718,7 @@ window.selecionarDesligamento=(id,v)=>{const x=preview.find(x=>x.id===id);if(x&&
 window.aplicarDesligamentosSelecionados=async function(){const sel=preview.filter(x=>x.kind==='ok'&&x.selected);if(!sel.length)return alert('Nenhum aluno encontrado está selecionado.');if(!confirm(`Aplicar o desligamento em ${sel.length} aluno(s)?\n\nEsta ação preserva os cadastros, mas os remove das listas ativas.`))return;const stamp=`[${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}] - Desligamento aplicado por importação mensal de Excel.`;sel.forEach(x=>{const a=x.a;a.isDesligado=true;a.status='DESLIGADO';a.status_contrato='DESLIGADO';const old=String(a.obs||a.obs_origem||'').trim();a.obs=a.obs_origem=(old?old+'\n\n':'')+stamp;Object.values(DB.planning||{}).forEach(list=>(list||[]).forEach(it=>{if(String(it?.student?.id)===String(a.id)){it.student.isDesligado=true;it.student.status='DESLIGADO';it.obs=a.obs}}))});await saveToStorage();fecharPreviewDesligamentos();if(typeof runFilter==='function')runFilter();if(typeof updateDashboard==='function')updateDashboard();if(typeof renderTable==='function')renderTable();alert(`${sel.length} aluno(s) desligado(s) com sucesso. Os cadastros foram preservados na visualização de desligados.`)};
 function localizarPainelFiltros(){const search=document.getElementById('filterSearch'),reg=document.getElementById('filterRegiao');if(!search||!reg)return null;let p=search.parentElement;while(p&&p!==document.body){if(p.contains(reg)&&p.querySelector('#filterCidade'))return p;p=p.parentElement}return search.closest('.glass-panel')||search.parentElement}
 function menuRoot(){let r=document.getElementById('alunosActionMenus'),filters=localizarPainelFiltros();if(r){if(filters&&r.nextElementSibling!==filters)filters.parentNode.insertBefore(r,filters);return r}if(!filters)return null;r=document.createElement('div');r.id='alunosActionMenus';r.innerHTML=`<div class="amenu" data-menu="cad"><button type="button" class="amenu-btn">👤 Cadastros ▾</button><div class="amenu-list"></div></div><div class="amenu" data-menu="imp"><button type="button" class="amenu-btn">📥 Importações ▾</button><div class="amenu-list"><button type="button" onclick="document.getElementById('desligamentosExcelInput').click()">🚫 Importar desligamentos (Excel)</button></div></div><div class="amenu" data-menu="rel"><button type="button" class="amenu-btn">📊 Relatórios e exportações ▾</button><div class="amenu-list"></div></div><div class="amenu" data-menu="con"><button type="button" class="amenu-btn">☎ Contatos ▾</button><div class="amenu-list"></div></div><div class="amenu" data-menu="fer"><button type="button" class="amenu-btn">🛠 Ferramentas ▾</button><div class="amenu-list"></div></div><div class="amenu-spacer"></div><div class="amenu-note">Clique em um menu para ver os botões</div>`;filters.parentNode.insertBefore(r,filters);r.querySelectorAll('.amenu-btn').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const p=b.closest('.amenu'),open=p.classList.contains('open');r.querySelectorAll('.amenu').forEach(m=>m.classList.remove('open'));if(!open)p.classList.add('open')}));return r}
-function organize(){const r=menuRoot();if(!r)return;const map={cad:['Novo Aluno','Adicionar Aluno','Adicionar Novos','Desligados'],imp:['Importar','Carregar Base','Substituir Base','Atualizar Endereços','Restaurar'],rel:['Relatório Mensal','Exportar','Excel','Imprimir','Backup'],con:['Buscar responsável','Contato'],fer:['Corrigir Mapas','Corrigir Visitas','CC','Hist.','Histórico']};const buttons=[...document.querySelectorAll('button')].filter(b=>!b.closest('#alunosActionMenus,#planContent,#desligamentosPreview,#respUfModalV4,#studentModal,#loginPage')&&!b.classList.contains('tab-btn')&&!b.closest('#abrangenciaControl'));Object.entries(map).forEach(([key,terms])=>buttons.forEach(b=>{if(b.dataset.menuMoved)return;const text=b.textContent.replace(/\s+/g,' ').trim();if(terms.some(t=>text.toLowerCase().includes(t.toLowerCase()))){r.querySelector(`[data-menu="${key}"] .amenu-list`).appendChild(b);b.dataset.menuMoved='1'}}));r.querySelectorAll('.amenu').forEach(m=>{const list=m.querySelector('.amenu-list');if(!list.children.length)list.innerHTML='<div style="padding:9px 10px;font-size:10px;color:#64748b">Nenhuma ação disponível nesta tela.</div>'})}
+function organize(){const r=menuRoot();if(!r)return;const map={cad:['Novo Aluno','Adicionar Aluno','Adicionar Novos','Desligados'],imp:['Importar','Carregar Base','Substituir Base','Atualizar Endereços','Restaurar'],rel:['Relatório Mensal','Exportar','Excel','Imprimir','Backup'],con:['Buscar responsável','Contato'],fer:['Corrigir Mapas','Corrigir Visitas','CC','Hist.','Histórico']};const buttons=[...document.querySelectorAll('button')].filter(b=>!b.id.startsWith('v29-')&&!b.closest('#v29-monthly,#workflowNotificationsModal,#workflowAdminModal')&&!b.closest('#alunosActionMenus,#planContent,#desligamentosPreview,#respUfModalV4,#studentModal,#loginPage')&&!b.classList.contains('tab-btn')&&!b.closest('#abrangenciaControl'));Object.entries(map).forEach(([key,terms])=>buttons.forEach(b=>{if(b.dataset.menuMoved)return;const text=b.textContent.replace(/\s+/g,' ').trim();if(terms.some(t=>text.toLowerCase().includes(t.toLowerCase()))){r.querySelector(`[data-menu="${key}"] .amenu-list`).appendChild(b);b.dataset.menuMoved='1'}}));r.querySelectorAll('.amenu').forEach(m=>{const list=m.querySelector('.amenu-list');if(list&&!list.children.length)list.innerHTML='<div style="padding:9px 10px;font-size:10px;color:#64748b">Nenhuma ação disponível nesta tela.</div>'})}
 function atualizarVisibilidadeMenus(){const r=document.getElementById('alunosActionMenus');if(!r)return;const planejamento=document.getElementById('btnPlan')?.classList.contains('active'),controle=document.getElementById('btnControle')?.classList.contains('active');r.style.display=(planejamento||controle)?'none':'flex'}
 function iniciarMenus(){organize();atualizarVisibilidadeMenus();setTimeout(()=>{organize();atualizarVisibilidadeMenus()},500)}
 window.addEventListener('DOMContentLoaded',iniciarMenus);setTimeout(iniciarMenus,300);setTimeout(iniciarMenus,1200);document.addEventListener('click',e=>{if(e.target.closest('.tab-btn'))setTimeout(()=>{organize();atualizarVisibilidadeMenus()},30)});
@@ -13079,7 +13080,7 @@ body.modo-visitante .visitor-readonly-banner{display:flex!important}
 .wf-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.wf-badge{padding:5px 9px;border-radius:999px;font-size:10px;font-weight:900}.wf-rascunho{background:#f1f5f9;color:#475569}.wf-pendente{background:#fef3c7;color:#92400e}.wf-aprovado,.wf-legado{background:#dcfce7;color:#166534}.wf-devolvido{background:#fee2e2;color:#991b1b}.wf-btn{padding:7px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font-size:11px;font-weight:900}.wf-btn-primary{background:#075985;color:#fff;border-color:#075985}.wf-btn-ok{background:#15803d;color:#fff;border-color:#15803d}.wf-btn-warn{background:#b45309;color:#fff;border-color:#b45309}.wf-btn-danger{background:#b91c1c;color:#fff;border-color:#b91c1c}.wf-notice{padding:8px 10px;border-radius:8px;background:#eff6ff;color:#075985;font-size:11px;font-weight:800}.wf-modal{display:none;position:fixed;inset:0;z-index:2147483100;background:rgba(15,23,42,.75);align-items:center;justify-content:center;padding:16px}.wf-modal.open{display:flex}.wf-box{width:min(780px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:14px;padding:18px}.wf-list{display:grid;gap:8px}.wf-card{border:1px solid #e2e8f0;border-radius:10px;padding:10px}.wf-pill{font-size:9px;font-weight:900;padding:3px 6px;border-radius:999px;background:#e2e8f0}.wf-notification-count{background:#dc2626;color:#fff;border-radius:999px;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:9px}
 body.workflow-operador #viewDashboard,body.workflow-operador #viewAlunos,body.workflow-operador #viewControle,body.workflow-operador #viewFinanceiro{display:none!important}
 body.workflow-operador [data-admin-planejamento="1"],body.workflow-operador #btnRestaurarManualLogin{display:none!important}
-body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflow-bloqueado-aprovacao button[onclick*="sendFullPlanEmail"],body.workflow-bloqueado-aprovacao button[onclick*="openRateioModal"]{opacity:.45!important;filter:grayscale(1);pointer-events:none!important}
+body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflow-bloqueado-aprovacao button[onclick*="openRateioModal"]{opacity:.45!important;filter:grayscale(1);pointer-events:none!important}
 </style>
 <div id="workflowNotificationsModal" class="wf-modal"><div class="wf-box"><div class="flex justify-between items-center mb-3"><h3 class="font-black text-senac-blue">Notificações do Planejamento</h3><button class="wf-btn" onclick="fecharWorkflowModal('workflowNotificationsModal')">Fechar</button></div><div id="workflowNotificationsList" class="wf-list"></div></div></div>
 <div id="workflowAdminModal" class="wf-modal"><div class="wf-box"><div class="flex justify-between items-center mb-3"><h3 class="font-black text-senac-blue">Usuários e aprovações</h3><button class="wf-btn" onclick="fecharWorkflowModal('workflowAdminModal')">Fechar</button></div><div id="workflowAdminList" class="wf-list"></div></div></div>
@@ -13113,7 +13114,7 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
   initDB();if(!ctx)return null;
   if(!DB.workflow_planejamento[ctx]){
    const rid=responsavelPorItens(itens(ctx));
-   DB.workflow_planejamento[ctx]={contexto:ctx,status:'aprovado_legado',responsavelId:rid||'admin',responsavelNome:Object.values(OPS).find(x=>x.id===rid)?.nome||'Michel',criadoEm:new Date().toISOString(),legado:true,revisao:1,historico:[]};
+   DB.workflow_planejamento[ctx]={contexto:ctx,status:'rascunho',responsavelId:rid||'admin',responsavelNome:Object.values(OPS).find(x=>x.id===rid)?.nome||'Michel',criadoEm:new Date().toISOString(),legado:true,revisao:1,historico:[]};
   }
   return DB.workflow_planejamento[ctx];
  }
@@ -13128,12 +13129,12 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
  function registrar(m,acao,obs=''){m.historico=Array.isArray(m.historico)?m.historico:[];m.historico.push({acao,obs,por:email(),em:new Date().toISOString()});m.revisao=(m.revisao||0)+1;m.atualizadoEm=new Date().toISOString()}
  async function persistir(){if(typeof saveToStorage==='function')await saveToStorage();renderBar();}
  function statusClasse(s){return s==='aprovado'?'wf-aprovado':s==='aprovado_legado'?'wf-legado':s==='pendente'?'wf-pendente':s==='devolvido'?'wf-devolvido':'wf-rascunho'}
- function aprovado(m){return ['aprovado','aprovado_legado'].includes(m?.status)}
+ function aprovado(m){return ['aprovado'].includes(m?.status)}
  function garantirAcesso(){const m=meta();if(!m)return true;if(operador()&&!pertence(m)){alert('Este planejamento não pertence às regiões atribuídas ao usuário.');return false}return true}
- window.workflowPodeAcaoExterna=function(){const m=meta();if(!garantirAcesso())return false;if(admin())return true;if(!aprovado(m)){alert('Ação bloqueada: o planejamento precisa ser aprovado pelo administrador.');return false}return true};
+ window.workflowPodeAcaoExterna=function(){const m=meta();if(!garantirAcesso())return false;if(!aprovado(m)){alert('Ação bloqueada: o planejamento precisa ser aprovado pelo administrador.');return false}return true};
  window.enviarWorkflowAprovacao=async function(){const m=meta();if(!m||!garantirAcesso())return;if(!operador())return alert('Apenas usuários do Planejamento enviam para aprovação.');m.status='pendente';m.enviadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'enviado_aprovacao');notificar('admin','aprovacao',`${m.responsavelNome} enviou ${m.titulo} para aprovação.`,m.contexto);await persistir();alert('Planejamento enviado para aprovação.')};
  window.aprovarWorkflow=async function(ctx=contexto()){if(!admin())return;const m=meta(ctx);m.status='aprovado';m.aprovadoPor=email();m.aprovadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'aprovado');const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'aprovado',`${m.titulo} foi aprovado.`,ctx);await persistir();alert('Planejamento aprovado e usuário notificado.')};
- window.devolverWorkflow=async function(ctx=contexto()){if(!admin())return;const motivo=prompt('Informe o que precisa ser corrigido:');if(!motivo)return;const m=meta(ctx);m.status='devolvido';m.devolutiva=motivo;registrar(m,'devolvido',motivo);const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'devolvido',`${m.titulo||titulo(m)} foi devolvido: ${motivo}`,ctx);await persistir();alert('Planejamento devolvido e usuário notificado.')};
+ window.devolverWorkflow=async function(ctx=contexto()){if(!admin())return;const motivo=prompt('Informe o que precisa ser corrigido:')?.trim();if(!motivo)return;const m=meta(ctx);m.status='devolvido';m.devolutiva=motivo;registrar(m,'devolvido',motivo);const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'devolvido',`${m.titulo||titulo(m)} foi devolvido: ${motivo}`,ctx);await persistir();alert('Planejamento devolvido e usuário notificado.')};
  window.solicitarExclusaoWorkflow=async function(){const m=meta();if(!m||!operador())return;const motivo=prompt('Informe o motivo da solicitação de exclusão:');if(!motivo)return;DB.solicitacoes_exclusao.push({id:'exc_'+Date.now(),contexto:m.contexto,titulo:m.titulo||titulo(m),solicitante:email(),motivo,status:'pendente',criadaEm:new Date().toISOString()});notificar('admin','exclusao',`${m.responsavelNome} solicitou exclusão de ${m.titulo||titulo(m)}.`,m.contexto);await persistir();alert('Solicitação enviada ao administrador.')};
  function invalidarAprovacao(){const m=meta();if(!m||!operador()||!aprovado(m))return;m.status='rascunho';m.aprovadoEm=null;m.aprovadoPor=null;registrar(m,'edicao_pos_aprovacao');notificar('admin','alteracao',`${m.responsavelNome} alterou ${m.titulo||titulo(m)}; nova aprovação será necessária.`,m.contexto)}
  function renderBar(){
@@ -13141,9 +13142,9 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
   const m=meta(),op=operador();if(!m){bar.innerHTML='<div class="wf-notice">Selecione um planejamento para visualizar o fluxo de aprovação.</div>';return}
   if(op&&!pertence(m)){bar.innerHTML='<div class="wf-notice">Planejamento fora das regiões atribuídas a este usuário.</div>';return}
   const pend=DB.notificacoes_planejamento.filter(n=>!n.lida&&(n.destinatario===email()||(admin()&&n.destinatario==='admin'))).length;
-  const botoes=admin()?`<button class="wf-btn wf-btn-ok" onclick="aprovarWorkflow()">Aprovar</button><button class="wf-btn wf-btn-warn" onclick="devolverWorkflow()">Devolver</button><button class="wf-btn" onclick="abrirWorkflowAdmin()">Painel administrativo</button>`:`<button class="wf-btn wf-btn-primary" onclick="enviarWorkflowAprovacao()">Enviar para aprovação</button><button class="wf-btn wf-btn-danger" onclick="solicitarExclusaoWorkflow()">Solicitar exclusão</button>`;
+  const botoes=admin()?`<button class="wf-btn" onclick="abrirWorkflowAdmin()">Painel administrativo</button>`:`<button class="wf-btn wf-btn-primary" onclick="enviarWorkflowAprovacao()">Enviar para aprovação</button><button class="wf-btn wf-btn-danger" onclick="solicitarExclusaoWorkflow()">Solicitar exclusão</button>`;
   bar.innerHTML=`<div class="wf-row"><b>${m.titulo||titulo(m)}</b><span class="wf-badge ${statusClasse(m.status)}">${String(m.status).replace('_',' ').toUpperCase()}</span><span class="wf-pill">Responsável: ${m.responsavelNome}</span><span class="wf-pill">Revisão ${m.revisao||1}</span>${botoes}<button class="wf-btn" onclick="abrirWorkflowNotificacoes()">Notificações <span class="wf-notification-count">${pend}</span></button></div>${m.devolutiva?`<div class="wf-notice mt-2">Devolutiva: ${m.devolutiva}</div>`:''}`;
-  document.body.classList.toggle('workflow-bloqueado-aprovacao',!!op&&!aprovado(m));
+  document.body.classList.toggle('workflow-bloqueado-aprovacao',!aprovado(m));window.SenacV29?.refreshActions();
  }
  window.abrirWorkflowNotificacoes=function(){initDB();const alvo=admin()?'admin':email(),arr=DB.notificacoes_planejamento.filter(n=>n.destinatario===alvo);const box=document.getElementById('workflowNotificationsList');box.innerHTML=arr.length?arr.map(n=>`<div class="wf-card"><b>${n.tipo.toUpperCase()}</b><div>${n.mensagem}</div><small>${new Date(n.criadaEm).toLocaleString('pt-BR')}</small></div>`).join(''):'<div class="wf-notice">Nenhuma notificação.</div>';arr.forEach(n=>n.lida=true);document.getElementById('workflowNotificationsModal').classList.add('open');if(arr.length)saveToStorage()};
  window.abrirWorkflowAdmin=function(){if(!admin())return;initDB();const metas=Object.values(DB.workflow_planejamento);const pend=metas.filter(x=>x.status==='pendente');const exc=DB.solicitacoes_exclusao.filter(x=>x.status==='pendente');document.getElementById('workflowAdminList').innerHTML=`<div class="wf-notice">Pendentes de aprovação: ${pend.length} · Solicitações de exclusão: ${exc.length}</div>`+pend.map(m=>`<div class="wf-card"><b>${m.titulo||titulo(m)}</b><div>${m.responsavelNome} · ${m.contexto}</div><button class="wf-btn wf-btn-ok" onclick="aprovarWorkflow('${m.contexto.replace(/'/g,"\\'")}');abrirWorkflowAdmin()">Aprovar</button> <button class="wf-btn wf-btn-warn" onclick="devolverWorkflow('${m.contexto.replace(/'/g,"\\'")}');abrirWorkflowAdmin()">Devolver</button></div>`).join('')+exc.map(x=>`<div class="wf-card"><b>Exclusão solicitada</b><div>${x.titulo}</div><div>${x.motivo}</div><span class="wf-pill">Exclusão definitiva somente pelo administrador</span></div>`).join('');document.getElementById('workflowAdminModal').classList.add('open')};
@@ -13155,9 +13156,9 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
   const reg=document.getElementById('filterRegiao');if(reg){const opt=[...reg.options].find(o=>op.regioes.some(r=>norm(o.value||o.textContent).includes(norm(r))));if(opt){reg.value=opt.value;reg.dispatchEvent(new Event('change'))}reg.disabled=true}
   setTimeout(()=>{const btn=[...document.querySelectorAll('button')].find(b=>norm(b.textContent).includes('PLANEJAMENTO'));btn?.click()},50);
  }
- const externas=['openEmailModal','sendFullPlanEmail','openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'];
+ const externas=['openEmailModal','openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'];
  externas.forEach(nome=>{const fn=window[nome];if(typeof fn==='function'&&!fn.__wf){const w=function(){if(!workflowPodeAcaoExterna())return;return fn.apply(this,arguments)};w.__wf=true;window[nome]=w}});
- document.addEventListener('change',e=>{if(operador()&&e.target.closest('#planContent')){invalidarAprovacao();setTimeout(renderBar,0)}},true);
+ document.addEventListener('change',e=>{if(operador()&&e.target.closest('#planTableBody')&&!String(e.target.getAttribute('onchange')||'').includes("'status'")){invalidarAprovacao();setTimeout(renderBar,0)}},true);
  document.addEventListener('click',e=>{if(!operador())return;const t=norm(e.target.closest('button')?.textContent);if(['LER PEDAGOGICO','ATUALIZAR SUPERVISORES','PROXIMA VISITA','FAXINA','TRACAR ROTA','IMPORTAR EXCEL','SHAREPOINT','APLICAR STATUS GERAL'].some(x=>t.includes(x))){e.preventDefault();e.stopImmediatePropagation()}},true);
  const rr=window.renderPlanningTable;if(typeof rr==='function')window.renderPlanningTable=function(){const r=rr.apply(this,arguments);setTimeout(renderBar,0);return r};
  function start(){initDB();aplicarPerfil();setTimeout(()=>{Object.keys(DB.planning||{}).forEach(k=>meta(k));renderBar()},800)}
@@ -13295,7 +13296,7 @@ body.workflow-operador-v23 #btnQuali,body.workflow-operador-v23 #btnTec,body.wor
  const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
  function init(){DB.solicitacoes_status_visita=Array.isArray(DB.solicitacoes_status_visita)?DB.solicitacoes_status_visita:[];DB.notificacoes_planejamento=Array.isArray(DB.notificacoes_planejamento)?DB.notificacoes_planejamento:[]}
  function meta(ctx=STATE.planContext){return DB.workflow_planejamento?.[ctx]||null}
- function aprovado(){return ['aprovado','aprovado_legado'].includes(meta()?.status)}
+ function aprovado(){return ['aprovado'].includes(meta()?.status)}
  function notificar(dest,tipo,msg,ctx=STATE.planContext){DB.notificacoes_planejamento.unshift({id:'ntf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),destinatario:dest,tipo,mensagem:msg,contexto:ctx,criadaEm:new Date().toISOString(),lida:false})}
  function aplicarPerfil(){const u=op();document.body.classList.toggle('workflow-operador-v23',!!u);if(!u)return;setTimeout(()=>{if(typeof switchTab==='function')switchTab('planejamento')},30)}
  function dataBR(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:''}
@@ -13327,8 +13328,8 @@ body.workflow-operador-v23 #btnQuali,body.workflow-operador-v23 #btnTec,body.wor
  window.updatePlanItem=function(idx,field,val){if(op()&&field==='status')return solicitarStatus(idx,val);return updateOriginal.apply(this,arguments)};
  const bulkOriginal=window.applyBulkStatus;
  window.applyBulkStatus=function(){if(!op())return bulkOriginal.apply(this,arguments);const sel=document.getElementById('bulkStatusSelect');if(!sel?.value)return alert('Selecione um status primeiro.');if(!confirm(`Enviar para aprovação a alteração de todos os alunos para “${sel.value}”?`))return;(DB.planning?.[STATE.planContext]||[]).forEach((_,idx)=>{if(!pendenteMesmoItem(STATE.planContext,idx))solicitarStatus(idx,sel.value)});sel.value=''};
- window.aprovarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const item=DB.planning?.[s.contexto]?.[s.indice];if(!item||String(item.student?.id||'')!==String(s.alunoId)){const lista=DB.planning?.[s.contexto]||[];const achou=lista.find(x=>String(x.student?.id||'')===String(s.alunoId));if(!achou)return alert('Aluno não localizado no planejamento.');achou.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(achou)}else{item.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(item)}s.statusSolicitacao='aprovado';s.aprovadoPor=email();s.aprovadoEm=new Date().toISOString();notificar(s.solicitadoPor,'status_aprovado',`Alteração de status aprovada: ${s.alunoNome}, ${s.statusAtual} → ${s.statusSolicitado}.`,s.contexto);await saveToStorage();renderPlanningTable();renderPendenciasStatusV23();alert('Status aprovado e salvo na nuvem.')};
- window.recusarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const obs=prompt('Motivo da recusa:','');if(obs===null)return;s.statusSolicitacao='recusado';s.recusadoPor=email();s.recusadoEm=new Date().toISOString();s.observacao=obs;notificar(s.solicitadoPor,'status_recusado',`Alteração de status recusada para ${s.alunoNome}.${obs?' Motivo: '+obs:''}`,s.contexto);await saveToStorage();renderPendenciasStatusV23()};
+ window.aprovarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const item=DB.planning?.[s.contexto]?.[s.indice];if(!item||String(item.student?.id||'')!==String(s.alunoId)){const lista=DB.planning?.[s.contexto]||[];const achou=lista.find(x=>String(x.student?.id||'')===String(s.alunoId));if(!achou)return alert('Aluno não localizado no planejamento.');achou.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(achou)}else{item.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(item)}s.statusSolicitacao='aprovado';s.aprovadoPor=email();s.aprovadoEm=new Date().toISOString();notificar(s.solicitadoPor,'status_aprovado',`Alteração de status aprovada: ${s.alunoNome}, ${s.statusAtual} → ${s.statusSolicitado}.`,s.contexto);await saveToStorage();renderPlanningTable();renderPendenciasStatusV23();alert('Status aprovado localmente. Consulte o indicador de sincronização para confirmar a nuvem.')};
+ window.recusarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const obs=prompt('Motivo da recusa:','');if(!obs?.trim()){if(obs!==null)alert('Informe o motivo da devolução.');return;}s.statusSolicitacao='recusado';s.recusadoPor=email();s.recusadoEm=new Date().toISOString();s.observacao=obs;notificar(s.solicitadoPor,'status_recusado',`Alteração de status recusada para ${s.alunoNome}.${obs?' Motivo: '+obs:''}`,s.contexto);await saveToStorage();renderPendenciasStatusV23()};
  window.renderPendenciasStatusV23=function(){const box=document.getElementById('workflowAdminList');if(!box||!admin())return;init();const arr=DB.solicitacoes_status_visita.filter(x=>x.statusSolicitacao==='pendente');let sec=document.getElementById('statusPendenciasV23');if(!sec){sec=document.createElement('div');sec.id='statusPendenciasV23';box.prepend(sec)}sec.innerHTML=`<div class="wf-notice">Alterações de status aguardando aprovação: ${arr.length}</div>`+(arr.length?arr.map(s=>`<div class="wf-card"><b>${esc(s.alunoNome)}</b><div>${esc(s.solicitanteNome)} · ${esc(s.contexto)}</div><div>${esc(s.statusAtual)} → <b>${esc(s.statusSolicitado)}</b></div><button class="wf-btn wf-btn-ok" onclick="aprovarStatusVisitaV23('${esc(s.id)}')">Aprovar status</button> <button class="wf-btn wf-btn-warn" onclick="recusarStatusVisitaV23('${esc(s.id)}')">Recusar</button></div>`).join(''):'')};
  const adminOpen=window.abrirWorkflowAdmin;if(typeof adminOpen==='function')window.abrirWorkflowAdmin=function(){const r=adminOpen.apply(this,arguments);setTimeout(renderPendenciasStatusV23,0);return r};
  // Sinaliza pedidos pendentes na linha sem mudar o status oficial.
@@ -13449,7 +13450,7 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
  let totalConfirmado=Number(localStorage.getItem(KEY_TOTAL)||0),roteirosConfirmados=Number(localStorage.getItem(KEY_ROT)||0),cargaConcluida=false,autorizacao=null;
  const metricas=d=>({alunos:(d?.quali?.length||0)+(d?.tec?.length||0),roteiros:Object.keys(d?.planning||{}).length});
  function confirmar(d){const m=metricas(d);if(m.alunos>0){totalConfirmado=Math.max(totalConfirmado,m.alunos);roteirosConfirmados=Math.max(roteirosConfirmados,m.roteiros);localStorage.setItem(KEY_TOTAL,String(totalConfirmado));localStorage.setItem(KEY_ROT,String(roteirosConfirmados));localStorage.setItem('senac_ultima_base_integra_resumo_v27',JSON.stringify({...m,em:new Date().toISOString()}));cargaConcluida=true}return m}
- function validar(d,acao='gravação'){const m=metricas(d);if(m.alunos>0&&!cargaConcluida)confirmar(d);if(!cargaConcluida&&autorizacao!=='restauracao'){const e=new Error(`PROTEÇÃO ANTIPERDA: ${acao} adiada até a carga integral ser confirmada.`);e.protecaoInicializacao=true;throw e}if(m.alunos===0)throw new Error(`PROTEÇÃO ANTIPERDA: ${acao} com zero alunos foi bloqueada.`);if(totalConfirmado>0&&m.alunos<Math.floor(totalConfirmado*.90)&&autorizacao!=='substituicao'&&autorizacao!=='restauracao'){const q=Math.round((1-m.alunos/totalConfirmado)*100);throw new Error(`PROTEÇÃO ANTIPERDA: queda de ${q}% bloqueada (${totalConfirmado} para ${m.alunos} alunos).`)}if(roteirosConfirmados>0&&m.roteiros===0&&autorizacao!=='substituicao'&&autorizacao!=='restauracao')throw new Error(`PROTEÇÃO ANTIPERDA: desaparecimento de ${roteirosConfirmados} roteiros bloqueado.`);return m}
+ function validar(d,acao='gravação'){const m=metricas(d);if(window.SenacV29?.profile()&&window.SenacV29.ready)return m;if(m.alunos>0&&!cargaConcluida)confirmar(d);if(!cargaConcluida&&autorizacao!=='restauracao'){const e=new Error(`PROTEÇÃO ANTIPERDA: ${acao} adiada até a carga integral ser confirmada.`);e.protecaoInicializacao=true;throw e}if(m.alunos===0)throw new Error(`PROTEÇÃO ANTIPERDA: ${acao} com zero alunos foi bloqueada.`);if(totalConfirmado>0&&m.alunos<Math.floor(totalConfirmado*.90)&&autorizacao!=='substituicao'&&autorizacao!=='restauracao'){const q=Math.round((1-m.alunos/totalConfirmado)*100);throw new Error(`PROTEÇÃO ANTIPERDA: queda de ${q}% bloqueada (${totalConfirmado} para ${m.alunos} alunos).`)}if(roteirosConfirmados>0&&m.roteiros===0&&autorizacao!=='substituicao'&&autorizacao!=='restauracao')throw new Error(`PROTEÇÃO ANTIPERDA: desaparecimento de ${roteirosConfirmados} roteiros bloqueado.`);return m}
  window.PROTECAO_ANTIPERDA_V27={metricas,validar,confirmar,get totalConfirmado(){return totalConfirmado},get roteirosConfirmados(){return roteirosConfirmados},autorizar(tipo,ms=120000){autorizacao=tipo;setTimeout(()=>{if(autorizacao===tipo)autorizacao=null},ms)},encerrar(){autorizacao=null}};
  // A fonte vazia nunca vence uma cópia local íntegra.
  const loadOriginal=window.loadFromStorage;
@@ -13534,5 +13535,317 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
 })();
 </script>
 
+<style id="senac-v29-style">
+/* Responsividade V29: navegação com quebra e ações legíveis. */
+#appContainer>header{height:auto;min-height:64px;flex-wrap:wrap;gap:10px;padding:12px 18px}
+#appContainer>header>div,#appContainer nav{flex-wrap:wrap;min-width:0;height:auto;gap:8px}
+#appContainer nav{align-items:center}.tab-btn{min-height:44px}
+#saveStatus{display:flex!important;white-space:normal;max-width:100%;flex-basis:100%;order:10}
+.wf-card h4{font-weight:800;font-size:15px;margin-bottom:8px}.wf-card p{overflow-wrap:anywhere;margin:4px 0;font-size:13px}
+.wf-card .wf-row{margin-top:12px}.wf-btn{min-height:44px}.wf-btn:disabled{opacity:.5;cursor:not-allowed}
+.wf-box{overscroll-behavior:contain}.wf-box h3{font-weight:800;font-size:18px}
+.v29-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.v29-filters label{font-size:12px;font-weight:bold}.v29-filters input,.v29-filters select{display:block;width:100%;min-height:44px;border:1px solid #cbd5e1;border-radius:8px;background:white;padding:8px}
+#v29-summary{padding:12px 0;font-weight:bold}#v29-report-list{margin-bottom:16px}
+.v29-plan-actions{flex-wrap:wrap;overflow:visible!important}.v29-plan-actions button{min-height:44px;white-space:normal}
+.v29-plan-actions button span{display:inline!important}
+.v29-filter-drawer{border:1px solid #cbd5e1;border-radius:10px;padding:10px;margin:10px 0}
+.v29-filter-drawer summary{cursor:pointer;min-height:44px;font-size:14px;font-weight:bold;display:list-item;padding:10px}
+.v29-loading #viewPlanejamento,.v29-loading #viewDashboard{pointer-events:none;opacity:.55}
+.v29-loading #appContainer button{pointer-events:none;opacity:.55}
+body.workflow-operador #abrangenciaControl{display:none!important}
+@media(max-width:700px){
+ html,body{width:100%;max-width:100%;overflow-x:hidden}#appContainer{height:auto;min-height:100dvh}
+ #appContainer>header{padding:10px;position:relative}#appContainer>header>div{max-width:100%}
+ #appContainer nav{width:100%;display:flex;flex-wrap:wrap}#appContainer nav .tab-btn{flex:1 1 auto;padding:10px;font-size:12px}
+ #appContainer>header>div:first-child{width:100%;gap:10px}
+ #viewPlanejamento,#planContent{min-width:0;width:100%;overflow-x:hidden}#viewPlanejamento{flex-direction:column}
+ #planContent{padding:10px!important}#planContent>.flex{flex-wrap:wrap;height:auto}
+ .v29-plan-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:8px}
+ .v29-plan-actions>div.w-px{display:none}.v29-plan-actions button{justify-content:center;font-size:12px;padding:10px;min-width:0}
+ .wf-modal{padding:8px;align-items:center}.wf-box{width:100%;max-width:100%;max-height:94dvh;padding:14px;border-radius:12px}
+ .wf-row>b{flex-basis:100%;overflow-wrap:anywhere}.wf-row>.wf-btn{flex:1 1 120px}
+ .v29-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+ input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!important;min-height:44px}
+ #planContent button{min-height:44px}#newPlanContainer{height:auto;flex-wrap:wrap}
+ .v29-plan-table,.v29-plan-table tbody{display:block;width:100%!important;min-width:0!important}
+ .v29-plan-table thead{display:none}.v29-plan-table tbody tr{display:block;border:1px solid #cbd5e1;border-radius:12px;background:white;margin:12px 0;padding:10px}
+ .v29-plan-table tbody td{display:block;width:100%!important;min-width:0!important;max-width:100%!important;white-space:normal!important;border:0!important;padding:8px!important;overflow-wrap:anywhere}
+ .v29-plan-table tbody td:before{content:attr(data-label);display:block;font-size:11px;font-weight:800;color:#475569;margin-bottom:4px}
+ .v29-plan-table tbody td[colspan]:before{display:none}.v29-plan-table input,.v29-plan-table select,.v29-plan-table textarea{max-width:100%;width:100%}
+ .v29-plan-table input[type=checkbox]{width:22px;height:22px}
+}
+@media print{#v29-install,.v29-filter-drawer>summary{display:none!important}}
+
+</style>
+<script id="senac-v29-script">
+/* Revisão V29. Transporte autorizado, fila durável e interface regional. */
+(function(){'use strict';
+const ADMIN='michel.farias@pr.senac.br';
+const USERS={
+ 'kleber.sato@docente.pr.senac.br':{id:'kleber',nome:'Kleber',regiao:'UMUARAMA'},
+ 'michelly.gronkoski@docente.pr.senac.br':{id:'michelly',nome:'Michelly',regiao:'GUARAPUAVA'},
+ 'fernando.scaraveli@docente.pr.senac.br':{id:'fernando',nome:'Fernando',regiao:'CAMPO MOURAO'}
+};
+const clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x));
+const norm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+const email=()=>String(firebase.auth().currentUser?.email||'').toLowerCase();
+const profile=()=>USERS[email()]||null,admin=()=>email()===ADMIN;
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+function preserveCities(previous,incoming){const out=clone(previous||{});for(const [name,cities] of Object.entries(incoming||{})){if(!Array.isArray(cities))continue;const key=Object.keys(out).find(k=>norm(k)===norm(name))||name;const values=new Map((Array.isArray(out[key])?out[key]:[]).map(c=>[norm(c),c]));cities.forEach(c=>{if(norm(c))values.set(norm(c),c)});out[key]=[...values.values()]}return out}
+const uid=()=>firebase.auth().currentUser?.uid||'';
+const fresh=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random().toString(36).slice(2);
+let shellSession='',lastRegionSnapshot='';
+let stops=[],session='',ready=false,baseline=null,generation=null,pending=[],revision=0,writeTimer=null,chain=Promise.resolve(),remoteBusy=false;
+let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false;
+const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
+const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento'];
+function tell(text,error=false){errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.style.color=error?'#b45309':'#036642'} }
+function fail(e){console.error('[V29]',e);window.__ULTIMO_ERRO_NUVEM__={codigo:e.code||'erro',mensagem:e.message};tell('Alterações locais preservadas; '+(e.code==='permission-denied'?'Firebase recusou a permissão. Verifique as regras publicadas.':e.message),true)}
+function serial(fn){const next=chain.catch(()=>{}).then(fn);chain=next;return next}
+function ref(name){return firebase.firestore().collection('banco_senac').doc(name)}
+function inRegion(student,p){const region=student?.regiao||student?.regional||getRegiaoDaCidade(student?.cidade||student?.empresa?.cidade||'');return norm(region)===norm(p.regiao)}
+function owns(ctx,p,data=DB){const m=data.workflow_planejamento?.[ctx];const rows=data.planning?.[ctx]||[];return (m?.responsavelId===p.id||rows.some(x=>inRegion(x.student,p)))&&rows.every(x=>inRegion(x.student,p))}
+function projection(data,p){
+ const d={quali:(data.quali||[]).filter(a=>inRegion(a,p)),tec:(data.tec||[]).filter(a=>inRegion(a,p)),regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],rede_cidades:{},usuarios_planejamento:{[Object.keys(USERS).find(e=>USERS[e].id===p.id)]:p}};
+ const contexts=Object.keys(data.planning||{}).filter(k=>owns(k,p,data));
+ maps.concat('planning_processos').forEach(k=>{d[k]={};contexts.forEach(c=>{if(data[k]?.[c]!==undefined)d[k][c]=clone(data[k][c])})});
+ Object.entries(data.regioes_map||{}).forEach(([r,c])=>{if(norm(r)===norm(p.regiao))d.regioes_map[r]=clone(c)});
+ const allowedClasses=new Set([...d.quali,...d.tec].map(a=>String(a.turma)));
+ Object.entries(data.cc_map||{}).forEach(([k,v])=>{if(allowedClasses.has(k))d.cc_map[k]=v});
+ const e=Object.keys(USERS).find(e=>USERS[e].id===p.id);
+ lists.forEach(k=>d[k]=(data[k]||[]).filter(x=>k==='notificacoes_planejamento'?x.destinatario===e:(x.solicitadoPor||x.solicitante)===e));
+ return d;
+}
+function entities(d){const out={};maps.forEach(k=>Object.entries(d?.[k]||{}).forEach(([id,v])=>out[k+'\n'+id]=v));lists.forEach(k=>(d?.[k]||[]).forEach(v=>{if(v.id)out[k+'\n'+v.id]=v}));return out}
+function changes(before,after){const a=entities(before),b=entities(after),ops=[];for(const key of new Set([...Object.keys(a),...Object.keys(b)])){if(!same(a[key],b[key])){const [field,...rest]=key.split('\n');ops.push({id:fresh(),field,key:rest.join('\n'),before:a[key]??null,after:b[key]??null})}}return ops}
+function valueAt(d,o){return maps.includes(o.field)?d[o.field]?.[o.key]:(d[o.field]||[]).find(x=>x.id===o.key)}
+function put(d,o,value){if(maps.includes(o.field)){d[o.field]??={};if(value===null)delete d[o.field][o.key];else d[o.field][o.key]=clone(value)}else{d[o.field]??=[];d[o.field]=d[o.field].filter(x=>x.id!==o.key);if(value!==null)d[o.field].push(clone(value))}}
+function merge(base,local,remote,path='base'){
+ if(same(local,base))return clone(remote);if(same(remote,base)||same(local,remote))return clone(local);
+ if(base&&local&&remote&&!Array.isArray(base)&&!Array.isArray(local)&&!Array.isArray(remote)&&typeof base==='object'&&typeof local==='object'&&typeof remote==='object'){
+  const result={};for(const key of new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)])){
+   if(['__proto__','prototype','constructor'].includes(key))throw Error('Chave de objeto não permitida.');
+   if(['updatedAt','_origin','_backup_manifest'].includes(key)){result[key]=remote[key];continue}
+   const v=merge(base[key],local[key],remote[key],path+'.'+key);if(v!==undefined)result[key]=v;
+  }return result;
+ }
+ // Arrays de registros com ID podem receber inclusões independentes.
+ if([base,local,remote].every(Array.isArray)&&[base,local,remote].every(a=>a.every(v=>v&&v.id))){
+  const indexed=a=>Object.fromEntries(a.map(v=>[v.id,v]));return Object.values(merge(indexed(base),indexed(local),indexed(remote),path));
+ }
+ throw Error('Conflito em '+path+'. Exporte o backup local antes de reconciliar; nenhuma versão foi sobrescrita.');
+}
+function applyData(data){
+ // V27 usa limites globais: um recorte regional precisa de limites próprios.
+ if(profile()){
+  const defaults={planning:{},planning_logistics:{},planning_lunch:{},planning_admin:{},regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],custom_passwords:{}};
+  DB={...defaults,...clone(data)};window.DB=DB;
+  ['quali','tec'].forEach(k=>DB[k]=(DB[k]||[]).map(a=>({...a,ini:a.ini?new Date(a.ini):null,fim:a.fim?new Date(a.fim):null,visits:(a.visits||[]).map(v=>({...v,date:v.date?new Date(v.date):null}))})));
+ }else processDataLoad(data);
+}
+async function localStore(){const db=await dbPromise;const item={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision,collabVersion,collabQueue:clone(collabQueue)};await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});lastLocal=clone(DB)}
+async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+function refresh(){if(!ready)return;try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
+function openShell(){const first=shellSession!==uid();if(first){shellSession=uid();startApp(profile()?'planning_user':email()==='visitante@senac.br'?'visitor':'admin',profile()?.regiao||'Todas');}window.APP_READ_ONLY=!ready||email()==='visitante@senac.br';document.body.classList.toggle('v29-loading',!ready);if(profile()){STATE.userType='planning_user';STATE.userRegion=profile().regiao;document.getElementById('roleDisplay').textContent='Planejamento · '+profile().nome;if(first)switchTab('planejamento')}refreshActions()}
+async function decode(meta){if(meta.chunked)return carregarNuvemV9633(firebase.firestore(),meta);return meta.payload?JSON.parse(LZString.decompressFromBase64(meta.payload)):meta}
+async function publishRegions(data){if(!admin())return;for(const [e,p] of Object.entries(USERS)){
+ const payload=LZString.compressToBase64(JSON.stringify(projection(data,p)));if(payload.length>850000)throw Error('Recorte de '+p.nome+' excede o limite do documento; requer segmentação.');
+ await ref('resposta_'+p.id).set({schema:'senac-regional-v29',userId:p.id,email:e,generation:String(data.updatedAt),payload,ack:data._collabAck?.[p.id]||[],errors:data._collabErrors?.[p.id]||[],updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+}}
+async function writeGlobal(data,expected){
+ data=clone(data);data.regioes_map=preserveCities(baseline?.regioes_map,data.regioes_map);
+ const priorPlans=Object.keys(baseline?.planning||{}),archives=Object.values(data.planejamentos_excluidos||{});
+ const archivedLast=priorPlans.length>0&&!Object.keys(data.planning||{}).length&&priorPlans.every(ctx=>archives.some(a=>a.por===email()&&a.dados?.workflow_planejamento?.contexto===ctx));
+ if(archivedLast)PROTECAO_ANTIPERDA_V27.autorizar('substituicao',0);
+ try{PROTECAO_ANTIPERDA_V27.validar(data,'gravação')}finally{if(archivedLast)PROTECAO_ANTIPERDA_V27.encerrar()}
+ const f=firebase.firestore(),root=ref('dados_principais');const gen=Date.now()+'_'+fresh();data.updatedAt=Date.now();
+ const payload=LZString.compressToBase64(JSON.stringify(data)),parts=[];for(let i=0;i<payload.length;i+=300000)parts.push(payload.slice(i,i+300000));
+ for(let i=0;i<parts.length;i+=400){const batch=f.batch();parts.slice(i,i+400).forEach((conteudo,j)=>batch.set(root.collection('partes').doc(gen+'_'+String(i+j).padStart(5,'0')),{generation:gen,indice:i+j,conteudo}));await batch.commit()}
+ await f.runTransaction(async tx=>{const doc=await tx.get(root),actual=doc.exists?String(doc.data().generation||doc.data().updatedAt||''):null;if(actual!==expected)throw Error('A base mudou em outro computador. A gravação foi interrompida para preservar as duas versões.');tx.set(root,{chunked:true,generation:gen,chunkCount:parts.length,totalLength:payload.length,checksum:hashV9637(payload),updatedAt:data.updatedAt,schema:'senac-cloud-v29',updatedBy:email()})});
+ // Gerações anteriores não são apagadas durante leituras concorrentes.
+ return {data,generation:gen};
+}
+async function flush(){
+ if(!ready||!firebase.auth().currentUser||email()==='visitante@senac.br')return;
+ if(!navigator.onLine){tell('Salvo neste dispositivo; aguardando conexão.');return}
+ if(profile()){
+  if(!pending.length)return;const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();
+  await firebase.firestore().runTransaction(async tx=>{const snap=await tx.get(doc),current=snap.exists?snap.data():null;const actual=current?.version||null;if(actual!==collabVersion)throw Error('Outra sessão deste usuário atualizou a colaboração. Reabra após exportar suas alterações locais.');const ops=[...collabQueue,...sent].filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);const payload=JSON.stringify(ops);if(new TextEncoder().encode(payload).length>800000||ops.length>2000)throw Error('Fila de colaboração muito grande. Aguarde a confirmação do administrador.');tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops,updatedAt:firebase.firestore.FieldValue.serverTimestamp()})});
+  collabVersion=version;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
+ }
+ if(!admin())return;
+ const sent=clone(DB),result=await writeGlobal(sent,generation);
+ const next=merge(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell('Salvo e confirmado na nuvem.');refresh();
+}
+window.saveToStorage=async function(){
+ if(!ready)return false;if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
+ if(profile()){
+  // Configuração global nunca faz parte da colaboração regional.
+  DB.regioes_map=clone(baseline.regioes_map||{});DB.rede_cidades=clone(baseline.rede_cidades||{});
+  const ops=changes(lastLocal||baseline,DB);pending.push(...ops);
+ }
+ revision++;await localStore();tell('Salvo neste dispositivo; sincronização pendente.');clearTimeout(writeTimer);writeTimer=setTimeout(()=>serial(flush).catch(fail),450);return true;
+};
+window.sincronizarAgoraNuvem=()=>serial(flush).catch(e=>{fail(e);throw e});
+window.sincronizarComNuvem=()=>window.sincronizarAgoraNuvem();
+window.salvarNuvemIntegralV9637=async()=>{if(!admin())throw Error('Gravação global permitida somente ao administrador.');return serial(flush)};
+function validateOp(o,p,data){
+ if(!o||typeof o.id!=='string'||!maps.concat(lists).includes(o.field)||typeof o.key!=='string'||['__proto__','prototype','constructor'].includes(o.key))throw Error('Operação inválida.');
+ const v=o.after,e=Object.keys(USERS).find(e=>USERS[e].id===p.id);
+ if(maps.includes(o.field)){
+  if(v===null)throw Error('Exclusão deve ser solicitada ao administrador.');
+  const existing=!!data.planning?.[o.key];const newEmptyOwner=o.field==='workflow_planejamento'&&!data.workflow_planejamento?.[o.key]&&!(data.planning?.[o.key]||[]).length&&v.responsavelId===p.id;if(existing&&!owns(o.key,p,data)&&!newEmptyOwner)throw Error('Planejamento fora da região.');
+  if(!existing&&o.field!=='planning'&&!(o.field==='workflow_planejamento'&&v.responsavelId===p.id)&&data.workflow_planejamento?.[o.key]?.responsavelId!==p.id)throw Error('Planejamento ainda não cadastrado.');
+  if(o.field==='planning'){
+   if(!Array.isArray(v)||!v.every(x=>{const a=[...(data.quali||[]),...(data.tec||[])].find(a=>String(a.id)===String(x.student?.id));return a&&inRegion(a,p)&&inRegion(x.student,p)}))throw Error('Aluno fora da região ou ausente na base oficial.');
+   const old=data.planning?.[o.key]||[];if(v.some(x=>{const a=old.find(y=>String(y.student?.id)===String(x.student?.id));return (a?a.status||'Realizar':'Realizar')!==(x.status||'Realizar')}))throw Error('Mudança de status deve ser solicitada.');
+  }
+  if(o.field==='workflow_planejamento'&&(v.responsavelId!==p.id||!['rascunho','pendente','devolvido'].includes(v.status)||v.aprovadoPor||v.aprovadoEm))throw Error('Aprovação é exclusiva do administrador.');
+ }else{
+  if(v===null)throw Error('Solicitações e notificações não podem ser apagadas pelo usuário.');
+  if(o.field==='solicitacoes_status_visita'&&(v.solicitadoPor!==e||v.statusSolicitacao!=='pendente'||!owns(v.contexto,p,data)))throw Error('Solicitação de status inválida.');
+  if(o.field==='solicitacoes_exclusao'&&(v.solicitante!==e||v.status!=='pendente'||!owns(v.contexto,p,data)))throw Error('Solicitação de exclusão inválida.');
+  if(o.field==='solicitacoes_cidades'&&(v.solicitante!==e||v.status!=='pendente'||norm(v.regiao)!==norm(p.regiao)||!String(v.cidade||'').trim()))throw Error('Solicitação de cidade inválida.');
+  if(o.field==='notificacoes_planejamento'){
+   const prev=valueAt(data,o);if(prev){if(prev.destinatario!==e||!same({...prev,lida:v.lida},v))throw Error('Somente leitura da própria notificação pode ser alterada.')}else if(v.destinatario!=='admin'||!owns(v.contexto,p,data))throw Error('Destinatário inválido.');
+  }
+ }
+}
+async function ingest(p,message){
+ if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
+ let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];
+ const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
+ for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
+ if(!count){await publishRegions(DB);return}
+ // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
+ applyData(candidate);await localStore();await flush();
+}
+async function receiveGlobal(doc,token){
+ if(token!==session||!doc.exists||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
+ const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(gen===generation&&ready){if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
+ const remote=await decode(meta);if(token!==session)return;const current=clone(DB);
+ const combined=baseline?merge(baseline,current,remote):remote;
+ baseline=clone(remote);generation=gen;applyData(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){await publishRegions(remote);for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
+}
+async function receiveRegion(doc,token){
+ if(token!==session||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
+ if(!doc.exists){tell('Aguardando o administrador abrir a versão revisada para disponibilizar sua região.');return}
+ const data=doc.data();if(data.schema!=='senac-regional-v29')throw Error('A resposta regional ainda não foi migrada para V29.');
+ const signature=JSON.stringify([data.payload,data.ack||[],data.errors||[]]);if(signature===lastRegionSnapshot)return;
+ const remote=JSON.parse(LZString.decompressFromBase64(data.payload));const ack=new Set(data.ack||[]);collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
+ let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.after);
+ baseline=clone(remote);applyData(next);ready=true;openShell();await localStore();refresh();
+ if((data.errors||[]).length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
+ window.__V29_COLLAB_ERRORS=data.errors||[];lastRegionSnapshot=signature;
+}
+window.iniciarEscutaDaNuvem=function(){return false}; // substitui a escuta antiga de sistema/banco_principal
+window.loadFromStorage=async()=>ready?clone(DB):null;
+window.carregarBaseAposAutenticacao=async function(){
+ const user=firebase.auth().currentUser;if(!user)return;const token=user.uid;if(session===token)return;session=token;
+ if(!admin()&&!profile()&&email()!=='visitante@senac.br'){await firebase.auth().signOut();throw Error('Conta sem perfil autorizado no sistema.');}
+ ready=false;window.APP_READ_ONLY=true;openShell();tell('Autenticado; carregando dados autorizados…');
+ const cached=await localRead();if(token!==session)return;
+ if(cached){baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];needsReplay=!same(cached.data,cached.baseline);applyData(cached.data);ready=true;openShell();lastLocal=clone(DB);refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
+ const enqueue=fn=>serial(fn).catch(fail);
+ if(profile()){
+  // Um get para recuperar a fila compartilhada, uma escuta para respostas.
+  try{const c=await ref('colaboracao_'+profile().id).get();if(token!==session)return;
+  if(c.exists){const v=c.data();if(!pending.length){collabVersion=v.version||null;collabQueue=v.ops||[]}}}catch(e){fail(e)}
+  stops.push(ref('resposta_'+profile().id).onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveRegion(d,token)),fail));
+ }else{
+  stops.push(ref('dados_principais').onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveGlobal(d,token)),fail));
+  if(admin())for(const p of Object.values(USERS))stops.push(ref('colaboracao_'+p.id).onSnapshot(d=>{if(d.exists){inbox[p.id]=d.data();enqueue(()=>ingest(p,d.data()))}},fail));
+ }
+ document.getElementById('globalLoader')?.classList.add('hidden');
+};
+firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
+window.addEventListener('online',()=>serial(flush).catch(fail));
+// Interface e relatórios são instalados abaixo.
+function refreshActions(){
+ const approved=['aprovado'].includes(DB.workflow_planejamento?.[STATE.planContext]?.status);
+ document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{b.disabled=!approved;b.title=approved?'Ação disponível':'Disponível após aprovação administrativa';b.setAttribute('aria-disabled',String(!approved))});
+ document.querySelectorAll('button[onclick*="sendFullPlanEmail"]').forEach(b=>{b.disabled=false;b.style.pointerEvents='auto'});
+ const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
+ const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
+}
+window.SenacV29={profile,admin,projection,merge,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
+function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
+function exportLocal(){const data=clone(DB);data._v29_recuperacao={usuario:email(),em:new Date().toISOString(),pendentes:clone(pending),enviadas:clone(collabQueue),devolvidas:clone(window.__V29_COLLAB_ERRORS||[])};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='supervisao_copia_local_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function card(title,fields){const el=document.createElement('article');el.className='wf-card';const h=document.createElement('h4');h.textContent=title;el.append(h);for(const [label,value] of fields){const p=document.createElement('p'),b=document.createElement('b');b.textContent=label+': ';p.append(b,document.createTextNode(String(value||'Não informado')));el.append(p)}return el}
+function regionFor(ctx){const m=DB.workflow_planejamento?.[ctx];return Object.values(USERS).find(p=>p.id===m?.responsavelId)?.regiao||(DB.planning?.[ctx]||[])[0]?.student?.regiao||'Administração'}
+function openPlan(ctx){if(profile()&&!owns(ctx,profile()))return;fecharWorkflowModal('workflowNotificationsModal');switchTab('planejamento');switchPlan(ctx)}
+function note(dest,tipo,mensagem,contexto){DB.notificacoes_planejamento??=[];DB.notificacoes_planejamento.unshift({id:'v29_'+fresh(),destinatario:dest,tipo,mensagem,contexto,solicitante:email(),criadaEm:new Date().toISOString(),lida:false})}
+async function requestCity(){const p=profile();if(!p)return;const city=prompt('Cidade a incluir ou corrigir na região '+p.regiao+':')?.trim();if(!city)return;const reason=prompt('Descreva a inclusão ou correção necessária:')?.trim();if(!reason)return alert('Informe a descrição.');DB.solicitacoes_cidades??=[];DB.solicitacoes_cidades.push({id:'cidade_'+fresh(),cidade:city,regiao:p.regiao,motivo:reason,solicitante:email(),solicitanteNome:p.nome,status:'pendente',criadaEm:new Date().toISOString()});await saveToStorage();alert('Solicitação registrada. Acompanhe a confirmação no indicador de sincronização.');}
+async function cityDecision(s,approve){if(!admin()||s.status!=='pendente')return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return}if(approve){const conflict=Object.entries(DB.regioes_map||{}).find(([r,c])=>norm(r)!==norm(s.regiao)&&Array.isArray(c)&&c.some(v=>norm(v)===norm(s.cidade)));if(conflict)return alert('Esta cidade já está vinculada a '+conflict[0]+'. A transferência exige revisão do cadastro e dos alunos.');const key=Object.keys(DB.regioes_map||{}).find(r=>norm(r)===norm(s.regiao))||s.regiao;DB.regioes_map??={};DB.regioes_map[key]??=[];if(!DB.regioes_map[key].some(c=>norm(c)===norm(s.cidade)))DB.regioes_map[key].push(s.cidade);DB.cidades_auditoria??=[];DB.cidades_auditoria.push({regiao:key,cidade:s.cidade,por:email(),em:new Date().toISOString(),solicitacao:s.id})}s.status=approve?'aprovado':'devolvido';s.motivoDevolucao=reason;s.decididoPor=email();s.decididoEm=new Date().toISOString();note(s.solicitante,approve?'cidade_aprovada':'cidade_devolvida',approve?'Cidade incluída: '+s.cidade:'Solicitação de cidade devolvida: '+reason,'');await saveToStorage();showNotifications(false);refresh();}
+async function deleteDecision(req,approve){
+ if(!admin()||req.status!=='pendente')return;
+ let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return alert('Informe o motivo para devolver.')}else if(!confirm('Aprovar exclusão de '+req.contexto+'? Uma cópia será preservada no histórico interno.'))return;
+ if(approve){DB.planejamentos_excluidos??={};const archive={por:email(),em:new Date().toISOString(),dados:{}};maps.concat('planning_processos').forEach(k=>{if(DB[k]?.[req.contexto]!==undefined){archive.dados[k]=clone(DB[k][req.contexto]);delete DB[k][req.contexto]}});DB.planejamentos_excluidos[req.id]=archive;if(STATE.planContext===req.contexto)STATE.planContext=null}
+ req.status=approve?'aprovado':'devolvido';req.decididoPor=email();req.decididoEm=new Date().toISOString();req.motivoDevolucao=reason;
+ note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await saveToStorage();refresh();showNotifications(false);
+}
+function showNotifications(mark=true){
+ const list=document.getElementById('workflowNotificationsList');if(!list)return;list.replaceChildren();
+ const add=(title,fields,ctx,approve,decline)=>{const c=card(title,fields),actions=document.createElement('div');actions.className='wf-row';if(approve)actions.append(button('Aprovar',approve,'wf-btn wf-btn-ok'));if(decline)actions.append(button('Devolver',decline,'wf-btn wf-btn-warn'));if(ctx&&DB.planning?.[ctx])actions.append(button('Abrir planejamento',()=>openPlan(ctx)));c.append(actions);list.append(c)};
+ if(admin()){
+  Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').forEach(m=>add('Aprovação de planejamento', [['Solicitante',m.responsavelNome],['Região',regionFor(m.contexto)],['Planejamento',m.contexto],['Alteração solicitada','Aprovação do roteiro'],['Data',new Date(m.enviadoEm||m.atualizadoEm||m.criadoEm).toLocaleString('pt-BR')]],m.contexto,async()=>{await aprovarWorkflow(m.contexto);showNotifications(false)},async()=>{await devolverWorkflow(m.contexto);showNotifications(false)}));
+  (DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').forEach(s=>add('Alteração de status',[['Solicitante',s.solicitanteNome||s.solicitadoPor],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Aluno',s.alunoNome],['Alteração solicitada',s.statusAtual+' → '+s.statusSolicitado],['Data',new Date(s.solicitadoEm).toLocaleString('pt-BR')]],s.contexto,async()=>{await aprovarStatusVisitaV23(s.id);showNotifications(false)},async()=>{await recusarStatusVisitaV23(s.id);showNotifications(false)}));
+  (DB.solicitacoes_exclusao||[]).filter(s=>s.status==='pendente').forEach(s=>add('Pedido de exclusão',[['Solicitante',s.solicitanteNome||s.solicitante],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Motivo',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],s.contexto,()=>deleteDecision(s,true),()=>deleteDecision(s,false)));
+  (DB.solicitacoes_cidades||[]).filter(s=>s.status==='pendente').forEach(s=>add('Alteração de cidade',[['Solicitante',s.solicitanteNome],['Região',s.regiao],['Cidade',s.cidade],['Descrição',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],null,()=>cityDecision(s,true),()=>cityDecision(s,false)));
+ }
+ const mine=(DB.notificacoes_planejamento||[]).filter(n=>n.destinatario===(admin()?'admin':email()));mine.sort((a,b)=>String(b.criadaEm).localeCompare(String(a.criadaEm))).forEach(n=>add(String(n.tipo||'Notificação').replace(/_/g,' '),[['Descrição',n.mensagem],['Solicitante',n.solicitante||DB.workflow_planejamento?.[n.contexto]?.responsavelNome],['Região',regionFor(n.contexto)],['Planejamento',n.contexto],['Data',new Date(n.criadaEm).toLocaleString('pt-BR')]],n.contexto));
+ (window.__V29_COLLAB_ERRORS||[]).forEach(e=>add('Alteração não aplicada',[['Motivo',e.motivo],['Data',new Date(e.em).toLocaleString('pt-BR')]]));
+ if(!list.children.length)list.append(card('Nenhuma notificação',[]));document.getElementById('workflowNotificationsModal').classList.add('open');
+ if(mark&&mine.some(n=>!n.lida)){mine.forEach(n=>n.lida=true);saveToStorage().catch(fail)}
+}
+window.abrirWorkflowNotificacoes=()=>showNotifications();window.abrirWorkflowAdmin=()=>showNotifications();
+function dateOnly(v){if(!v)return null;if(v instanceof Date)return isNaN(v)?null:v;const s=String(v);const br=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);const d=br?new Date(+br[3],+br[2]-1,+br[1],12):new Date(s.length===10?s+'T12:00:00':s);return isNaN(d)?null:d}
+function monthlyRows(month){
+ const start=dateOnly(month+'-01'),end=new Date(start.getFullYear(),start.getMonth()+1,1),rows=[],p=profile();const students=[...(DB.quali||[]),...(DB.tec||[])].filter(a=>!p||inRegion(a,p));
+ const plans=Object.entries(DB.planning||{}).filter(([ctx])=>!p||owns(ctx,p));
+ const seen=new Set();
+ for(const a of students){
+  if(a.isDesligado||analyzeStatus(a)?.status==='desligado')continue;
+  const visits=(a.visits||[]).filter(v=>v.ok),deadline=dateOnly(a.fim),next=(window.calcularPrevisaoVisitas?.(a)||[]).find(v=>v.status==='pendente'),due=dateOnly(next?.dataStr);
+  const base={aluno:a.nome,cidade:a.cidade||a.empresa?.cidade||'',regiao:a.regiao||getRegiaoDaCidade(a.cidade),responsavel:a.supervisor?.display||'Não informado',planejamento:'',alunoId:String(a.id)};
+  if(!visits.length&&deadline&&deadline<end)rows.push({...base,tipo:'Urgentes',data:deadline});else if(due&&due<start)rows.push({...base,tipo:'Atrasadas',data:due});else if(due&&due<end)rows.push({...base,tipo:'Previstas no mês',data:due});
+  for(const [ctx,items] of plans)for(const item of items){if(String(item.student?.id)!==String(a.id))continue;const d=dateOnly(item.date);if(!d||d<start||d>=end)continue;const type=item.status==='Realizada'?'Realizadas':'Planejamentos';const key=a.id+'|'+d.toLocaleDateString('pt-BR')+'|'+type;if(seen.has(key))continue;seen.add(key);rows.push({...base,tipo:type,data:d,planejamento:ctx,responsavel:DB.workflow_planejamento?.[ctx]?.responsavelNome||base.responsavel})}
+  for(const v of visits){const d=dateOnly(v.date);if(!d||d<start||d>=end)continue;const key=a.id+'|'+d.toLocaleDateString('pt-BR')+'|Realizadas';if(!seen.has(key)){seen.add(key);rows.push({...base,tipo:'Realizadas',data:d})}}
+ }return rows;
+}
+function openMonthly(){
+ let modal=document.getElementById('v29-monthly');if(!modal){modal=document.createElement('div');modal.id='v29-monthly';modal.className='wf-modal';modal.innerHTML='<section class="wf-box"><div class="wf-row"><h3>Relatório Mensal</h3><button class="wf-btn" id="v29-close-month">Fechar</button></div><div class="v29-filters"><label>Mês<input id="v29-month" type="month"></label><label>Categoria<select id="v29-type"><option value="">Todas</option><option>Planejamentos</option><option>Urgentes</option><option>Atrasadas</option><option>Previstas no mês</option><option>Realizadas</option></select></label><label>Cidade<select id="v29-city"></select></label><label>Responsável<select id="v29-owner"></select></label></div><div id="v29-summary" role="status"></div><div id="v29-report-list" class="wf-list"></div><button class="wf-btn" id="v29-export">Exportar Excel</button></section>';document.body.append(modal);document.getElementById('v29-close-month').onclick=()=>modal.classList.remove('open');const now=new Date();document.getElementById('v29-month').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');}
+ let all=[],visible=[];
+ const populate=()=>{const value=document.getElementById('v29-month').value;if(!/^\d{4}-\d{2}$/.test(value))return;all=monthlyRows(value);for(const [id,key] of [['v29-city','cidade'],['v29-owner','responsavel']]){const s=document.getElementById(id);s.replaceChildren(new Option('Todos',''));[...new Set(all.map(x=>x[key]).filter(Boolean))].sort().forEach(v=>s.add(new Option(v,v)))}render()};
+ const render=()=>{const type=document.getElementById('v29-type').value,city=document.getElementById('v29-city').value,owner=document.getElementById('v29-owner').value;visible=all.filter(x=>(!type||x.tipo===type)&&(!city||x.cidade===city)&&(!owner||x.responsavel===owner));const list=document.getElementById('v29-report-list');list.replaceChildren();document.getElementById('v29-summary').textContent=visible.length+' registros · '+(profile()?.regiao||'Todas as regiões');visible.forEach(x=>list.append(card(x.tipo+' · '+x.aluno,[['Cidade',x.cidade],['Responsável',x.responsavel],['Data',x.data.toLocaleDateString('pt-BR')],['Planejamento',x.planejamento||'Sem roteiro vinculado']])));if(!visible.length)list.append(card('Nenhum registro para os filtros selecionados',[]))};
+ document.getElementById('v29-month').onchange=populate;['v29-type','v29-city','v29-owner'].forEach(id=>document.getElementById(id).onchange=render);document.getElementById('v29-export').onclick=()=>{const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(visible.map(x=>({Categoria:x.tipo,Aluno:x.aluno,Região:x.regiao,Cidade:x.cidade,Responsável:x.responsavel,Data:x.data.toLocaleDateString('pt-BR'),Planejamento:x.planejamento}))),'Mensal');XLSX.writeFile(wb,'Relatorio_Mensal_'+document.getElementById('v29-month').value+'.xlsx')};populate();modal.classList.add('open');
+}
+window.gerarRelatorioVisitasMes=openMonthly;
+let installPrompt=null,installed=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e});
+window.addEventListener('appinstalled',()=>{installed=true;document.getElementById('v29-install')?.remove()});
+async function install(){if(installPrompt){const event=installPrompt;installPrompt=null;await event.prompt();await event.userChoice;return}const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);alert(ios?'No Safari, toque em Compartilhar → Adicionar à Tela de Início.':'No Chrome ou Edge, abra o menu do navegador → Instalar aplicativo ou Adicionar à tela inicial. Se a opção não aparecer, confirme que está usando o endereço HTTPS publicado e atualizado.');}
+function mobileTable(){const body=document.getElementById('planTableBody');if(!body)return;const table=body.closest('table');const headers=[...table.querySelectorAll('thead th')].map(x=>x.textContent.trim());[...body.rows].forEach(row=>[...row.cells].forEach((cell,i)=>{cell.dataset.label=headers[i]||'Informação'}));table.classList.add('v29-plan-table')}
+function installUI(){
+ const plan=document.getElementById('btnPlan');let monthly=document.getElementById('v29-monthly-tab');if(plan&&!monthly){monthly=button('Relatório Mensal',openMonthly,'tab-btn');monthly.id='v29-monthly-tab';plan.after(monthly)}
+ // O menu antigo pode mover seu botão; a aba permanece disponível independentemente dele.
+ document.querySelectorAll('button[onclick="gerarRelatorioVisitasMes()"]').forEach(b=>b.style.display='none');
+ const header=document.querySelector('#appContainer>header');if(header&&!installed&&!document.getElementById('v29-install')){const b=button('Instalar aplicativo',install);b.id='v29-install';header.append(b)}
+ if(header&&!document.getElementById('v29-city-request')){const b=button('Solicitar ajuste de cidade',requestCity);b.id='v29-city-request';header.append(b)}
+ if(header&&!document.getElementById('v29-notifications')){const b=button('Notificações (0)',()=>showNotifications());b.id='v29-notifications';header.append(b)}
+ if(header&&!document.getElementById('v29-local-backup')){const b=button('Exportar cópia local',exportLocal);b.id='v29-local-backup';header.append(b)}
+ if(header&&!document.getElementById('v29-sync')){const b=button('Sincronizar agora',()=>window.sincronizarAgoraNuvem());b.id='v29-sync';header.append(b)}
+ if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(e=>console.warn('Instalação: service worker indisponível',e));
+ const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;actions?.classList.add('v29-plan-actions');
+ const filters=document.getElementById('planRegiao')?.closest('.grid');if(filters&&!filters.closest('details')){const details=document.createElement('details');details.className='v29-filter-drawer';details.open=innerWidth>700;const summary=document.createElement('summary');summary.textContent='Filtros do planejamento';filters.before(details);details.append(summary,filters)}
+ const body=document.getElementById('planTableBody');if(body){let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(mobileTable,30)}).observe(body,{childList:true});mobileTable()}
+ document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.wf-modal.open').forEach(m=>m.classList.remove('open'))});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
+})();
+
+</script>
 </body>
 </html>
