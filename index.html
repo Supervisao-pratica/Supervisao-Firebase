@@ -13131,7 +13131,7 @@ button[onclick*="openEmailModal"]:disabled,button[onclick*="openRateioModal"]:di
  function statusClasse(s){return s==='aprovado'?'wf-aprovado':s==='aprovado_legado'?'wf-legado':s==='pendente'?'wf-pendente':s==='devolvido'?'wf-devolvido':'wf-rascunho'}
  function aprovado(m){return ['aprovado'].includes(m?.status)}
  function garantirAcesso(){const m=meta();if(!m)return true;if(operador()&&!pertence(m)){alert('Este planejamento não pertence às regiões atribuídas ao usuário.');return false}return true}
- window.workflowPodeAcaoExterna=function(){const m=meta();if(!garantirAcesso())return false;if(!aprovado(m)){alert('Ação bloqueada: o planejamento precisa ser aprovado pelo administrador.');return false}return true};
+ window.workflowPodeAcaoExterna=function(){const m=meta();if(!garantirAcesso())return false;if(admin())return true;if(!aprovado(m)){alert('Ação bloqueada: o planejamento precisa ser aprovado pelo administrador.');return false}return true};
  window.enviarWorkflowAprovacao=async function(){const m=meta();if(!m||!garantirAcesso())return;if(!operador())return alert('Apenas usuários do Planejamento enviam para aprovação.');m.status='pendente';m.enviadoPor=email();m.enviadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'enviado_aprovacao');notificar('admin','aprovacao',`${m.responsavelNome} enviou ${m.titulo} para aprovação.`,m.contexto);await persistir();alert('Planejamento enviado para aprovação.')};
  window.aprovarWorkflow=async function(ctx=contexto()){if(!admin())return;const m=meta(ctx);m.status='aprovado';m.aprovadoPor=email();m.aprovadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'aprovado');const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'aprovado',`${m.titulo} foi aprovado.`,ctx);await persistir();alert('Planejamento aprovado e usuário notificado.')};
  window.devolverWorkflow=async function(ctx=contexto()){if(!admin())return;const motivo=prompt('Informe o que precisa ser corrigido:')?.trim();if(!motivo)return;const m=meta(ctx);m.status='devolvido';m.devolutiva=motivo;registrar(m,'devolvido',motivo);const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'devolvido',`${m.titulo||titulo(m)} foi devolvido: ${motivo}`,ctx);await persistir();alert('Planejamento devolvido e usuário notificado.')};
@@ -13772,7 +13772,7 @@ function realizedApproved(item,ctx=STATE.planContext,data=DB){
 }
 function actionAllowed(name,mode){
  const rateio=['openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'].includes(name),finalAction=rateio||(name==='openEmailModal'&&mode==='feedback');
- if(admin()&&rateio)return true;
+ if(admin())return true;
  if(profile()&&finalAction)return owns(STATE.planContext,profile())&&(DB.planning?.[STATE.planContext]||[]).some(i=>realizedApproved(i));
  return (admin()||!!profile())&&DB.workflow_planejamento?.[STATE.planContext]?.status==='aprovado';
 }
@@ -13787,6 +13787,7 @@ function requester(n){
  return USERS[sender]?.nome||Object.values(USERS).find(p=>p.id===m?.responsavelId)?.nome||n.solicitanteNome||m?.responsavelNome||explicit||'Não informado';
 }
 function refreshActions(){
+ window.renderControleProcessosV26?.();
  document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{const code=b.getAttribute('onclick')||'',rateio=code.includes('openRateioModal'),feedback=code.includes('feedback'),allowed=actionAllowed(rateio?'openRateioModal':'openEmailModal',feedback?'feedback':'agendamento');b.disabled=!allowed;b.title=allowed?'Ação disponível':(rateio||feedback?'Disponível após aprovação administrativa do status Realizada':'Disponível após aprovação administrativa do planejamento');b.setAttribute('aria-disabled',String(!allowed))});
  const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
  document.querySelectorAll('button[onclick*="sendFullPlanEmail"]').forEach(b=>{b.disabled=false;b.style.pointerEvents='auto'});
