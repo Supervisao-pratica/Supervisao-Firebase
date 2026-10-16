@@ -3805,7 +3805,7 @@ function autoFillCC() { const t = document.getElementById('finTurma').value; doc
 
         function switchPlan(planName) {
             if(!planName) return;
-            STATE.planContext = planName;
+            STATE.planContext = planName; document.getElementById("activePlanTitle").textContent=planName;
             renderPlanningTable(); 
             loadLogistics(); 
             renderLunchTable(); 
@@ -5002,7 +5002,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             document.getElementById('emailModalTitle').innerText = mode === 'feedback' ? "Gerar E-mails de Feedback" : (STATE.emailVisitMode === 'online' ? "Agendamento Online" : "Agendamento Presencial"); 
             document.getElementById('emailModalSubtitle').innerText = mode === 'feedback' ? "Agradecimento aos supervisores." : (STATE.emailVisitMode === 'online' ? "Supervisão virtual com formulário e link do Teams." : "Solicitação de visita presencial aos supervisores."); 
             
-            const planningItems = DB.planning[STATE.planContext].filter(i => i.status === targetStatus); 
+            const planningItems = DB.planning[STATE.planContext].filter(i => i.status === targetStatus && (mode!=='feedback'||!window.SenacV29?.profile()||window.SenacV29.realizedApproved(i))); 
             if(planningItems.length === 0) return alert(`Nenhuma visita com status '${targetStatus}' para gerar.`); 
             
             const grouped = {}; 
@@ -5384,7 +5384,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             const clock=m=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(Math.round(m%60)).padStart(2,'0')}`;
             const statusOk=v=>['REALIZADA','REALIZADO','VISITADO','VISITADA'].includes(N(v));
             const plano=DB.planning?.[context]||[];
-            const visitas=plano.filter(v=>v?.student?.id&&v.date&&statusOk(v.status));
+            const visitas=plano.filter(v=>v?.student?.id&&v.date&&statusOk(v.status)&&(!window.SenacV29?.profile()||window.SenacV29.realizedApproved(v,context)));
             const logs=DB.planning_logistics?.[context]||[];
             const lunches=DB.planning_lunch?.[context]||[];
             const admins=DB.planning_admin?.[context]||[];
@@ -13080,7 +13080,7 @@ body.modo-visitante .visitor-readonly-banner{display:flex!important}
 .wf-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.wf-badge{padding:5px 9px;border-radius:999px;font-size:10px;font-weight:900}.wf-rascunho{background:#f1f5f9;color:#475569}.wf-pendente{background:#fef3c7;color:#92400e}.wf-aprovado,.wf-legado{background:#dcfce7;color:#166534}.wf-devolvido{background:#fee2e2;color:#991b1b}.wf-btn{padding:7px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font-size:11px;font-weight:900}.wf-btn-primary{background:#075985;color:#fff;border-color:#075985}.wf-btn-ok{background:#15803d;color:#fff;border-color:#15803d}.wf-btn-warn{background:#b45309;color:#fff;border-color:#b45309}.wf-btn-danger{background:#b91c1c;color:#fff;border-color:#b91c1c}.wf-notice{padding:8px 10px;border-radius:8px;background:#eff6ff;color:#075985;font-size:11px;font-weight:800}.wf-modal{display:none;position:fixed;inset:0;z-index:2147483100;background:rgba(15,23,42,.75);align-items:center;justify-content:center;padding:16px}.wf-modal.open{display:flex}.wf-box{width:min(780px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:14px;padding:18px}.wf-list{display:grid;gap:8px}.wf-card{border:1px solid #e2e8f0;border-radius:10px;padding:10px}.wf-pill{font-size:9px;font-weight:900;padding:3px 6px;border-radius:999px;background:#e2e8f0}.wf-notification-count{background:#dc2626;color:#fff;border-radius:999px;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:9px}
 body.workflow-operador #viewDashboard,body.workflow-operador #viewAlunos,body.workflow-operador #viewControle,body.workflow-operador #viewFinanceiro{display:none!important}
 body.workflow-operador [data-admin-planejamento="1"],body.workflow-operador #btnRestaurarManualLogin{display:none!important}
-body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflow-bloqueado-aprovacao button[onclick*="openRateioModal"]{opacity:.45!important;filter:grayscale(1);pointer-events:none!important}
+button[onclick*="openEmailModal"]:disabled,button[onclick*="openRateioModal"]:disabled{opacity:.45!important;filter:grayscale(1);pointer-events:none!important}
 </style>
 <div id="workflowNotificationsModal" class="wf-modal"><div class="wf-box"><div class="flex justify-between items-center mb-3"><h3 class="font-black text-senac-blue">Notificações do Planejamento</h3><button class="wf-btn" onclick="fecharWorkflowModal('workflowNotificationsModal')">Fechar</button></div><div id="workflowNotificationsList" class="wf-list"></div></div></div>
 <div id="workflowAdminModal" class="wf-modal"><div class="wf-box"><div class="flex justify-between items-center mb-3"><h3 class="font-black text-senac-blue">Usuários e aprovações</h3><button class="wf-btn" onclick="fecharWorkflowModal('workflowAdminModal')">Fechar</button></div><div id="workflowAdminList" class="wf-list"></div></div></div>
@@ -13124,7 +13124,7 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
  }
  function titulo(m=meta()){const nome=m?.responsavelNome||(operador()?.nome||'Michel');return `${nome} - Data da visita ${dataVisita(m?.contexto)}`}
  function notificar(dest,tipo,mensagem,ctx=contexto()){
-  DB.notificacoes_planejamento.unshift({id:'ntf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),destinatario:dest,tipo,mensagem,contexto:ctx,criadaEm:new Date().toISOString(),lida:false});
+  DB.notificacoes_planejamento.unshift({id:'ntf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),destinatario:dest,tipo,mensagem,contexto:ctx,solicitante:email(),criadaEm:new Date().toISOString(),lida:false});
  }
  function registrar(m,acao,obs=''){m.historico=Array.isArray(m.historico)?m.historico:[];m.historico.push({acao,obs,por:email(),em:new Date().toISOString()});m.revisao=(m.revisao||0)+1;m.atualizadoEm=new Date().toISOString()}
  async function persistir(){if(typeof saveToStorage==='function')await saveToStorage();renderBar();}
@@ -13132,7 +13132,7 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
  function aprovado(m){return ['aprovado'].includes(m?.status)}
  function garantirAcesso(){const m=meta();if(!m)return true;if(operador()&&!pertence(m)){alert('Este planejamento não pertence às regiões atribuídas ao usuário.');return false}return true}
  window.workflowPodeAcaoExterna=function(){const m=meta();if(!garantirAcesso())return false;if(!aprovado(m)){alert('Ação bloqueada: o planejamento precisa ser aprovado pelo administrador.');return false}return true};
- window.enviarWorkflowAprovacao=async function(){const m=meta();if(!m||!garantirAcesso())return;if(!operador())return alert('Apenas usuários do Planejamento enviam para aprovação.');m.status='pendente';m.enviadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'enviado_aprovacao');notificar('admin','aprovacao',`${m.responsavelNome} enviou ${m.titulo} para aprovação.`,m.contexto);await persistir();alert('Planejamento enviado para aprovação.')};
+ window.enviarWorkflowAprovacao=async function(){const m=meta();if(!m||!garantirAcesso())return;if(!operador())return alert('Apenas usuários do Planejamento enviam para aprovação.');m.status='pendente';m.enviadoPor=email();m.enviadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'enviado_aprovacao');notificar('admin','aprovacao',`${m.responsavelNome} enviou ${m.titulo} para aprovação.`,m.contexto);await persistir();alert('Planejamento enviado para aprovação.')};
  window.aprovarWorkflow=async function(ctx=contexto()){if(!admin())return;const m=meta(ctx);m.status='aprovado';m.aprovadoPor=email();m.aprovadoEm=new Date().toISOString();m.titulo=titulo(m);registrar(m,'aprovado');const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'aprovado',`${m.titulo} foi aprovado.`,ctx);await persistir();alert('Planejamento aprovado e usuário notificado.')};
  window.devolverWorkflow=async function(ctx=contexto()){if(!admin())return;const motivo=prompt('Informe o que precisa ser corrigido:')?.trim();if(!motivo)return;const m=meta(ctx);m.status='devolvido';m.devolutiva=motivo;registrar(m,'devolvido',motivo);const e=Object.entries(OPS).find(([,u])=>u.id===m.responsavelId)?.[0];if(e)notificar(e,'devolvido',`${m.titulo||titulo(m)} foi devolvido: ${motivo}`,ctx);await persistir();alert('Planejamento devolvido e usuário notificado.')};
  window.solicitarExclusaoWorkflow=async function(){const m=meta();if(!m||!operador())return;const motivo=prompt('Informe o motivo da solicitação de exclusão:');if(!motivo)return;DB.solicitacoes_exclusao.push({id:'exc_'+Date.now(),contexto:m.contexto,titulo:m.titulo||titulo(m),solicitante:email(),motivo,status:'pendente',criadaEm:new Date().toISOString()});notificar('admin','exclusao',`${m.responsavelNome} solicitou exclusão de ${m.titulo||titulo(m)}.`,m.contexto);await persistir();alert('Solicitação enviada ao administrador.')};
@@ -13157,7 +13157,7 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
   setTimeout(()=>{const btn=[...document.querySelectorAll('button')].find(b=>norm(b.textContent).includes('PLANEJAMENTO'));btn?.click()},50);
  }
  const externas=['openEmailModal','openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'];
- externas.forEach(nome=>{const fn=window[nome];if(typeof fn==='function'&&!fn.__wf){const w=function(){if(!workflowPodeAcaoExterna())return;return fn.apply(this,arguments)};w.__wf=true;window[nome]=w}});
+ externas.forEach(nome=>{const fn=window[nome];if(typeof fn==='function'&&!fn.__wf){const w=function(){if(window.SenacV29?!window.SenacV29.actionAllowed(nome,arguments[0]):!workflowPodeAcaoExterna())return;return fn.apply(this,arguments)};w.__wf=true;window[nome]=w}});
  document.addEventListener('change',e=>{if(operador()&&e.target.closest('#planTableBody')&&!String(e.target.getAttribute('onchange')||'').includes("'status'")){invalidarAprovacao();setTimeout(renderBar,0)}},true);
  document.addEventListener('click',e=>{if(!operador())return;const t=norm(e.target.closest('button')?.textContent);if(['LER PEDAGOGICO','ATUALIZAR SUPERVISORES','PROXIMA VISITA','FAXINA','TRACAR ROTA','IMPORTAR EXCEL','SHAREPOINT','APLICAR STATUS GERAL'].some(x=>t.includes(x))){e.preventDefault();e.stopImmediatePropagation()}},true);
  const rr=window.renderPlanningTable;if(typeof rr==='function')window.renderPlanningTable=function(){const r=rr.apply(this,arguments);setTimeout(renderBar,0);return r};
@@ -13252,7 +13252,7 @@ body.workflow-bloqueado-aprovacao button[onclick*="openEmailModal"],body.workflo
   if(!nome)return;
   // Abre diretamente o planejamento autorizado. Isso evita o bloqueio antigo por criador,
   // permitindo roteiros criados pelo admin quando o título/atribuição corresponde ao usuário e à região.
-  STATE.planContext=nome;
+  STATE.planContext=nome; document.getElementById("activePlanTitle").textContent=nome; window.SenacV29?.refreshActions();
   if(typeof renderPlanningTable==='function')renderPlanningTable();
   if(typeof loadLogistics==='function')loadLogistics();
   if(typeof renderLunchTable==='function')renderLunchTable();
@@ -13297,7 +13297,7 @@ body.workflow-operador-v23 #btnQuali,body.workflow-operador-v23 #btnTec,body.wor
  function init(){DB.solicitacoes_status_visita=Array.isArray(DB.solicitacoes_status_visita)?DB.solicitacoes_status_visita:[];DB.notificacoes_planejamento=Array.isArray(DB.notificacoes_planejamento)?DB.notificacoes_planejamento:[]}
  function meta(ctx=STATE.planContext){return DB.workflow_planejamento?.[ctx]||null}
  function aprovado(){return ['aprovado'].includes(meta()?.status)}
- function notificar(dest,tipo,msg,ctx=STATE.planContext){DB.notificacoes_planejamento.unshift({id:'ntf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),destinatario:dest,tipo,mensagem:msg,contexto:ctx,criadaEm:new Date().toISOString(),lida:false})}
+ function notificar(dest,tipo,msg,ctx=STATE.planContext){DB.notificacoes_planejamento.unshift({id:'ntf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),destinatario:dest,tipo,mensagem:msg,contexto:ctx,solicitante:email(),criadaEm:new Date().toISOString(),lida:false})}
  function aplicarPerfil(){const u=op();document.body.classList.toggle('workflow-operador-v23',!!u);if(!u)return;setTimeout(()=>{if(typeof switchTab==='function')switchTab('planejamento')},30)}
  function dataBR(iso){const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:''}
  function proximoNome(nome,data){const base=`${nome} - ${data}`,keys=Object.keys(DB.planning||{});if(!keys.includes(base))return base;let n=2;while(keys.includes(`${base} - ${String(n).padStart(2,'0')}`))n++;return `${base} - ${String(n).padStart(2,'0')}`}
@@ -13317,11 +13317,11 @@ body.workflow-operador-v23 #btnQuali,body.workflow-operador-v23 #btnTec,body.wor
  const openNewOriginal=window.openNewPlanInput;
  window.openNewPlanInput=function(){const r=openNewOriginal.apply(this,arguments);const u=op(),i=document.getElementById('newPlanNameInput');if(u&&i){i.placeholder='Data da visita: dd/mm/aaaa';i.value=''}return r};
  // Rateio permanece dentro do Planejamento, mas só abre para operador se aprovado.
- ['openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'].forEach(nome=>{const fn=window[nome];if(typeof fn==='function'){window[nome]=function(){if(op()&&!aprovado()){alert('Rateio bloqueado: o planejamento precisa ser aprovado pelo administrador.');return}return fn.apply(this,arguments)}}});
+ ['openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'].forEach(nome=>{const fn=window[nome];if(typeof fn==='function'){window[nome]=function(){if(op()&&!window.SenacV29?.actionAllowed(nome)){alert('Rateio disponível após aprovação do status Realizada.');return}return fn.apply(this,arguments)}}});
  function pendenteMesmoItem(ctx,idx){return DB.solicitacoes_status_visita.find(x=>x.contexto===ctx&&x.indice===idx&&x.statusSolicitacao==='pendente')}
  function solicitarStatus(idx,novo){init();const ctx=STATE.planContext,item=DB.planning?.[ctx]?.[idx],u=op();if(!u||!item)return false;if(pendenteMesmoItem(ctx,idx)){alert('Já existe uma alteração de status aguardando aprovação para este aluno.');renderPlanningTable();return true}
   const atual=item.status||'Realizar';if(atual===novo){renderPlanningTable();return true}
-  const s={id:'sts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),contexto:ctx,indice:idx,alunoId:String(item.student?.id||''),alunoNome:item.student?.nome||'Aluno',statusAtual:atual,statusSolicitado:novo,solicitadoPor:email(),solicitanteNome:u.nome,solicitadoEm:new Date().toISOString(),statusSolicitacao:'pendente'};
+  const s={id:'sts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),contexto:ctx,indice:idx,visitaData:item.date||null,alunoId:String(item.student?.id||''),alunoNome:item.student?.nome||'Aluno',statusAtual:atual,statusSolicitado:novo,solicitadoPor:email(),solicitanteNome:u.nome,solicitadoEm:new Date().toISOString(),statusSolicitacao:'pendente'};
   DB.solicitacoes_status_visita.push(s);notificar('admin','status_visita',`${u.nome} solicitou alteração de ${s.alunoNome}: ${atual} → ${novo}.`,ctx);saveToStorage();renderPlanningTable();alert('Alteração enviada para aprovação. O status oficial permanece inalterado até a decisão do administrador.');return true
  }
  const updateOriginal=window.updatePlanItem;
@@ -13718,7 +13718,7 @@ async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
  let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];
  const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
- for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
+ for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
  if(!count){await publishRegions(DB);return}
  // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
  applyData(candidate);await localStore();await flush();
@@ -13764,14 +13764,36 @@ window.carregarBaseAposAutenticacao=async function(){
 firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>serial(flush).catch(fail));
 // Interface e relatórios são instalados abaixo.
+function realizedApproved(item,ctx=STATE.planContext,data=DB){
+ if(item?.status!=='Realizada')return false;
+ const requests=(data.solicitacoes_status_visita||[]).filter(r=>r.contexto===ctx&&String(r.alunoId)===String(item.student?.id)&&(!r.visitaData||r.visitaData===item.date));
+ if(requests.some(r=>r.statusSolicitacao==='pendente'))return false;
+ return requests.some(r=>r.statusSolicitacao==='aprovado'&&r.statusSolicitado==='Realizada'&&r.aprovadoPor===ADMIN);
+}
+function actionAllowed(name,mode){
+ const rateio=['openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'].includes(name),finalAction=rateio||(name==='openEmailModal'&&mode==='feedback');
+ if(admin()&&rateio)return true;
+ if(profile()&&finalAction)return owns(STATE.planContext,profile())&&(DB.planning?.[STATE.planContext]||[]).some(i=>realizedApproved(i));
+ return (admin()||!!profile())&&DB.workflow_planejamento?.[STATE.planContext]?.status==='aprovado';
+}
+function requester(n){
+ const explicit=n.solicitadoPor||n.solicitante;
+ if(explicit&&explicit!==ADMIN&&explicit!=='admin')return USERS[explicit]?.nome||n.solicitanteNome||explicit;
+ const candidates=String(n.tipo||'').startsWith('status')?(DB.solicitacoes_status_visita||[]):String(n.tipo||'').includes('exclusao')?(DB.solicitacoes_exclusao||[]):String(n.tipo||'').includes('cidade')?(DB.solicitacoes_cidades||[]):[];
+ const matches=candidates.filter(r=>r.contexto===n.contexto&&(!r.alunoNome||String(n.mensagem||'').includes(r.alunoNome)));
+ const req=[...(DB.solicitacoes_status_visita||[]),...(DB.solicitacoes_exclusao||[]),...(DB.solicitacoes_cidades||[])].find(r=>r.id===(n.solicitacaoId||n.id))||(matches.length===1?matches[0]:null);
+ if(req){const e=req.solicitadoPor||req.solicitante;return USERS[e]?.nome||req.solicitanteNome||e;}
+ const m=DB.workflow_planejamento?.[n.contexto],sender=m?.enviadoPor||m?.historico?.findLast?.(h=>['enviado_aprovacao','criado'].includes(h.acao))?.por;
+ return USERS[sender]?.nome||Object.values(USERS).find(p=>p.id===m?.responsavelId)?.nome||n.solicitanteNome||m?.responsavelNome||explicit||'Não informado';
+}
 function refreshActions(){
- const approved=['aprovado'].includes(DB.workflow_planejamento?.[STATE.planContext]?.status);
- document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{b.disabled=!approved;b.title=approved?'Ação disponível':'Disponível após aprovação administrativa';b.setAttribute('aria-disabled',String(!approved))});
+ document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{const code=b.getAttribute('onclick')||'',rateio=code.includes('openRateioModal'),feedback=code.includes('feedback'),allowed=actionAllowed(rateio?'openRateioModal':'openEmailModal',feedback?'feedback':'agendamento');b.disabled=!allowed;b.title=allowed?'Ação disponível':(rateio||feedback?'Disponível após aprovação administrativa do status Realizada':'Disponível após aprovação administrativa do planejamento');b.setAttribute('aria-disabled',String(!allowed))});
+ const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
  document.querySelectorAll('button[onclick*="sendFullPlanEmail"]').forEach(b=>{b.disabled=false;b.style.pointerEvents='auto'});
  const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
  const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
 }
-window.SenacV29={profile,admin,projection,reportData:data=>profile()?projection(data,profile()):data,merge,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
+window.SenacV29={profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
 function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
 function exportLocal(){const data=clone(DB);data._v29_recuperacao={usuario:email(),em:new Date().toISOString(),pendentes:clone(pending),enviadas:clone(collabQueue),devolvidas:clone(window.__V29_COLLAB_ERRORS||[])};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='supervisao_copia_local_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function card(title,fields){const el=document.createElement('article');el.className='wf-card';const h=document.createElement('h4');h.textContent=title;el.append(h);for(const [label,value] of fields){const p=document.createElement('p'),b=document.createElement('b');b.textContent=label+': ';p.append(b,document.createTextNode(String(value||'Não informado')));el.append(p)}return el}
@@ -13791,12 +13813,12 @@ function showNotifications(mark=true){
  const list=document.getElementById('workflowNotificationsList');if(!list)return;list.replaceChildren();
  const add=(title,fields,ctx,approve,decline)=>{const c=card(title,fields),actions=document.createElement('div');actions.className='wf-row';if(approve)actions.append(button('Aprovar',approve,'wf-btn wf-btn-ok'));if(decline)actions.append(button('Devolver',decline,'wf-btn wf-btn-warn'));if(ctx&&DB.planning?.[ctx])actions.append(button('Abrir planejamento',()=>openPlan(ctx)));c.append(actions);list.append(c)};
  if(admin()){
-  Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').forEach(m=>add('Aprovação de planejamento', [['Solicitante',m.responsavelNome],['Região',regionFor(m.contexto)],['Planejamento',m.contexto],['Alteração solicitada','Aprovação do roteiro'],['Data',new Date(m.enviadoEm||m.atualizadoEm||m.criadoEm).toLocaleString('pt-BR')]],m.contexto,async()=>{await aprovarWorkflow(m.contexto);showNotifications(false)},async()=>{await devolverWorkflow(m.contexto);showNotifications(false)}));
-  (DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').forEach(s=>add('Alteração de status',[['Solicitante',s.solicitanteNome||s.solicitadoPor],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Aluno',s.alunoNome],['Alteração solicitada',s.statusAtual+' → '+s.statusSolicitado],['Data',new Date(s.solicitadoEm).toLocaleString('pt-BR')]],s.contexto,async()=>{await aprovarStatusVisitaV23(s.id);showNotifications(false)},async()=>{await recusarStatusVisitaV23(s.id);showNotifications(false)}));
-  (DB.solicitacoes_exclusao||[]).filter(s=>s.status==='pendente').forEach(s=>add('Pedido de exclusão',[['Solicitante',s.solicitanteNome||s.solicitante],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Motivo',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],s.contexto,()=>deleteDecision(s,true),()=>deleteDecision(s,false)));
-  (DB.solicitacoes_cidades||[]).filter(s=>s.status==='pendente').forEach(s=>add('Alteração de cidade',[['Solicitante',s.solicitanteNome],['Região',s.regiao],['Cidade',s.cidade],['Descrição',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],null,()=>cityDecision(s,true),()=>cityDecision(s,false)));
+  Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').forEach(m=>add('Aprovação de planejamento', [['Solicitante',requester(m)],['Região',regionFor(m.contexto)],['Planejamento',m.contexto],['Alteração solicitada','Aprovação do roteiro'],['Data',new Date(m.enviadoEm||m.atualizadoEm||m.criadoEm).toLocaleString('pt-BR')]],m.contexto,async()=>{await aprovarWorkflow(m.contexto);showNotifications(false)},async()=>{await devolverWorkflow(m.contexto);showNotifications(false)}));
+  (DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').forEach(s=>add('Alteração de status',[['Solicitante',requester(s)],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Aluno',s.alunoNome],['Alteração solicitada',s.statusAtual+' → '+s.statusSolicitado],['Data',new Date(s.solicitadoEm).toLocaleString('pt-BR')]],s.contexto,async()=>{await aprovarStatusVisitaV23(s.id);showNotifications(false)},async()=>{await recusarStatusVisitaV23(s.id);showNotifications(false)}));
+  (DB.solicitacoes_exclusao||[]).filter(s=>s.status==='pendente').forEach(s=>add('Pedido de exclusão',[['Solicitante',requester(s)],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Motivo',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],s.contexto,()=>deleteDecision(s,true),()=>deleteDecision(s,false)));
+  (DB.solicitacoes_cidades||[]).filter(s=>s.status==='pendente').forEach(s=>add('Alteração de cidade',[['Solicitante',requester(s)],['Região',s.regiao],['Cidade',s.cidade],['Descrição',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],null,()=>cityDecision(s,true),()=>cityDecision(s,false)));
  }
- const mine=(DB.notificacoes_planejamento||[]).filter(n=>n.destinatario===(admin()?'admin':email()));mine.sort((a,b)=>String(b.criadaEm).localeCompare(String(a.criadaEm))).forEach(n=>add(String(n.tipo||'Notificação').replace(/_/g,' '),[['Descrição',n.mensagem],['Solicitante',n.solicitante||DB.workflow_planejamento?.[n.contexto]?.responsavelNome],['Região',regionFor(n.contexto)],['Planejamento',n.contexto],['Data',new Date(n.criadaEm).toLocaleString('pt-BR')]],n.contexto));
+ const mine=(DB.notificacoes_planejamento||[]).filter(n=>n.destinatario===(admin()?'admin':email()));mine.sort((a,b)=>String(b.criadaEm).localeCompare(String(a.criadaEm))).forEach(n=>add(String(n.tipo||'Notificação').replace(/_/g,' '),[['Descrição',n.mensagem],['Solicitante',requester(n)],['Região',regionFor(n.contexto)],['Planejamento',n.contexto],['Data',new Date(n.criadaEm).toLocaleString('pt-BR')]],n.contexto));
  (window.__V29_COLLAB_ERRORS||[]).forEach(e=>add('Alteração não aplicada',[['Motivo',e.motivo],['Data',new Date(e.em).toLocaleString('pt-BR')]]));
  if(!list.children.length)list.append(card('Nenhuma notificação',[]));document.getElementById('workflowNotificationsModal').classList.add('open');
  if(mark&&mine.some(n=>!n.lida)){mine.forEach(n=>n.lida=true);saveToStorage().catch(fail)}
