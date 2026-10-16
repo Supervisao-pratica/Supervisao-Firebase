@@ -12140,7 +12140,7 @@ window.atualizarTodosEnderecosPorCnpjGravado=async function(){const todos=alunos
     if (typeof processDataLoad === 'function') {
         const processDataLoadAnteriorV9646 = processDataLoad;
         processDataLoad = function(parsed) {
-            const retorno = processDataLoadAnteriorV9646.apply(this, arguments);
+            const retorno = processDataLoadAnteriorV9646.apply(this, arguments); if(window.SenacV29)return retorno;
             setTimeout(async () => {
                 const resultado = await window.corrigirCidadesERegioesV9646({ silencioso: true, salvar: true });
                 if (resultado.alterados && typeof setupFilters === 'function') setupFilters();
@@ -13676,11 +13676,12 @@ async function flush(){
   collabVersion=version;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
  if(!admin())return;
+ if(same(DB,baseline)){tell('Base atualizada pela nuvem.');return}
  const sent=clone(DB),result=await writeGlobal(sent,generation);
  const next=merge(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell('Salvo e confirmado na nuvem.');refresh();
 }
 window.saveToStorage=async function(){
- if(!ready)return false;if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
+ if(!ready)return false;if(lastLocal&&same(DB,lastLocal))return true;if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
  if(profile()){
   // Configuração global nunca faz parte da colaboração regional.
   DB.regioes_map=clone(baseline.regioes_map||{});DB.rede_cidades=clone(baseline.rede_cidades||{});
