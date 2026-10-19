@@ -295,7 +295,7 @@ th {
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
 
 <!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
-<!-- V29.1: respostas regionais Firestore segmentadas para impedir documentos acima de 1 MiB. -->
+<!-- V29.3: respostas segmentadas e sincronização segura entre múltiplos dispositivos. -->
 </head>
 
 <body class="text-slate-800">
@@ -13599,7 +13599,7 @@ const uid=()=>firebase.auth().currentUser?.uid||'';
 const fresh=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random().toString(36).slice(2);
 let shellSession='',lastRegionSnapshot='';
 let stops=[],session='',ready=false,baseline=null,generation=null,pending=[],revision=0,writeTimer=null,chain=Promise.resolve(),remoteBusy=false;
-let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false;
+let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false,acknowledgedOps=new Set();
 const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
 const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento'];
 function tell(text,error=false){errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.style.color=error?'#b45309':'#036642'} }
@@ -13802,7 +13802,18 @@ async function flush(){
  if(!navigator.onLine){tell('Salvo neste dispositivo; aguardando conexão.');return}
  if(profile()){
   if(!pending.length&&!collabQueue.length){tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();
-  await firebase.firestore().runTransaction(async tx=>{const snap=await tx.get(doc),current=snap.exists?snap.data():null;const actual=current?.version||null;if(actual!==collabVersion)throw Error('Outra sessão deste usuário atualizou a colaboração. Reabra após exportar suas alterações locais.');const ops=[...collabQueue,...sent].filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);const payload=JSON.stringify(ops);if(new TextEncoder().encode(payload).length>800000||ops.length>2000)throw Error('Fila de colaboração muito grande. Aguarde a confirmação do administrador.');tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops,updatedAt:firebase.firestore.FieldValue.serverTimestamp()})});
+  await firebase.firestore().runTransaction(async tx=>{
+   const snap=await tx.get(doc),current=snap.exists?snap.data():null;
+   // V29.3: mescla as operações existentes no servidor com as deste dispositivo.
+   // Assim celular, computador e outras sessões do mesmo usuário não se sobrescrevem.
+   const remoteOps=current?.schema==='senac-collaboration-v29'&&Array.isArray(current.ops)?current.ops:[];
+   const ops=[...remoteOps,...collabQueue,...sent]
+    .filter(o=>o&&typeof o.id==='string'&&!acknowledgedOps.has(o.id))
+    .filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);
+   const payload=JSON.stringify(ops);
+   if(new TextEncoder().encode(payload).length>800000||ops.length>2000)throw Error('Fila de colaboração muito grande. Aguarde a confirmação do administrador.');
+   tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  });
   collabVersion=version;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
  if(!admin())return;
@@ -13830,32 +13841,29 @@ window.saveToStorage=async function(){
  }
  revision++;await localStore();tell('Salvo neste dispositivo; sincronização pendente.');clearTimeout(writeTimer);writeTimer=setTimeout(()=>serial(flush).catch(fail),450);return true;
 };
-// V29.2: sincronização manual realmente força reconexão, reenvio e releitura.
+// V29.3: sincronização manual completa e multidispositivo.
 window.sincronizarAgoraNuvem=()=>serial(async()=>{
  if(!ready)throw Error('A base ainda está carregando. Aguarde alguns segundos e tente novamente.');
  if(!firebase.auth().currentUser)throw Error('Entre novamente no sistema para sincronizar.');
  if(!navigator.onLine)throw Error('Sem conexão com a internet. As alterações locais continuam preservadas.');
- tell('Conectando ao Firebase e verificando alterações…');
+ tell('Conectando ao Firebase e verificando alterações de todos os dispositivos…');
  await firebase.firestore().enableNetwork();
  if(profile()){
-  // flush agora também reenvia collabQueue quando não há operações novas em pending.
   await flush();
+  const c=await ref('colaboracao_'+profile().id).get({source:'server'});
+  if(c.exists)await receiveOwnCollaboration(c,session);
   const resposta=await ref('resposta_'+profile().id).get({source:'server'});
   if(resposta.exists)await receiveRegion(resposta,session);
-  if(pending.length||collabQueue.length)tell('Alterações enviadas; aguardando processamento do painel administrativo.');
-  else tell('Sincronização concluída; nenhuma alteração pendente.');
+  if(pending.length||collabQueue.length)tell('Alterações sincronizadas entre dispositivos; aguardando processamento administrativo.');
+  else tell('Sincronização concluída em todos os dispositivos.');
   return true;
  }
  if(admin()){
-  // Força a leitura das filas, mesmo se o listener em tempo real tiver perdido a conexão.
   for(const p of Object.values(USERS)){
    const c=await ref('colaboracao_'+p.id).get({source:'server'});
    if(c.exists){inbox[p.id]=c.data();await ingest(p,c.data())}
   }
-  await flush();
-  tell('Sincronização administrativa concluída.');
-  refresh();
-  return true;
+  await flush();refresh();tell('Sincronização administrativa concluída.');return true;
  }
  await flush();return true;
 }).catch(e=>{fail(e);throw e});
@@ -13899,6 +13907,18 @@ async function receiveGlobal(doc,token){
  const combined=baseline?reconcileGlobal(baseline,current,remote):remote;
  baseline=clone(remote);generation=gen;applyData(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(DB,baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
 }
+async function receiveOwnCollaboration(doc,token){
+ if(token!==session||!profile()||doc.metadata?.hasPendingWrites||doc.metadata?.fromCache||!doc.exists)return;
+ const data=doc.data();if(data.schema!=='senac-collaboration-v29'||data.userId!==profile().id)return;
+ collabVersion=data.version||collabVersion;
+ const incoming=(Array.isArray(data.ops)?data.ops:[]).filter(o=>o&&typeof o.id==='string'&&!acknowledgedOps.has(o.id));
+ const freshOps=incoming.filter(o=>!collabQueue.some(x=>x.id===o.id)&&!pending.some(x=>x.id===o.id));
+ collabQueue=[...collabQueue,...incoming].filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);
+ if(ready&&freshOps.length){
+  const next=clone(DB);for(const o of freshOps)put(next,o,o.after);applyData(next);
+  await localStore();refresh();tell('Alterações de outro dispositivo deste usuário foram incorporadas.');
+ }
+}
 async function receiveRegion(doc,token){
  if(token!==session||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
  if(!doc.exists){tell('Aguardando o administrador abrir a versão revisada para disponibilizar sua região.');return}
@@ -13908,7 +13928,7 @@ async function receiveRegion(doc,token){
  const envelope=await readRegionalEnvelopeV291(data);
  if(token!==session)return;
  const remote=envelope.remote;
- const ack=new Set(envelope.ack||[]);collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
+ const ack=new Set(envelope.ack||[]);acknowledgedOps=ack;collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
  let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.after);
  baseline=clone(remote);applyData(next);ready=true;openShell();await localStore();refresh();
  if((envelope.errors||[]).length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
@@ -13924,9 +13944,10 @@ window.carregarBaseAposAutenticacao=async function(){
  if(cached){baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];needsReplay=!same(cached.data,cached.baseline);applyData(cached.data);ready=true;openShell();lastLocal=clone(DB);refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
  const enqueue=fn=>serial(fn).catch(fail);
  if(profile()){
-  // Um get para recuperar a fila compartilhada, uma escuta para respostas.
-  try{const c=await ref('colaboracao_'+profile().id).get();if(token!==session)return;
-  if(c.exists){const v=c.data();if(!pending.length){collabVersion=v.version||null;collabQueue=v.ops||[]}}}catch(e){fail(e)}
+  // Recupera e acompanha a fila compartilhada em todos os dispositivos do usuário.
+  try{const c=await ref('colaboracao_'+profile().id).get({source:'server'});if(token!==session)return;
+  if(c.exists)await receiveOwnCollaboration(c,token)}catch(e){fail(e)}
+  stops.push(ref('colaboracao_'+profile().id).onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveOwnCollaboration(d,token)),fail));
   stops.push(ref('resposta_'+profile().id).onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveRegion(d,token)),fail));
  }else{
   stops.push(ref('dados_principais').onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveGlobal(d,token)),fail));
@@ -13934,7 +13955,7 @@ window.carregarBaseAposAutenticacao=async function(){
  }
  document.getElementById('globalLoader')?.classList.add('hidden');
 };
-firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
+firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>serial(flush).catch(fail));
 // Interface e relatórios são instalados abaixo.
 function realizedApproved(item,ctx=STATE.planContext,data=DB){
