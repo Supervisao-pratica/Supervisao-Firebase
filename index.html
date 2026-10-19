@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V29</title>
+    <title>Supervisão Senac 2026 — Revisão V29.1</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -295,6 +295,7 @@ th {
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
 
 <!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
+<!-- V29.1: respostas regionais Firestore segmentadas para impedir documentos acima de 1 MiB. -->
 </head>
 
 <body class="text-slate-800">
@@ -13704,10 +13705,85 @@ async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>
 function refresh(){if(!ready)return;try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
 function openShell(){const first=shellSession!==uid();if(first){shellSession=uid();startApp(profile()?'planning_user':email()==='visitante@senac.br'?'visitor':'admin',profile()?.regiao||'Todas');}window.APP_READ_ONLY=!ready||email()==='visitante@senac.br';document.body.classList.toggle('v29-loading',!ready);if(profile()){STATE.userType='planning_user';STATE.userRegion=profile().regiao;document.getElementById('roleDisplay').textContent='Planejamento · '+profile().nome;if(first)switchTab('planejamento')}refreshActions()}
 async function decode(meta){if(meta.chunked)return carregarNuvemV9633(firebase.firestore(),meta);return meta.payload?JSON.parse(LZString.decompressFromBase64(meta.payload)):meta}
-async function publishRegions(data){if(!admin())return;for(const [e,p] of Object.entries(USERS)){
- const payload=LZString.compressToBase64(JSON.stringify(projection(data,p)));if(payload.length>850000)throw Error('Recorte de '+p.nome+' excede o limite do documento; requer segmentação.');
- await ref('resposta_'+p.id).set({schema:'senac-regional-v29',userId:p.id,email:e,generation:String(data.updatedAt),payload,ack:data._collabAck?.[p.id]||[],errors:data._collabErrors?.[p.id]||[],updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-}}
+// V29.1: respostas regionais segmentadas. O documento principal guarda apenas o manifesto;
+// o recorte, confirmações e erros seguem comprimidos em documentos irmãos de até 240.000 caracteres.
+const REGIONAL_CHUNK_SIZE_V291=240000;
+function regionalChunkRefV291(userId,generation,index){
+ return ref('resposta_'+userId+'__'+generation+'__'+String(index).padStart(5,'0'));
+}
+async function publishRegions(data){
+ if(!admin())return;
+ const f=firebase.firestore();
+ for(const [e,p] of Object.entries(USERS)){
+  const main=ref('resposta_'+p.id);
+  const previous=await main.get();
+  const previousMeta=previous.exists?previous.data():null;
+  const generation=Date.now()+'_'+fresh();
+  const envelope={
+   schema:'senac-regional-envelope-v29.1',
+   userId:p.id,
+   email:e,
+   generation:String(data.updatedAt),
+   remote:projection(data,p),
+   ack:data._collabAck?.[p.id]||[],
+   errors:data._collabErrors?.[p.id]||[]
+  };
+  const packed=LZString.compressToBase64(JSON.stringify(envelope));
+  if(!packed)throw Error('Não foi possível compactar o recorte de '+p.nome+'.');
+  const parts=[];
+  for(let i=0;i<packed.length;i+=REGIONAL_CHUNK_SIZE_V291)parts.push(packed.slice(i,i+REGIONAL_CHUNK_SIZE_V291));
+  if(!parts.length)parts.push('');
+  for(let start=0;start<parts.length;start+=400){
+   const batch=f.batch();
+   parts.slice(start,start+400).forEach((content,offset)=>{
+    const index=start+offset;
+    batch.set(regionalChunkRefV291(p.id,generation,index),{
+     schema:'senac-regional-chunk-v29.1',userId:p.id,generation,index,content
+    });
+   });
+   await batch.commit();
+  }
+  await main.set({
+   schema:'senac-regional-v29.1',chunked:true,userId:p.id,email:e,
+   storageGeneration:generation,dataGeneration:String(data.updatedAt),
+   chunkCount:parts.length,totalLength:packed.length,
+   updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  });
+  // Limpeza somente depois de o novo manifesto estar publicado. Falha aqui não invalida a gravação.
+  if(previousMeta?.chunked&&previousMeta.storageGeneration&&Number(previousMeta.chunkCount)>0){
+   try{
+    const oldCount=Math.min(Number(previousMeta.chunkCount)||0,10000);
+    for(let start=0;start<oldCount;start+=400){
+     const batch=f.batch();
+     for(let i=start;i<Math.min(start+400,oldCount);i++)batch.delete(regionalChunkRefV291(p.id,previousMeta.storageGeneration,i));
+     await batch.commit();
+    }
+   }catch(cleanError){console.warn('Resposta regional publicada; limpeza antiga pendente para '+p.id,cleanError)}
+  }
+ }
+}
+async function readRegionalEnvelopeV291(meta){
+ if(meta.schema==='senac-regional-v29'&&!meta.chunked){
+  const remote=JSON.parse(LZString.decompressFromBase64(meta.payload));
+  return {remote,ack:meta.ack||[],errors:meta.errors||[],generation:String(meta.generation||'legacy')};
+ }
+ if(meta.schema!=='senac-regional-v29.1'||meta.chunked!==true)throw Error('Formato de resposta regional não reconhecido.');
+ const count=Number(meta.chunkCount);
+ if(!Number.isInteger(count)||count<1||count>10000)throw Error('Manifesto regional inválido: quantidade de partes.');
+ const parts=new Array(count);
+ for(let start=0;start<count;start+=20){
+  const indexes=[];for(let i=start;i<Math.min(start+20,count);i++)indexes.push(i);
+  const docs=await Promise.all(indexes.map(i=>regionalChunkRefV291(meta.userId,meta.storageGeneration,i).get()));
+  docs.forEach((doc,pos)=>{const i=indexes[pos];if(!doc.exists)throw Error('Resposta regional incompleta: parte '+(i+1)+' de '+count+' ausente.');const d=doc.data();if(d.generation!==meta.storageGeneration||Number(d.index)!==i)throw Error('Resposta regional inconsistente na parte '+(i+1)+'.');parts[i]=String(d.content||'')});
+ }
+ const packed=parts.join('');
+ if(packed.length!==Number(meta.totalLength))throw Error('Resposta regional incompleta: tamanho divergente.');
+ const json=LZString.decompressFromBase64(packed);
+ if(!json)throw Error('Não foi possível descompactar a resposta regional.');
+ const envelope=JSON.parse(json);
+ if(envelope.schema!=='senac-regional-envelope-v29.1'||String(envelope.userId)!==String(meta.userId))throw Error('Envelope regional inválido.');
+ return envelope;
+}
 async function writeGlobal(data,expected){
  data=clone(data);data.regioes_map=preserveCities(baseline?.regioes_map,data.regioes_map);
  const priorPlans=Object.keys(baseline?.planning||{}),archives=Object.values(data.planejamentos_excluidos||{});
@@ -13798,13 +13874,17 @@ async function receiveGlobal(doc,token){
 async function receiveRegion(doc,token){
  if(token!==session||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
  if(!doc.exists){tell('Aguardando o administrador abrir a versão revisada para disponibilizar sua região.');return}
- const data=doc.data();if(data.schema!=='senac-regional-v29')throw Error('A resposta regional ainda não foi migrada para V29.');
- const signature=JSON.stringify([data.payload,data.ack||[],data.errors||[]]);if(signature===lastRegionSnapshot)return;
- const remote=JSON.parse(LZString.decompressFromBase64(data.payload));const ack=new Set(data.ack||[]);collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
+ const data=doc.data();
+ const signature=data.chunked?String(data.storageGeneration||''):JSON.stringify([data.payload,data.ack||[],data.errors||[]]);
+ if(signature===lastRegionSnapshot)return;
+ const envelope=await readRegionalEnvelopeV291(data);
+ if(token!==session)return;
+ const remote=envelope.remote;
+ const ack=new Set(envelope.ack||[]);collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
  let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.after);
  baseline=clone(remote);applyData(next);ready=true;openShell();await localStore();refresh();
- if((data.errors||[]).length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
- window.__V29_COLLAB_ERRORS=data.errors||[];lastRegionSnapshot=signature;
+ if((envelope.errors||[]).length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
+ window.__V29_COLLAB_ERRORS=envelope.errors||[];lastRegionSnapshot=signature;
 }
 window.iniciarEscutaDaNuvem=function(){return false}; // substitui a escuta antiga de sistema/banco_principal
 window.loadFromStorage=async()=>ready?clone(DB):null;
