@@ -13623,6 +13623,11 @@ function changes(before,after){const a=entities(before),b=entities(after),ops=[]
 function valueAt(d,o){return maps.includes(o.field)?d[o.field]?.[o.key]:(d[o.field]||[]).find(x=>x.id===o.key)}
 function put(d,o,value){if(maps.includes(o.field)){d[o.field]??={};if(value===null)delete d[o.field][o.key];else d[o.field][o.key]=clone(value)}else{d[o.field]??=[];d[o.field]=d[o.field].filter(x=>x.id!==o.key);if(value!==null)d[o.field].push(clone(value))}}
 function merge(base,local,remote,path='base'){
+ // Notificações são criadas em várias sessões; leitura é cumulativa.
+ if(/^(base\.)?notificacoes_planejamento\.[^.]+\.lida$/.test(path))return !!(base||local||remote);
+ if(/^(base\.)?notificacoes_planejamento\.[^.]+$/.test(path)&&local&&remote&&!Array.isArray(local)&&!Array.isArray(remote)){
+  const lida=!!(base?.lida||local.lida||remote.lida);local={...local,lida};remote={...remote,lida};base=base?{...base,lida}:{};
+ }
  if(path==='base._syncReviews')return {...clone(base||{}),...clone(local||{}),...clone(remote||{})};
  if(path==='base._syncReviewedIds')return [...new Set([...(base||[]),...(local||[]),...(remote||[])])];
  // Metadados de processamento são acumulativos; nunca disputam dados de negócio.
@@ -13657,7 +13662,7 @@ function merge(base,local,remote,path='base'){
 }
 function reconcileGlobal(base,local,remote){
  const result={},reviews={...clone(base?._syncReviews||{}),...clone(local?._syncReviews||{}),...clone(remote?._syncReviews||{})};
- const reconcile=(b,l,r,field,key)=>{try{return merge(b,l,r,'base.'+field+'.'+key)}catch(e){
+ const reconcile=(b,l,r,field,key)=>{try{return merge(b,l,r,'base.'+field+(key?'.'+key:''))}catch(e){
   if(!String(e.message).startsWith('Conflito em '))throw e;
   const versions={field,key,base:b??null,local:l??null,remote:r??null};
   if(!Object.values(reviews).some(x=>same(x.versions,versions))){const id=fresh();reviews[id]={id,versions,em:new Date().toISOString(),por:email(),motivo:e.message};}
@@ -13672,7 +13677,15 @@ function reconcileGlobal(base,local,remote){
     const value=reconcile(base?.[field]?.[key],local?.[field]?.[key],remote?.[field]?.[key],field,key);if(value!==undefined)result[field][key]=value;
    }
   }else if(['updatedAt','_origin','_backup_manifest'].includes(field)){result[field]=clone(remote?.[field]);}
-  else result[field]=merge(base?.[field],local?.[field],remote?.[field],'base.'+field);
+  else {
+   const versions=[base?.[field],local?.[field],remote?.[field]];
+   const arrays=versions.map(v=>v??[]);
+   const identifiable=arrays.every(a=>Array.isArray(a)&&a.every(x=>x&&typeof x.id==='string'&&x.id)&&new Set(a.map(x=>x.id)).size===a.length);
+   if(identifiable&&versions.some(Array.isArray)){
+    const indexes=arrays.map(a=>new Map(a.map(x=>[x.id,x])));result[field]=[];
+    for(const key of new Set(indexes.flatMap(m=>[...m.keys()]))){const value=reconcile(indexes[0].get(key),indexes[1].get(key),indexes[2].get(key),field,key);if(value!==undefined)result[field].push(value);}
+   }else result[field]=reconcile(versions[0],versions[1],versions[2],field,'');
+  }
  }
  if(Object.keys(reviews).length)result._syncReviews=reviews;
  return result;
@@ -13867,7 +13880,7 @@ function showNotifications(mark=true){
  const add=(title,fields,ctx,approve,decline)=>{const c=card(title,fields),actions=document.createElement('div');actions.className='wf-row';if(approve)actions.append(button('Aprovar',approve,'wf-btn wf-btn-ok'));if(decline)actions.append(button('Devolver',decline,'wf-btn wf-btn-warn'));if(ctx&&DB.planning?.[ctx])actions.append(button('Abrir planejamento',()=>openPlan(ctx)));c.append(actions);list.append(c)};
  if(admin()){
   pendingReviews().forEach(review=>{
-   const v=review.versions,c=card('Divergência preservada para revisão',[['Planejamento',v.key],['Área',v.field],['Descrição','A versão já confirmada na nuvem permanece ativa. Sua alteração local foi preservada abaixo; os demais roteiros continuam sincronizando.']]);
+   const v=review.versions,c=card('Divergência preservada para revisão',[['Registro',v.local?.contexto||v.remote?.contexto||v.key||'Cadastro compartilhado'],['Área',v.field],['Descrição','A versão já confirmada na nuvem permanece ativa. Sua alteração local foi preservada abaixo; os demais roteiros continuam sincronizando.']]);
    for(const [label,value] of [['Sua alteração local',v.local],['Versão da nuvem ao detectar a divergência',v.remote],['Versão anterior comum',v.base]]){const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent=label;pre.textContent=JSON.stringify(value,null,2);pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto';details.append(summary,pre);c.append(details);}
    if(DB.planning?.[v.key])c.append(button('Abrir planejamento',()=>openPlan(v.key)));
    c.append(button('Concluir revisão',async()=>{if(!confirm('Confirma que revisou as versões e fez os ajustes necessários no planejamento? As cópias serão mantidas no histórico.'))return;DB._syncReviewedIds=[...new Set([...(DB._syncReviewedIds||[]),review.id])];await saveToStorage();refreshActions();showNotifications(false)}));list.append(c);
@@ -13906,6 +13919,7 @@ function installUI(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
 })();
+
 
 
 </script>
