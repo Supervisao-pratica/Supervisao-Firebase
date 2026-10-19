@@ -295,7 +295,7 @@ th {
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
 
 <!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
-<!-- V29.6: presença de usuários e recuperação acionável de pedidos de aprovação. -->
+<!-- V29.7: presença, aprovação acionável e proteção contra loop de salvamento. -->
 </head>
 
 <body class="text-slate-800">
@@ -12699,11 +12699,11 @@ const oldExport=window.exportarRelatorioExcel;window.exportarRelatorioExcel=func
 
 <style id="menus-desligamentos-style">
 #alunosActionMenus{display:flex;position:relative;z-index:8500;overflow:visible!important;flex-wrap:wrap;align-items:center;gap:7px;padding:9px 12px;margin-bottom:10px;background:#fff;border:1px solid #dbe3ee;border-radius:12px;box-shadow:0 2px 10px rgba(15,23,42,.05)}.amenu{position:relative}.amenu-btn{display:flex;align-items:center;gap:6px;padding:8px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;color:#334155;font-size:10px;font-weight:900;cursor:pointer}.amenu-btn:hover,.amenu.open .amenu-btn{background:#e0f2fe;border-color:#7dd3fc;color:#075985}.amenu-list{display:none;position:absolute;top:calc(100% + 5px);left:0;z-index:9000;min-width:245px;padding:6px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 16px 45px rgba(15,23,42,.2)}.amenu.open .amenu-list{display:block}.amenu-list button,.amenu-list label,.amenu-list a{width:100%!important;display:flex!important;justify-content:flex-start!important;align-items:center!important;gap:8px!important;margin:0!important;padding:9px 10px!important;border:0!important;border-radius:7px!important;background:#fff!important;color:#334155!important;font-size:10px!important;font-weight:800!important;box-shadow:none!important;text-decoration:none!important;cursor:pointer!important}.amenu-list button:hover,.amenu-list label:hover,.amenu-list a:hover{background:#eff6ff!important;color:#1d4ed8!important}.amenu-spacer{flex:1}.amenu-note{font-size:9px;color:#64748b;font-weight:700}.desl-overlay{display:none;position:fixed;inset:0;z-index:210000;background:rgba(15,23,42,.72);padding:16px;align-items:center;justify-content:center}.desl-overlay.open{display:flex}.desl-modal{width:min(1120px,98vw);max-height:94vh;display:flex;flex-direction:column;background:#f8fafc;border-radius:17px;overflow:hidden}.desl-head{display:flex;justify-content:space-between;align-items:center;padding:15px 17px;background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff}.desl-head h3{font-size:16px;font-weight:950}.desl-body{padding:14px;overflow:auto}.desl-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.desl-stat{padding:10px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;text-align:center}.desl-stat b{display:block;font-size:18px}.desl-stat span{font-size:8px;text-transform:uppercase;color:#64748b;font-weight:900}.desl-table{width:100%;border-collapse:collapse;background:#fff;font-size:10px}.desl-table th{position:sticky;top:0;background:#e2e8f0;padding:8px;text-align:left}.desl-table td{padding:8px;border-top:1px solid #e2e8f0;vertical-align:top}.desl-ok{color:#166534;font-weight:900}.desl-amb{color:#b45309;font-weight:900}.desl-no{color:#b91c1c;font-weight:900}.desl-foot{display:flex;justify-content:space-between;gap:8px;padding:12px 15px;background:#fff;border-top:1px solid #e2e8f0}.desl-action{border:0;border-radius:8px;padding:9px 13px;font-size:10px;font-weight:900;cursor:pointer}.desl-apply{background:#dc2626;color:#fff}.desl-cancel{background:#e2e8f0;color:#334155}
-.v296-presence{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:5px 8px;border:1px solid #dbe3ee;border-radius:10px;background:#fff}
-.v296-person{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#475569;white-space:nowrap}
-.v296-dot{width:10px;height:10px;border-radius:999px;background:#94a3b8;box-shadow:0 0 0 2px #e2e8f0}
-.v296-person[data-online="true"] .v296-dot{background:#16a34a;box-shadow:0 0 0 2px #bbf7d0}
-.v296-person[data-online="true"]{color:#166534}
+.v297-presence{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:5px 8px;border:1px solid #dbe3ee;border-radius:10px;background:#fff}
+.v297-person{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#475569;white-space:nowrap}
+.v297-dot{width:10px;height:10px;border-radius:999px;background:#94a3b8;box-shadow:0 0 0 2px #e2e8f0}
+.v297-person[data-online="true"] .v297-dot{background:#16a34a;box-shadow:0 0 0 2px #bbf7d0}
+.v297-person[data-online="true"]{color:#166534}
 
 @media(max-width:700px){.desl-summary{grid-template-columns:repeat(2,1fr)}#alunosActionMenus{position:relative}.amenu-list{position:fixed;left:10px;right:10px;top:auto;min-width:0}}
 </style>
@@ -12988,7 +12988,7 @@ body.modal-open-safe{overflow:hidden!important}.student-charge-menu.open>.studen
   };
 
   // Se uma gravacao ficou pendente offline, tenta uma vez quando a conexao voltar.
-  window.addEventListener('online',()=>setTimeout(()=>window.sincronizarAgoraNuvem().catch(e=>console.warn('Sincronizacao ao reconectar:',e)),1200));
+  // V29.7: reconexão centralizada no listener do motor V29 para evitar sincronização duplicada.
 
   // Salva antes de ocultar a pagina sem bloquear a navegacao.
   document.addEventListener('visibilitychange',()=>{
@@ -13900,21 +13900,22 @@ function validateOp(o,p,data){
 }
 async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
- let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]);candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));
+ let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
  const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
  for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
- // V29.6: se a notificação de aprovação chegou, garante também o registro acionável.
- // Corrige pacotes antigos/parciais em que o aviso chegou, mas workflow_planejamento não ficou pendente.
+ // V29.7: recupera pedido de aprovação que chegou apenas como notificação.
  const requesterEmail=Object.keys(USERS).find(e=>USERS[e].id===p.id);
  const approvalNotices=(candidate.notificacoes_planejamento||[]).filter(n=>n&&n.destinatario==='admin'&&String(n.tipo||'').toLowerCase().includes('aprov')&&n.contexto&&n.solicitante===requesterEmail);
  for(const n of approvalNotices){
   const ctx=n.contexto;if(!(candidate.planning?.[ctx]||[]).length)continue;
-  const current=candidate.workflow_planejamento?.[ctx];
-  if(current?.status==='aprovado'||current?.status==='pendente')continue;
+  const current=candidate.workflow_planejamento?.[ctx],noticeTime=Date.parse(n.criadaEm||'')||0,currentTime=Date.parse(current?.atualizadoEm||current?.enviadoEm||current?.criadoEm||'')||0;
+  const recoverable=!current||(current.status==='rascunho'&&noticeTime>=currentTime);
+  if(!recoverable)continue;
   candidate.workflow_planejamento??={};
   candidate.workflow_planejamento[ctx]={...(current||{}),contexto:ctx,status:'pendente',responsavelId:p.id,responsavelNome:p.nome,enviadoPor:requesterEmail,enviadoEm:n.criadaEm||new Date().toISOString(),atualizadoEm:new Date().toISOString(),revisao:Number(current?.revisao||0)+1,historico:[...(current?.historico||[]),{acao:'enviado_aprovacao_recuperado',por:requesterEmail,em:new Date().toISOString()}]};
+  count++;
  }
- if(!count){if(reviewed.size){applyData(candidate);await localStore();await flush()}return}
+ if(!count){if(reviewedChanged){applyData(candidate);await localStore();await flush()}return}
  // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
  applyData(candidate);await localStore();await flush();
 }
@@ -13972,7 +13973,7 @@ window.carregarBaseAposAutenticacao=async function(){
   stops.push(ref('dados_principais').onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveGlobal(d,token)),fail));
   if(admin())for(const p of Object.values(USERS))stops.push(ref('colaboracao_'+p.id).onSnapshot(d=>{if(d.exists){inbox[p.id]=d.data();enqueue(()=>ingest(p,d.data()))}},fail));
  }
- document.getElementById('globalLoader')?.classList.add('hidden');startPresenceV296();
+ document.getElementById('globalLoader')?.classList.add('hidden');startPresenceV297();
 };
 firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>serial(flush).catch(fail));
@@ -14055,39 +14056,32 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installProm
 window.addEventListener('appinstalled',()=>{installed=true;document.getElementById('v29-install')?.remove()});
 async function install(){if(installPrompt){const event=installPrompt;installPrompt=null;await event.prompt();await event.userChoice;return}const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);alert(ios?'No Safari, toque em Compartilhar → Adicionar à Tela de Início.':'No Chrome ou Edge, abra o menu do navegador → Instalar aplicativo ou Adicionar à tela inicial. Se a opção não aparecer, confirme que está usando o endereço HTTPS publicado e atualizado.');}
 function mobileTable(){const body=document.getElementById('planTableBody');if(!body)return;const table=body.closest('table');const headers=[...table.querySelectorAll('thead th')].map(x=>x.textContent.trim());[...body.rows].forEach(row=>[...row.cells].forEach((cell,i)=>{cell.dataset.label=headers[i]||'Informação'}));table.classList.add('v29-plan-table')}
-const presenceStateV296={};let presenceTimerV296=null,presenceStopsV296=[];
-function presenceRefV296(id){return ref('presenca_'+id)}
-function renderPresenceV296(){
- const box=document.getElementById('v296-presence');if(!box)return;
- box.innerHTML='';
- for(const [e,p] of Object.entries(USERS)){
-  const d=presenceStateV296[p.id]||{},last=d.lastSeen?.toMillis?.()||0,online=d.online===true&&(Date.now()-last)<120000;
-  const item=document.createElement('span');item.className='v296-person';item.dataset.online=String(online);item.title=online?'Online agora':(last?'Último sinal: '+new Date(last).toLocaleString('pt-BR'):'Sem sinal recente');
-  const dot=document.createElement('span');dot.className='v296-dot';dot.setAttribute('aria-hidden','true');item.append(dot,document.createTextNode(p.nome));box.append(item);
+const presenceStateV297={};let presenceTimerV297=null,presenceStopsV297=[];
+function presenceRefV297(id){return ref('presenca_'+id)}
+function renderPresenceV297(){
+ const box=document.getElementById('v297-presence');if(!box)return;box.innerHTML='';
+ for(const p of Object.values(USERS)){
+  const d=presenceStateV297[p.id]||{},last=d.lastSeen?.toMillis?.()||0,online=d.online===true&&(Date.now()-last)<120000;
+  const item=document.createElement('span');item.className='v297-person';item.dataset.online=String(online);item.title=online?'Online agora':(last?'Último sinal: '+new Date(last).toLocaleString('pt-BR'):'Sem sinal recente');
+  const dot=document.createElement('span');dot.className='v297-dot';dot.setAttribute('aria-hidden','true');item.append(dot,document.createTextNode(p.nome));box.append(item);
  }
 }
-async function sendPresenceV296(online=true){
- const p=profile();if(!p||!firebase.auth().currentUser)return;
- await presenceRefV296(p.id).set({userId:p.id,email:email(),online,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:false});
+async function sendPresenceV297(online=true){const p=profile();if(!p||!firebase.auth().currentUser)return;await presenceRefV297(p.id).set({userId:p.id,email:email(),online,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:false})}
+function startPresenceV297(){
+ clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];
+ if(profile()){sendPresenceV297(true).catch(fail);presenceTimerV297=setInterval(()=>sendPresenceV297(true).catch(()=>{}),45000)}
+ else if(admin())for(const p of Object.values(USERS))presenceStopsV297.push(presenceRefV297(p.id).onSnapshot(d=>{presenceStateV297[p.id]=d.exists?d.data():{};renderPresenceV297()},fail));
+ renderPresenceV297();
 }
-function startPresenceV296(){
- clearInterval(presenceTimerV296);presenceStopsV296.forEach(fn=>fn());presenceStopsV296=[];
- if(profile()){
-  sendPresenceV296(true).catch(fail);presenceTimerV296=setInterval(()=>sendPresenceV296(true).catch(()=>{}),45000);
- }else if(admin()){
-  for(const p of Object.values(USERS))presenceStopsV296.push(presenceRefV296(p.id).onSnapshot(d=>{presenceStateV296[p.id]=d.exists?d.data():{};renderPresenceV296()},fail));
- }
- renderPresenceV296();
-}
-window.addEventListener('pagehide',()=>{if(profile())sendPresenceV296(false).catch(()=>{})});
-setInterval(renderPresenceV296,30000);
+window.addEventListener('pagehide',()=>{if(profile())sendPresenceV297(false).catch(()=>{})});
+setInterval(renderPresenceV297,30000);
 function installUI(){
  const plan=document.getElementById('btnPlan');let monthly=document.getElementById('v29-monthly-tab');if(plan&&!monthly){monthly=button('Relatório Mensal',openMonthly,'tab-btn');monthly.id='v29-monthly-tab';plan.after(monthly)}
  // O menu antigo pode mover seu botão; a aba permanece disponível independentemente dele.
  document.querySelectorAll('button[onclick="gerarRelatorioVisitasMes()"]').forEach(b=>b.style.display='none');
  const header=document.querySelector('#appContainer>header');if(header&&!installed&&!document.getElementById('v29-install')){const b=button('Instalar aplicativo',install);b.id='v29-install';header.append(b)}
  if(header&&!document.getElementById('v29-city-request')){const b=button('Solicitar ajuste de cidade',requestCity);b.id='v29-city-request';header.append(b)}
- if(header&&!document.getElementById('v296-presence')){const box=document.createElement('div');box.id='v296-presence';box.className='v296-presence';box.setAttribute('aria-label','Usuários conectados');header.append(box)}
+ if(header&&!document.getElementById('v297-presence')){const box=document.createElement('div');box.id='v297-presence';box.className='v297-presence';box.setAttribute('aria-label','Usuários conectados');header.append(box)}
  if(header&&!document.getElementById('v29-notifications')){const b=button('Notificações (0)',()=>showNotifications());b.id='v29-notifications';header.append(b)}
  if(header&&!document.getElementById('v29-local-backup')){const b=button('Exportar cópia local',exportLocal);b.id='v29-local-backup';header.append(b)}
  if(header&&!document.getElementById('v29-sync')){const b=button('Sincronizar agora',()=>window.sincronizarAgoraNuvem());b.id='v29-sync';header.append(b)}
