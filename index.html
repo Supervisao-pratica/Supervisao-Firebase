@@ -13801,7 +13801,7 @@ async function flush(){
  if(!ready||!firebase.auth().currentUser||email()==='visitante@senac.br')return;
  if(!navigator.onLine){tell('Salvo neste dispositivo; aguardando conexão.');return}
  if(profile()){
-  if(!pending.length)return;const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();
+  if(!pending.length&&!collabQueue.length){tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();
   await firebase.firestore().runTransaction(async tx=>{const snap=await tx.get(doc),current=snap.exists?snap.data():null;const actual=current?.version||null;if(actual!==collabVersion)throw Error('Outra sessão deste usuário atualizou a colaboração. Reabra após exportar suas alterações locais.');const ops=[...collabQueue,...sent].filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);const payload=JSON.stringify(ops);if(new TextEncoder().encode(payload).length>800000||ops.length>2000)throw Error('Fila de colaboração muito grande. Aguarde a confirmação do administrador.');tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops,updatedAt:firebase.firestore.FieldValue.serverTimestamp()})});
   collabVersion=version;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
@@ -13830,7 +13830,35 @@ window.saveToStorage=async function(){
  }
  revision++;await localStore();tell('Salvo neste dispositivo; sincronização pendente.');clearTimeout(writeTimer);writeTimer=setTimeout(()=>serial(flush).catch(fail),450);return true;
 };
-window.sincronizarAgoraNuvem=()=>serial(flush).catch(e=>{fail(e);throw e});
+// V29.2: sincronização manual realmente força reconexão, reenvio e releitura.
+window.sincronizarAgoraNuvem=()=>serial(async()=>{
+ if(!ready)throw Error('A base ainda está carregando. Aguarde alguns segundos e tente novamente.');
+ if(!firebase.auth().currentUser)throw Error('Entre novamente no sistema para sincronizar.');
+ if(!navigator.onLine)throw Error('Sem conexão com a internet. As alterações locais continuam preservadas.');
+ tell('Conectando ao Firebase e verificando alterações…');
+ await firebase.firestore().enableNetwork();
+ if(profile()){
+  // flush agora também reenvia collabQueue quando não há operações novas em pending.
+  await flush();
+  const resposta=await ref('resposta_'+profile().id).get({source:'server'});
+  if(resposta.exists)await receiveRegion(resposta,session);
+  if(pending.length||collabQueue.length)tell('Alterações enviadas; aguardando processamento do painel administrativo.');
+  else tell('Sincronização concluída; nenhuma alteração pendente.');
+  return true;
+ }
+ if(admin()){
+  // Força a leitura das filas, mesmo se o listener em tempo real tiver perdido a conexão.
+  for(const p of Object.values(USERS)){
+   const c=await ref('colaboracao_'+p.id).get({source:'server'});
+   if(c.exists){inbox[p.id]=c.data();await ingest(p,c.data())}
+  }
+  await flush();
+  tell('Sincronização administrativa concluída.');
+  refresh();
+  return true;
+ }
+ await flush();return true;
+}).catch(e=>{fail(e);throw e});
 window.sincronizarComNuvem=()=>window.sincronizarAgoraNuvem();
 window.salvarNuvemIntegralV9637=async()=>{if(!admin())throw Error('Gravação global permitida somente ao administrador.');return serial(flush)};
 function validateOp(o,p,data){
