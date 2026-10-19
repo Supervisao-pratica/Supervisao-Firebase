@@ -13623,6 +13623,14 @@ function changes(before,after){const a=entities(before),b=entities(after),ops=[]
 function valueAt(d,o){return maps.includes(o.field)?d[o.field]?.[o.key]:(d[o.field]||[]).find(x=>x.id===o.key)}
 function put(d,o,value){if(maps.includes(o.field)){d[o.field]??={};if(value===null)delete d[o.field][o.key];else d[o.field][o.key]=clone(value)}else{d[o.field]??=[];d[o.field]=d[o.field].filter(x=>x.id!==o.key);if(value!==null)d[o.field].push(clone(value))}}
 function merge(base,local,remote,path='base'){
+ // Metadados de processamento são acumulativos; nunca disputam dados de negócio.
+ if(path==='base._collabAck'||path==='base._collabErrors'){
+  const result={};for(const owner of new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})])){
+   if(['__proto__','prototype','constructor'].includes(owner))throw Error('Chave de objeto não permitida.');
+   const entries=[...(base?.[owner]||[]),...(remote?.[owner]||[]),...(local?.[owner]||[])];
+   result[owner]=[...new Map(entries.map(v=>[JSON.stringify(v),clone(v)])).values()];
+  }return result;
+ }
  if(same(local,base))return clone(remote);if(same(remote,base)||same(local,remote))return clone(local);
  if(base&&local&&remote&&!Array.isArray(base)&&!Array.isArray(local)&&!Array.isArray(remote)&&typeof base==='object'&&typeof local==='object'&&typeof remote==='object'){
   const result={};for(const key of new Set([...Object.keys(base),...Object.keys(local),...Object.keys(remote)])){
@@ -13663,7 +13671,7 @@ async function writeGlobal(data,expected){
  const f=firebase.firestore(),root=ref('dados_principais');const gen=Date.now()+'_'+fresh();data.updatedAt=Date.now();
  const payload=LZString.compressToBase64(JSON.stringify(data)),parts=[];for(let i=0;i<payload.length;i+=300000)parts.push(payload.slice(i,i+300000));
  for(let i=0;i<parts.length;i+=400){const batch=f.batch();parts.slice(i,i+400).forEach((conteudo,j)=>batch.set(root.collection('partes').doc(gen+'_'+String(i+j).padStart(5,'0')),{generation:gen,indice:i+j,conteudo}));await batch.commit()}
- await f.runTransaction(async tx=>{const doc=await tx.get(root),actual=doc.exists?String(doc.data().generation||doc.data().updatedAt||''):null;if(actual!==expected)throw Error('A base mudou em outro computador. A gravação foi interrompida para preservar as duas versões.');tx.set(root,{chunked:true,generation:gen,chunkCount:parts.length,totalLength:payload.length,checksum:hashV9637(payload),updatedAt:data.updatedAt,schema:'senac-cloud-v29',updatedBy:email()})});
+ await f.runTransaction(async tx=>{const doc=await tx.get(root),actual=doc.exists?String(doc.data().generation||doc.data().updatedAt||''):null;if(actual!==expected)throw Object.assign(Error('A base mudou em outro computador. A gravação foi interrompida para preservar as duas versões.'),{code:'senac/stale-generation'});tx.set(root,{chunked:true,generation:gen,chunkCount:parts.length,totalLength:payload.length,checksum:hashV9637(payload),updatedAt:data.updatedAt,schema:'senac-cloud-v29',updatedBy:email()})});
  // Gerações anteriores não são apagadas durante leituras concorrentes.
  return {data,generation:gen};
 }
@@ -13677,8 +13685,19 @@ async function flush(){
  }
  if(!admin())return;
  if(same(DB,baseline)){tell('Base atualizada pela nuvem.');return}
- const sent=clone(DB),result=await writeGlobal(sent,generation);
- const next=merge(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell('Salvo e confirmado na nuvem.');refresh();
+ for(let attempt=0;attempt<3;attempt++){
+  const sent=clone(DB);let result;
+  try{result=await writeGlobal(sent,generation)}catch(e){
+   if(e.code!=='senac/stale-generation'||attempt===2)throw e;
+   // Releitura do servidor; a cópia local permanece intacta se houver conflito real.
+   const doc=await ref('dados_principais').get({source:'server'});
+   if(!doc.exists)throw Error('Base remota ausente; alterações locais preservadas.');
+   const meta=doc.data(),remote=await decode(meta),next=merge(baseline,clone(DB),remote);
+   baseline=clone(remote);generation=String(meta.generation||meta.updatedAt||'');applyData(next);await localStore();
+   continue;
+  }
+  const next=merge(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell('Salvo e confirmado na nuvem.');refresh();return;
+ }
 }
 window.saveToStorage=async function(){
  if(!ready)return false;if(lastLocal&&same(DB,lastLocal))return true;if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
@@ -13728,7 +13747,7 @@ async function receiveGlobal(doc,token){
  const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(gen===generation&&ready){if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
  const remote=await decode(meta);if(token!==session)return;const current=clone(DB);
  const combined=baseline?merge(baseline,current,remote):remote;
- baseline=clone(remote);generation=gen;applyData(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){await publishRegions(remote);for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
+ baseline=clone(remote);generation=gen;applyData(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(DB,baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
 }
 async function receiveRegion(doc,token){
  if(token!==session||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
@@ -13848,6 +13867,7 @@ function installUI(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
 })();
+
 
 </script>
 </body>
