@@ -13623,6 +13623,8 @@ function changes(before,after){const a=entities(before),b=entities(after),ops=[]
 function valueAt(d,o){return maps.includes(o.field)?d[o.field]?.[o.key]:(d[o.field]||[]).find(x=>x.id===o.key)}
 function put(d,o,value){if(maps.includes(o.field)){d[o.field]??={};if(value===null)delete d[o.field][o.key];else d[o.field][o.key]=clone(value)}else{d[o.field]??=[];d[o.field]=d[o.field].filter(x=>x.id!==o.key);if(value!==null)d[o.field].push(clone(value))}}
 function merge(base,local,remote,path='base'){
+ if(path==='base._syncReviews')return {...clone(base||{}),...clone(local||{}),...clone(remote||{})};
+ if(path==='base._syncReviewedIds')return [...new Set([...(base||[]),...(local||[]),...(remote||[])])];
  // Metadados de processamento são acumulativos; nunca disputam dados de negócio.
  if(path==='base._collabAck'||path==='base._collabErrors'){
   const result={};for(const owner of new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})])){
@@ -13639,12 +13641,43 @@ function merge(base,local,remote,path='base'){
    const v=merge(base[key],local[key],remote[key],path+'.'+key);if(v!==undefined)result[key]=v;
   }return result;
  }
+ // Deslocamentos antigos não têm ID. Só comparar trechos de identidade inequívoca.
+ if(/^(base\.)?planning_logistics\./.test(path)&&[base,local,remote].every(Array.isArray)){
+  const key=row=>row&&[row.date,row.origin,row.dest].every(v=>typeof v==='string'&&v.trim())?JSON.stringify([row.date,row.origin,row.dest]):null;
+  const keys=[base,local,remote].map(rows=>rows.map(key));
+  const valid=keys.every(a=>a.every(Boolean)&&new Set(a).size===a.length);
+  // Inclusões, exclusões e reordenação concorrentes exigem análise; não inferir pela posição.
+  if(valid&&same(keys[0],keys[1])&&same(keys[0],keys[2]))return base.map((row,i)=>merge(row,local[i],remote[i],path+'.trecho['+(i+1)+']'));
+ }
  // Arrays de registros com ID podem receber inclusões independentes.
  if([base,local,remote].every(Array.isArray)&&[base,local,remote].every(a=>a.every(v=>v&&v.id))){
   const indexed=a=>Object.fromEntries(a.map(v=>[v.id,v]));return Object.values(merge(indexed(base),indexed(local),indexed(remote),path));
  }
  throw Error('Conflito em '+path+'. Exporte o backup local antes de reconciliar; nenhuma versão foi sobrescrita.');
 }
+function reconcileGlobal(base,local,remote){
+ const result={},reviews={...clone(base?._syncReviews||{}),...clone(local?._syncReviews||{}),...clone(remote?._syncReviews||{})};
+ const reconcile=(b,l,r,field,key)=>{try{return merge(b,l,r,'base.'+field+'.'+key)}catch(e){
+  if(!String(e.message).startsWith('Conflito em '))throw e;
+  const versions={field,key,base:b??null,local:l??null,remote:r??null};
+  if(!Object.values(reviews).some(x=>same(x.versions,versions))){const id=fresh();reviews[id]={id,versions,em:new Date().toISOString(),por:email(),motivo:e.message};}
+  return clone(r);
+ }};
+ for(const field of new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})])){
+  if(['__proto__','prototype','constructor'].includes(field))throw Error('Chave de objeto não permitida.');
+  if(field==='_syncReviews')continue;
+  if(maps.concat('planning_processos').includes(field)){
+   result[field]={};for(const key of new Set([...Object.keys(base?.[field]||{}),...Object.keys(local?.[field]||{}),...Object.keys(remote?.[field]||{})])){
+    if(['__proto__','prototype','constructor'].includes(key))throw Error('Chave de objeto não permitida.');
+    const value=reconcile(base?.[field]?.[key],local?.[field]?.[key],remote?.[field]?.[key],field,key);if(value!==undefined)result[field][key]=value;
+   }
+  }else if(['updatedAt','_origin','_backup_manifest'].includes(field)){result[field]=clone(remote?.[field]);}
+  else result[field]=merge(base?.[field],local?.[field],remote?.[field],'base.'+field);
+ }
+ if(Object.keys(reviews).length)result._syncReviews=reviews;
+ return result;
+}
+function pendingReviews(){const done=new Set(DB._syncReviewedIds||[]);return Object.values(DB._syncReviews||{}).filter(x=>!done.has(x.id));}
 function applyData(data){
  // V27 usa limites globais: um recorte regional precisa de limites próprios.
  if(profile()){
@@ -13692,11 +13725,11 @@ async function flush(){
    // Releitura do servidor; a cópia local permanece intacta se houver conflito real.
    const doc=await ref('dados_principais').get({source:'server'});
    if(!doc.exists)throw Error('Base remota ausente; alterações locais preservadas.');
-   const meta=doc.data(),remote=await decode(meta),next=merge(baseline,clone(DB),remote);
+   const meta=doc.data(),remote=await decode(meta),next=reconcileGlobal(baseline,clone(DB),remote);
    baseline=clone(remote);generation=String(meta.generation||meta.updatedAt||'');applyData(next);await localStore();
    continue;
   }
-  const next=merge(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell('Salvo e confirmado na nuvem.');refresh();return;
+  const next=reconcileGlobal(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell(pendingReviews().length?'Salvo na nuvem; há divergências preservadas em Notificações.':'Salvo e confirmado na nuvem.');refresh();return;
  }
 }
 window.saveToStorage=async function(){
@@ -13746,7 +13779,7 @@ async function receiveGlobal(doc,token){
  if(token!==session||!doc.exists||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
  const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(gen===generation&&ready){if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
  const remote=await decode(meta);if(token!==session)return;const current=clone(DB);
- const combined=baseline?merge(baseline,current,remote):remote;
+ const combined=baseline?reconcileGlobal(baseline,current,remote):remote;
  baseline=clone(remote);generation=gen;applyData(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(DB,baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
 }
 async function receiveRegion(doc,token){
@@ -13811,9 +13844,9 @@ function refreshActions(){
  const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
  document.querySelectorAll('button[onclick*="sendFullPlanEmail"]').forEach(b=>{b.disabled=false;b.style.pointerEvents='auto'});
  const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
- const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
+ const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?pendingReviews().length+Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
 }
-window.SenacV29={profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
+window.SenacV29={profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
 function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
 function exportLocal(){const data=clone(DB);data._v29_recuperacao={usuario:email(),em:new Date().toISOString(),pendentes:clone(pending),enviadas:clone(collabQueue),devolvidas:clone(window.__V29_COLLAB_ERRORS||[])};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='supervisao_copia_local_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function card(title,fields){const el=document.createElement('article');el.className='wf-card';const h=document.createElement('h4');h.textContent=title;el.append(h);for(const [label,value] of fields){const p=document.createElement('p'),b=document.createElement('b');b.textContent=label+': ';p.append(b,document.createTextNode(String(value||'Não informado')));el.append(p)}return el}
@@ -13833,6 +13866,12 @@ function showNotifications(mark=true){
  const list=document.getElementById('workflowNotificationsList');if(!list)return;list.replaceChildren();
  const add=(title,fields,ctx,approve,decline)=>{const c=card(title,fields),actions=document.createElement('div');actions.className='wf-row';if(approve)actions.append(button('Aprovar',approve,'wf-btn wf-btn-ok'));if(decline)actions.append(button('Devolver',decline,'wf-btn wf-btn-warn'));if(ctx&&DB.planning?.[ctx])actions.append(button('Abrir planejamento',()=>openPlan(ctx)));c.append(actions);list.append(c)};
  if(admin()){
+  pendingReviews().forEach(review=>{
+   const v=review.versions,c=card('Divergência preservada para revisão',[['Planejamento',v.key],['Área',v.field],['Descrição','A versão já confirmada na nuvem permanece ativa. Sua alteração local foi preservada abaixo; os demais roteiros continuam sincronizando.']]);
+   for(const [label,value] of [['Sua alteração local',v.local],['Versão da nuvem ao detectar a divergência',v.remote],['Versão anterior comum',v.base]]){const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent=label;pre.textContent=JSON.stringify(value,null,2);pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto';details.append(summary,pre);c.append(details);}
+   if(DB.planning?.[v.key])c.append(button('Abrir planejamento',()=>openPlan(v.key)));
+   c.append(button('Concluir revisão',async()=>{if(!confirm('Confirma que revisou as versões e fez os ajustes necessários no planejamento? As cópias serão mantidas no histórico.'))return;DB._syncReviewedIds=[...new Set([...(DB._syncReviewedIds||[]),review.id])];await saveToStorage();refreshActions();showNotifications(false)}));list.append(c);
+  });
   Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').forEach(m=>add('Aprovação de planejamento', [['Solicitante',requester(m)],['Região',regionFor(m.contexto)],['Planejamento',m.contexto],['Alteração solicitada','Aprovação do roteiro'],['Data',new Date(m.enviadoEm||m.atualizadoEm||m.criadoEm).toLocaleString('pt-BR')]],m.contexto,async()=>{await aprovarWorkflow(m.contexto);showNotifications(false)},async()=>{await devolverWorkflow(m.contexto);showNotifications(false)}));
   (DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').forEach(s=>add('Alteração de status',[['Solicitante',requester(s)],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Aluno',s.alunoNome],['Alteração solicitada',s.statusAtual+' → '+s.statusSolicitado],['Data',new Date(s.solicitadoEm).toLocaleString('pt-BR')]],s.contexto,async()=>{await aprovarStatusVisitaV23(s.id);showNotifications(false)},async()=>{await recusarStatusVisitaV23(s.id);showNotifications(false)}));
   (DB.solicitacoes_exclusao||[]).filter(s=>s.status==='pendente').forEach(s=>add('Pedido de exclusão',[['Solicitante',requester(s)],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Motivo',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],s.contexto,()=>deleteDecision(s,true),()=>deleteDecision(s,false)));
