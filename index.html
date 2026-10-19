@@ -295,7 +295,7 @@ th {
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
 
 <!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
-<!-- V29.4: sincronização multidispositivo estável, sem oscilação visual ou reprocessamento vazio. -->
+<!-- V29.5: sincronização estável e reconhecimento em nuvem de conflitos já consultados. -->
 </head>
 
 <body class="text-slate-800">
@@ -13599,7 +13599,7 @@ const uid=()=>firebase.auth().currentUser?.uid||'';
 const fresh=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random().toString(36).slice(2);
 let shellSession='',lastRegionSnapshot='';
 let stops=[],session='',ready=false,baseline=null,generation=null,pending=[],revision=0,writeTimer=null,chain=Promise.resolve(),remoteBusy=false;
-let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false,acknowledgedOps=new Set();
+let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false,acknowledgedOps=new Set(),reviewedErrorIds=new Set(),reviewedErrorsDirty=false;
 const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
 const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento'];
 function tell(text,error=false){errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.style.color=error?'#b45309':'#036642'} }
@@ -13801,7 +13801,7 @@ async function flush(){
  if(!ready||!firebase.auth().currentUser||email()==='visitante@senac.br')return;
  if(!navigator.onLine){tell('Salvo neste dispositivo; aguardando conexão.');return}
  if(profile()){
-  if(!pending.length&&!collabQueue.length){tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();
+  if(!pending.length&&!collabQueue.length&&!reviewedErrorsDirty){tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();
   await firebase.firestore().runTransaction(async tx=>{
    const snap=await tx.get(doc),current=snap.exists?snap.data():null;
    // V29.3: mescla as operações existentes no servidor com as deste dispositivo.
@@ -13812,9 +13812,9 @@ async function flush(){
     .filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);
    const payload=JSON.stringify(ops);
    if(new TextEncoder().encode(payload).length>800000||ops.length>2000)throw Error('Fila de colaboração muito grande. Aguarde a confirmação do administrador.');
-   tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+   tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops,reviewedErrors:[...reviewedErrorIds].slice(-1000),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
   });
-  collabVersion=version;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
+  collabVersion=version;reviewedErrorsDirty=false;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
  if(!admin())return;
  if(same(DB,baseline)){tell('Base atualizada pela nuvem.');return}
@@ -13893,10 +13893,10 @@ function validateOp(o,p,data){
 }
 async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
- let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];
+ let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]);candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));
  const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
  for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
- if(!count)return
+ if(!count){if(reviewed.size){applyData(candidate);await localStore();await flush()}return}
  // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
  applyData(candidate);await localStore();await flush();
 }
@@ -13910,7 +13910,7 @@ async function receiveGlobal(doc,token){
 async function receiveOwnCollaboration(doc,token){
  if(token!==session||!profile()||doc.metadata?.hasPendingWrites||doc.metadata?.fromCache||!doc.exists)return;
  const data=doc.data();if(data.schema!=='senac-collaboration-v29'||data.userId!==profile().id)return;
- collabVersion=data.version||collabVersion;
+ collabVersion=data.version||collabVersion;reviewedErrorIds=new Set(Array.isArray(data.reviewedErrors)?data.reviewedErrors:[]);
  const incoming=(Array.isArray(data.ops)?data.ops:[]).filter(o=>o&&typeof o.id==='string'&&!acknowledgedOps.has(o.id));
  const before=collabQueue.length;
  collabQueue=[...collabQueue,...incoming].filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);
@@ -13931,8 +13931,9 @@ async function receiveRegion(doc,token){
  const ack=new Set(envelope.ack||[]);acknowledgedOps=ack;collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
  let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.after);
  baseline=clone(remote);applyData(next);ready=true;await localStore();openShell();
- if((envelope.errors||[]).length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
- window.__V29_COLLAB_ERRORS=envelope.errors||[];lastRegionSnapshot=signature;
+ const unseenErrors=(envelope.errors||[]).filter(e=>e?.id&&!reviewedErrorIds.has(e.id));
+ if(unseenErrors.length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
+ window.__V29_COLLAB_ERRORS=unseenErrors;lastRegionSnapshot=signature;
 }
 window.iniciarEscutaDaNuvem=function(){return false}; // substitui a escuta antiga de sistema/banco_principal
 window.loadFromStorage=async()=>ready?clone(DB):null;
@@ -13955,7 +13956,7 @@ window.carregarBaseAposAutenticacao=async function(){
  }
  document.getElementById('globalLoader')?.classList.add('hidden');
 };
-firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
+firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>serial(flush).catch(fail));
 // Interface e relatórios são instalados abaixo.
 function realizedApproved(item,ctx=STATE.planContext,data=DB){
@@ -14023,6 +14024,11 @@ function showNotifications(mark=true){
  (window.__V29_COLLAB_ERRORS||[]).forEach(e=>add('Alteração não aplicada',[['Motivo',e.motivo],['Data',new Date(e.em).toLocaleString('pt-BR')]]));
  if(!list.children.length)list.append(card('Nenhuma notificação',[]));document.getElementById('workflowNotificationsModal').classList.add('open');
  if(mark&&mine.some(n=>!n.lida)){mine.forEach(n=>n.lida=true);saveToStorage().catch(fail)}
+ if(mark&&profile()&&(window.__V29_COLLAB_ERRORS||[]).length){
+  (window.__V29_COLLAB_ERRORS||[]).forEach(e=>{if(e?.id)reviewedErrorIds.add(e.id)});reviewedErrorsDirty=true;
+  window.__V29_COLLAB_ERRORS=[];
+  setTimeout(()=>serial(flush).catch(fail),300);
+ }
 }
 window.abrirWorkflowNotificacoes=()=>showNotifications();window.abrirWorkflowAdmin=()=>showNotifications();
 function openMonthly(){return window.gerarRelatorioVisitasMes();}
