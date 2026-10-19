@@ -295,7 +295,7 @@ th {
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
 
 <!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
-<!-- V29.3: respostas segmentadas e sincronização segura entre múltiplos dispositivos. -->
+<!-- V29.4: sincronização multidispositivo estável, sem oscilação visual ou reprocessamento vazio. -->
 </head>
 
 <body class="text-slate-800">
@@ -13896,7 +13896,7 @@ async function ingest(p,message){
  let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];
  const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
  for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
- if(!count){await publishRegions(DB);return}
+ if(!count)return
  // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
  applyData(candidate);await localStore();await flush();
 }
@@ -13912,12 +13912,12 @@ async function receiveOwnCollaboration(doc,token){
  const data=doc.data();if(data.schema!=='senac-collaboration-v29'||data.userId!==profile().id)return;
  collabVersion=data.version||collabVersion;
  const incoming=(Array.isArray(data.ops)?data.ops:[]).filter(o=>o&&typeof o.id==='string'&&!acknowledgedOps.has(o.id));
- const freshOps=incoming.filter(o=>!collabQueue.some(x=>x.id===o.id)&&!pending.some(x=>x.id===o.id));
+ const before=collabQueue.length;
  collabQueue=[...collabQueue,...incoming].filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);
- if(ready&&freshOps.length){
-  const next=clone(DB);for(const o of freshOps)put(next,o,o.after);applyData(next);
-  await localStore();refresh();tell('Alterações de outro dispositivo deste usuário foram incorporadas.');
- }
+ // V29.4: a fila compartilhada serve para transporte, não para reescrever a tela.
+ // A interface só é reconstruída por receiveRegion(), usando a resposta consolidada do admin.
+ // Isso elimina alternância 0/14 nas notificações e Realizar/Realizada nos status.
+ if(collabQueue.length!==before){await localStore();tell('Alterações de outro dispositivo localizadas; aguardando consolidação administrativa.');}
 }
 async function receiveRegion(doc,token){
  if(token!==session||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
@@ -13930,7 +13930,7 @@ async function receiveRegion(doc,token){
  const remote=envelope.remote;
  const ack=new Set(envelope.ack||[]);acknowledgedOps=ack;collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
  let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.after);
- baseline=clone(remote);applyData(next);ready=true;openShell();await localStore();refresh();
+ baseline=clone(remote);applyData(next);ready=true;await localStore();openShell();
  if((envelope.errors||[]).length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
  window.__V29_COLLAB_ERRORS=envelope.errors||[];lastRegionSnapshot=signature;
 }
