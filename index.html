@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V31</title>
+    <title>Supervisão Senac 2026 — Revisão V32</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -295,7 +295,7 @@ th {
 <!-- V9.6.22: inclui legenda de Conselho de Classe e Recuperacao no E-mail Roteiro. -->
 
 <!-- V9.6.45: seletor do planejamento oferece 1 a 6 visitas para Técnica e 1 a 3 para Qualificação; validação genérica e segura. Duplicatas declarativas antigas removidas sem alterar wrappers de compatibilidade. -->
-<!-- V29.7: presença, aprovação acionável e proteção contra loop de salvamento. -->
+<!-- V32: desempenho, estado visual persistente e notificações consistentes. -->
 </head>
 
 <body class="text-slate-800">
@@ -4432,7 +4432,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     <td class="p-2"><input class="plan-input font-bold w-full" value="${s.cidade}" onchange="updatePlanStudent(${idx}, 'cidade', this.value)"></td>
                     <td class="p-2"><input class="plan-input w-full font-bold" value="${s.supervisor.display}" onchange="updatePlanSupervisor(${idx}, 'display', this.value)"><input class="plan-input w-full text-[9px] text-slate-500 mt-1" value="${s.supervisor.tel || ''}" placeholder="Tel" onchange="updatePlanSupervisor(${idx}, 'tel', this.value)"><input class="plan-input w-full text-[9px] text-blue-500 mt-1" value="${s.supervisor.email || ''}" placeholder="Email" onchange="updatePlanSupervisor(${idx}, 'email', this.value)"></td>
                     <td class="p-1"><select class="plan-input" onchange="validateVisitSelection(${idx}, this)">${Array.from({length: isTec ? 6 : 3}, (_, visitIndex) => { const label = `${visitIndex + 1}ª Visita`; return `<option value="${label}" ${item.visitaTipo === label ? 'selected' : ''}>${label}</option>`; }).join('')}</select></td>
-                    <td class="p-1"><select class="plan-input border ${statusClass}" onchange="updatePlanItem(${idx}, 'status', this.value); renderPlanningTable();"><option class="text-slate-600 bg-white" value="Realizar" ${item.status === 'Realizar' ? 'selected' : ''}>Realizar</option><option class="text-emerald-600 font-bold bg-white" value="Realizada" ${item.status === 'Realizada' ? 'selected' : ''}>Realizada</option><option class="text-red-500 font-bold bg-white" value="Não realizada" ${item.status === 'Não realizada' ? 'selected' : ''}>Não realizada</option></select></td>
+                    <td class="p-1"><select class="plan-input border ${statusClass}" onchange="updatePlanItem(${idx}, 'status', this.value);"><option class="text-slate-600 bg-white" value="Realizar" ${item.status === 'Realizar' ? 'selected' : ''}>Realizar</option><option class="text-emerald-600 font-bold bg-white" value="Realizada" ${item.status === 'Realizada' ? 'selected' : ''}>Realizada</option><option class="text-red-500 font-bold bg-white" value="Não realizada" ${item.status === 'Não realizada' ? 'selected' : ''}>Não realizada</option></select></td>
                     <td class="p-1 col-obs"><textarea class="plan-input text-[10px] w-full resize-y min-h-[40px] leading-tight" placeholder="..." onchange="updatePlanItem(${idx}, 'obs', this.value)">${currentObs}</textarea></td>
                     <td class="p-1 text-center no-print"><button onclick="removeFromPlan(${idx})" class="text-red-400 hover:text-red-600"><i data-lucide="x" class="w-3 h-3"></i></button></td>
                 </tr>`; 
@@ -13715,7 +13715,30 @@ function reconcileGlobal(base,local,remote){
  return result;
 }
 function pendingReviews(){const done=new Set(DB._syncReviewedIds||[]);return Object.values(DB._syncReviews||{}).filter(x=>!done.has(x.id));}
+function preserveStableUiStateV32(incoming,current=DB){
+ const next=clone(incoming||{}),cur=current||{};
+ // PED/SUP are monotonic completion markers. A delayed snapshot cannot uncheck them.
+ for(const [ctx,rows] of Object.entries(next.planning||{})){
+  const oldRows=cur.planning?.[ctx]||[];
+  for(const row of rows||[]){
+   const old=oldRows.find(x=>String(x.student?.id)===String(row.student?.id)&&String(x.date||'')===String(row.date||''))||oldRows.find(x=>String(x.student?.id)===String(row.student?.id));
+   if(!old)continue;row.etapas={...(row.etapas||{})};
+   for(const key of ['pedagogico','supervisor']){
+    const a=old.etapas?.[key],b=row.etapas?.[key];
+    if(a?.ok&&(!b?.ok||String(a.em||'')>String(b.em||'')))row.etapas[key]=clone(a);
+   }
+  }
+ }
+ // Read flags and final admin decisions never regress because of an older snapshot.
+ for(const n of next.notificacoes_planejamento||[]){const old=(cur.notificacoes_planejamento||[]).find(x=>x.id===n.id);if(old?.lida)n.lida=true}
+ for(const key of ['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades']){
+  for(const r of next[key]||[]){const old=(cur[key]||[]).find(x=>x.id===r.id);if(old&&old.statusSolicitacao&&old.statusSolicitacao!=='pendente'&&r.statusSolicitacao==='pendente')Object.assign(r,clone(old));if(old&&old.status&&old.status!=='pendente'&&r.status==='pendente')Object.assign(r,clone(old))}
+ }
+ for(const [ctx,m] of Object.entries(next.workflow_planejamento||{})){const old=cur.workflow_planejamento?.[ctx];if(old&&['aprovado','devolvido'].includes(old.status)&&m.status==='pendente')next.workflow_planejamento[ctx]=clone(old)}
+ return next;
+}
 function applyData(data){
+ data=preserveStableUiStateV32(data);
  // V27 usa limites globais: um recorte regional precisa de limites próprios.
  if(profile()){
   const defaults={planning:{},planning_logistics:{},planning_lunch:{},planning_admin:{},regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],custom_passwords:{}};
@@ -13725,7 +13748,20 @@ function applyData(data){
 }
 async function localStore(){const db=await dbPromise;const item={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision,collabVersion,collabQueue:clone(collabQueue)};await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});if(revision===item.revision)lastLocal=clone(item.data)}
 async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
-function refresh(){if(!ready)return;if(editingPlan()){refreshDeferred=true;refreshActions();return;}try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
+let refreshTimerV32=null;
+function refresh(){
+ clearTimeout(refreshTimerV32);refreshTimerV32=setTimeout(()=>{
+  if(!ready)return;
+  try{
+   const planVisible=!document.getElementById('viewPlanejamento')?.classList.contains('hidden');
+   const dashVisible=!document.getElementById('viewDashboard')?.classList.contains('hidden');
+   if(planVisible){setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable()}
+   if(dashVisible){setupFilters();if(admin())runFilter()}
+   window.atualizarCidadesUsuarioV24?.();refreshActions();
+   if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false);
+  }catch(e){console.warn('Atualização visual',e)}
+ },80);
+}
 function openShell(){const first=shellSession!==uid();if(first){shellSession=uid();startApp(profile()?'planning_user':email()==='visitante@senac.br'?'visitor':'admin',profile()?.regiao||'Todas');}window.APP_READ_ONLY=!ready||email()==='visitante@senac.br';document.body.classList.toggle('v29-loading',!ready);if(profile()){STATE.userType='planning_user';STATE.userRegion=profile().regiao;document.getElementById('roleDisplay').textContent='Planejamento · '+profile().nome;if(first)switchTab('planejamento')}refreshActions()}
 async function decode(meta){if(meta.chunked)return carregarNuvemV9633(firebase.firestore(),meta);return meta.payload?JSON.parse(LZString.decompressFromBase64(meta.payload)):meta}
 // V29.1: respostas regionais segmentadas. O documento principal guarda apenas o manifesto;
@@ -14048,7 +14084,11 @@ function refreshActions(){renderAttention();
  const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
  document.querySelectorAll('button[onclick*="sendFullPlanEmail"]').forEach(b=>{b.disabled=false;b.style.pointerEvents='auto'});
  const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
- const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?pendingReviews().length+Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
+ const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;
+ const requests=admin()?pendingReviews().length+Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;
+ const notificationCount=Math.max(notices,requests),label='Notificações ('+notificationCount+')';
+ const notificationButton=document.getElementById('v29-notifications');if(notificationButton)notificationButton.textContent=label;
+ document.querySelectorAll('button[onclick*="abrirWorkflowNotificacoes"]').forEach(b=>{if(!b.closest('#workflowNotificationsModal')){const txt=b.textContent.replace(/Notificações(?:\s*\(\d+\))?/i,label);if(txt!==b.textContent)b.textContent=txt}});
 }
 window.SenacV29={statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
 function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
@@ -14165,7 +14205,7 @@ function installUI(){
  if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(e=>console.warn('Instalação: service worker indisponível',e));
  const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;actions?.classList.add('v29-plan-actions');
  const filters=document.getElementById('planRegiao')?.closest('.grid');if(filters&&!filters.closest('details')){const details=document.createElement('details');details.className='v29-filter-drawer';details.open=innerWidth>700;const summary=document.createElement('summary');summary.textContent='Filtros do planejamento';filters.before(details);details.append(summary,filters)}
- const body=document.getElementById('planTableBody');if(body){let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(mobileTable,30)}).observe(body,{childList:true});mobileTable()}
+ const body=document.getElementById('planTableBody');if(body)mobileTable()
  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.wf-modal.open').forEach(m=>m.classList.remove('open'))});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
