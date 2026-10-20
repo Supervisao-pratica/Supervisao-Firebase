@@ -1,0 +1,164 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function admin() {
+      return signedIn()
+        && request.auth.token.email == 'michel.farias@pr.senac.br';
+    }
+
+    function visitor() {
+      return signedIn()
+        && request.auth.token.email == 'visitante@senac.br';
+    }
+
+    function owner(id) {
+      return signedIn() && (
+        (
+          id == 'kleber'
+          && request.auth.token.email == 'kleber.sato@docente.pr.senac.br'
+        )
+        ||
+        (
+          id == 'michelly'
+          && request.auth.token.email == 'michelly.gronkoski@docente.pr.senac.br'
+        )
+        ||
+        (
+          id == 'fernando'
+          && request.auth.token.email == 'fernando.scaraveli@docente.pr.senac.br'
+        )
+      );
+    }
+
+    function canReadRegionalResponse(documentId) {
+      return
+        (
+          owner('kleber')
+          && (
+            documentId == 'resposta_kleber'
+            || documentId.matches('^resposta_kleber__.+__[0-9]{5}$')
+          )
+        )
+        ||
+        (
+          owner('michelly')
+          && (
+            documentId == 'resposta_michelly'
+            || documentId.matches('^resposta_michelly__.+__[0-9]{5}$')
+          )
+        )
+        ||
+        (
+          owner('fernando')
+          && (
+            documentId == 'resposta_fernando'
+            || documentId.matches('^resposta_fernando__.+__[0-9]{5}$')
+          )
+        );
+    }
+
+    function canReadOwnCollaboration(documentId) {
+      return
+        (
+          documentId == 'colaboracao_kleber'
+          && owner('kleber')
+        )
+        ||
+        (
+          documentId == 'colaboracao_michelly'
+          && owner('michelly')
+        )
+        ||
+        (
+          documentId == 'colaboracao_fernando'
+          && owner('fernando')
+        );
+    }
+
+    function validCollaboration(id) {
+      return owner(id)
+        && request.resource.data.keys().hasOnly([
+          'schema',
+          'userId',
+          'email',
+          'version',
+          'ops',
+          'updatedAt',
+          'reviewedErrors'
+        ])
+        && request.resource.data.schema == 'senac-collaboration-v29'
+        && request.resource.data.userId == id
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.version is string
+        && request.resource.data.ops is list
+        && request.resource.data.ops.size() <= 2000
+        && (!('reviewedErrors' in request.resource.data) || (request.resource.data.reviewedErrors is list && request.resource.data.reviewedErrors.size() <= 1000))
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /banco_senac/dados_principais {
+      allow read: if admin() || visitor();
+      allow create, update, delete: if admin();
+
+      match /partes/{partId} {
+        allow read: if admin() || visitor();
+        allow create, update, delete: if admin();
+      }
+    }
+
+    match /banco_senac/{documentId} {
+      allow read: if
+        admin()
+        || canReadOwnCollaboration(documentId)
+        || canReadRegionalResponse(documentId);
+
+      allow create, update: if
+        admin()
+        || (
+          documentId == 'colaboracao_kleber'
+          && validCollaboration('kleber')
+        )
+        || (
+          documentId == 'colaboracao_michelly'
+          && validCollaboration('michelly')
+        )
+        || (
+          documentId == 'colaboracao_fernando'
+          && validCollaboration('fernando')
+        );
+
+      allow delete: if admin();
+    }
+
+    match /banco_senac/{documentId}/{subcollection}/{childId} {
+      allow read, write: if admin();
+    }
+
+    match /banco_senac/{presenceId} {
+      allow read: if admin();
+      allow create, update: if presenceId == 'presenca_' + request.resource.data.userId
+        && owner(request.resource.data.userId)
+        && request.resource.data.keys().hasOnly(['userId','email','online','lastSeen'])
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.online is bool
+        && request.resource.data.lastSeen == request.time;
+    }
+    match /backups_semanais/{document=**} {
+      allow read, write: if admin();
+    }
+
+    match /backups_versoes/{document=**} {
+      allow read, write: if admin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

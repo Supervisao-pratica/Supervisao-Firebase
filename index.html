@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V29.1</title>
+    <title>Supervisão Senac 2026 — Revisão V31</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -4871,7 +4871,8 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 }
             }
 
-            DB.planning_logistics[STATE.planContext] = newLogistics;
+            if(cidadePartida && flatRoute.length > 1){const last=flatRoute[flatRoute.length-1];if(last.cidade.trim().toLocaleUpperCase('pt-BR')!==cidadePartida.trim().toLocaleUpperCase('pt-BR'))newLogistics.push({date:last.date,origin:last.cidade,originTime:'',dest:cidadePartida,destTime:'',km:'',toll:'',hospedagem:false});}
+DB.planning_logistics[STATE.planContext] = newLogistics;
             saveToStorage();
             renderLogisticsTable();
             showToast("Mágica Concluída! Rota gerada a partir da sua cidade base!");
@@ -6174,7 +6175,14 @@ window.exportControlePDF = function() {
     
 
 
-</body>
+<style>#cidadePartidaBase{width:clamp(220px,26vw,340px)!important;font-size:12px!important;min-height:36px;padding-right:12px!important}
+#v30-attention{margin-top:24px;padding:18px;border:1px solid #f3d18b;border-radius:12px;background:#fffcf5;font-family:inherit}
+.v30-attention-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.v30-attention-head h3{font-weight:800;color:#004587;font-size:15px}.v30-attention-head p{font-size:11px;color:#64748b;margin-top:4px}#v30-attention-count{font-size:11px;font-weight:700;color:#9a6700;white-space:nowrap}
+#v30-attention-form{margin-top:14px}#v30-attention-form[hidden]{display:none}#v30-attention-form label{display:block;font-size:11px;font-weight:700;color:#334155;margin-bottom:5px}#v30-attention-text{width:100%;resize:vertical;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font-size:12px;background:white}#v30-attention-form button{background:#004587;color:white;padding:9px 12px;border-radius:7px;font-weight:700;font-size:11px;margin-top:6px}
+.v30-attention-item{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:13px;background:white;border:1px solid #f3d18b;border-radius:9px;margin-top:12px}.v30-attention-item p{font-size:12px;white-space:pre-wrap;color:#334155}.v30-attention-item small{display:block;color:#64748b;font-size:10px;margin-top:6px}.v30-attention-item.adjusted{border-color:#a7d7c5;background:#f5fcf9}.v30-adjust,.v30-reopen{flex-shrink:0;border-radius:7px;padding:10px;border:1px solid #b9d5ca;font-size:11px;font-weight:700;color:#006b4d;background:#effaf5}.v30-reopen{background:white;color:#475569;border-color:#cbd5e1}.v30-empty{font-size:12px;color:#64748b;margin-top:12px}
+@media(max-width:640px){#cidadePartidaBase{width:230px!important;max-width:100%}.v30-attention-item{align-items:stretch;flex-direction:column}.v30-attention-head{align-items:flex-start}}
+
+.v297-dot{display:inline-flex!important;align-items:center;justify-content:center;width:23px!important;height:23px!important;border-radius:50%;color:white;font:bold 12px system-ui}.v297-person[data-online="false"] .v297-dot{background:#64748b}.v297-person[data-online="true"] .v297-dot{background:#15803d}</style></body>
     </html>`;
     
     printWindow.document.write(html);
@@ -9398,7 +9406,7 @@ window.abrirSharePointImportModal=window.alertarImportacaoSharePoint=function(){
 window.lerExcelSharePointLinkConsolidado=async function(){const raw=document.getElementById('spExcelUrlConsolidado')?.value||'';if(!raw.trim())return alert('Cole o link primeiro.');localStorage.setItem('senac_sharepoint_excel_url',raw);let url=raw.trim();if(!/[?&]download=1/i.test(url)&&!/_layouts\/.*download\.aspx/i.test(url))url+=url.includes('?')?'&download=1':'?download=1';const loader=document.getElementById('globalLoader'),msg=document.getElementById('loadingMsg');if(loader){loader.classList.remove('hidden');loader.classList.add('flex');}if(msg)msg.innerText='Tentando ler arquivo do SharePoint...';try{const r=await fetch(url,{credentials:'include'});if(!r.ok)throw new Error('HTTP '+r.status);const buf=await r.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true,bookVBA:true});document.getElementById('spModalConsolidado')?.remove();if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}openSheetModal(wb,'SHAREPOINT');}catch(e){if(loader){loader.classList.add('hidden');loader.classList.remove('flex');}alert('Não consegui ler o link direto. Use arquivo local baixado.\n\nDetalhe: '+e.message);}};
 function ensureToolbar(){const sp=[...document.querySelectorAll('button')].find(b=>/SharePoint/i.test(b.textContent||''));if(sp)sp.onclick=window.alertarImportacaoSharePoint;if(typeof lucide!=='undefined')lucide.createIcons();}
 document.addEventListener('DOMContentLoaded',()=>setTimeout(ensureToolbar,800));const oldSwitch=window.switchTab;window.switchTab=function(tab){const r=oldSwitch.apply(this,arguments);setTimeout(ensureToolbar,150);return r;};
-const oldUpdate=window.updatePlanItem;window.updatePlanItem=function(idx,field,val){if(field==='date'){if(!val||!/^\d{4}-\d{2}-\d{2}$/.test(String(val)))return;clearTimeout(window.__planDateTimerConsolidado);window.__planDateTimerConsolidado=setTimeout(()=>oldUpdate(idx,field,val),350);return;}return oldUpdate(idx,field,val);};
+const oldUpdate=window.updatePlanItem;window.updatePlanItem=function(idx,field,val){if(field==='date'){if(!val||!/^\d{4}-\d{2}-\d{2}$/.test(String(val)))return;return oldUpdate(idx,field,val);}return oldUpdate(idx,field,val);};
 })();
 </script>
 
@@ -13587,6 +13595,7 @@ body.workflow-operador #abrangenciaControl{display:none!important}
 
 </style>
 <script id="senac-v29-script">
+
 /* Revisão V29. Transporte autorizado, fila durável e interface regional. */
 (function(){'use strict';
 const ADMIN='michel.farias@pr.senac.br';
@@ -13608,7 +13617,7 @@ let shellSession='',lastRegionSnapshot='';
 let stops=[],session='',ready=false,baseline=null,generation=null,pending=[],revision=0,writeTimer=null,chain=Promise.resolve(),remoteBusy=false;
 let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false,acknowledgedOps=new Set(),reviewedErrorIds=new Set(),reviewedErrorsDirty=false;
 const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
-const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento'];
+const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention'];
 function tell(text,error=false){errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.style.color=error?'#b45309':'#036642'} }
 function fail(e){console.error('[V29]',e);window.__ULTIMO_ERRO_NUVEM__={codigo:e.code||'erro',mensagem:e.message};tell('Alterações locais preservadas; '+(e.code==='permission-denied'?'Firebase recusou a permissão. Verifique as regras publicadas.':e.message),true)}
 function serial(fn){const next=chain.catch(()=>{}).then(fn);chain=next;return next}
@@ -13623,14 +13632,21 @@ function projection(data,p){
  const allowedClasses=new Set([...d.quali,...d.tec].map(a=>String(a.turma)));
  Object.entries(data.cc_map||{}).forEach(([k,v])=>{if(allowedClasses.has(k))d.cc_map[k]=v});
  const e=Object.keys(USERS).find(e=>USERS[e].id===p.id);
- lists.forEach(k=>d[k]=(data[k]||[]).filter(x=>k==='notificacoes_planejamento'?x.destinatario===e:(x.solicitadoPor||x.solicitante)===e));
- return d;
+ lists.forEach(k=>d[k]=(data[k]||[]).filter(x=>k==='planning_attention'?contexts.includes(x.contexto):k==='notificacoes_planejamento'?x.destinatario===e:(x.solicitadoPor||x.solicitante)===e));
+ bindStudents(d);return d;
 }
+function bindStudents(data){const students=new Map([...(data.quali||[]),...(data.tec||[])].map(a=>[String(a.id),a]));Object.values(data.planning||{}).forEach(rows=>{if(Array.isArray(rows))rows.forEach(row=>{const current=students.get(String(row.student?.id));if(current)row.student=current})});}
+function officialPlanRows(rows,current,data){if(!Array.isArray(rows))return rows;const students=new Map([...(data.quali||[]),...(data.tec||[])].map(a=>[String(a.id),a]));return rows.map(row=>{const old=(current||[]).find(x=>String(x.student?.id)===String(row.student?.id));return {...clone(row),student:clone(students.get(String(row.student?.id))||row.student),etapas:clone(old?.etapas||{}),status:old?.status||'Realizar'}});}
+
 function entities(d){const out={};maps.forEach(k=>Object.entries(d?.[k]||{}).forEach(([id,v])=>out[k+'\n'+id]=v));lists.forEach(k=>(d?.[k]||[]).forEach(v=>{if(v.id)out[k+'\n'+v.id]=v}));return out}
 function changes(before,after){const a=entities(before),b=entities(after),ops=[];for(const key of new Set([...Object.keys(a),...Object.keys(b)])){if(!same(a[key],b[key])){const [field,...rest]=key.split('\n');ops.push({id:fresh(),field,key:rest.join('\n'),before:a[key]??null,after:b[key]??null})}}return ops}
 function valueAt(d,o){return maps.includes(o.field)?d[o.field]?.[o.key]:(d[o.field]||[]).find(x=>x.id===o.key)}
 function put(d,o,value){if(maps.includes(o.field)){d[o.field]??={};if(value===null)delete d[o.field][o.key];else d[o.field][o.key]=clone(value)}else{d[o.field]??=[];d[o.field]=d[o.field].filter(x=>x.id!==o.key);if(value!==null)d[o.field].push(clone(value))}}
 function merge(base,local,remote,path='base'){
+ if(/^(base\.)?planning\.[^.]+$/.test(path)&&[base,local,remote].every(Array.isArray)&&[base,local,remote].every(rows=>rows.every(x=>x.student?.id)&&new Set(rows.map(x=>String(x.student.id))).size===rows.length)){
+  const keyed=rows=>Object.fromEntries(rows.map(x=>[String(x.student.id),x]));const result=merge(keyed(base),keyed(local),keyed(remote),path+'.students');return Object.values(result).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+ }
+
  // Notificações são criadas em várias sessões; leitura é cumulativa.
  if(/^(base\.)?notificacoes_planejamento\.[^.]+\.lida$/.test(path))return !!(base||local||remote);
  if(/^(base\.)?notificacoes_planejamento\.[^.]+$/.test(path)&&local&&remote&&!Array.isArray(local)&&!Array.isArray(remote)){
@@ -13705,11 +13721,11 @@ function applyData(data){
   const defaults={planning:{},planning_logistics:{},planning_lunch:{},planning_admin:{},regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],custom_passwords:{}};
   DB={...defaults,...clone(data)};window.DB=DB;
   ['quali','tec'].forEach(k=>DB[k]=(DB[k]||[]).map(a=>({...a,ini:a.ini?new Date(a.ini):null,fim:a.fim?new Date(a.fim):null,visits:(a.visits||[]).map(v=>({...v,date:v.date?new Date(v.date):null}))})));
- }else processDataLoad(data);
+ }else processDataLoad(data);bindStudents(DB);
 }
-async function localStore(){const db=await dbPromise;const item={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision,collabVersion,collabQueue:clone(collabQueue)};await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});lastLocal=clone(DB)}
+async function localStore(){const db=await dbPromise;const item={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision,collabVersion,collabQueue:clone(collabQueue)};await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});if(revision===item.revision)lastLocal=clone(item.data)}
 async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
-function refresh(){if(!ready)return;try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
+function refresh(){if(!ready)return;if(editingPlan()){refreshDeferred=true;refreshActions();return;}try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
 function openShell(){const first=shellSession!==uid();if(first){shellSession=uid();startApp(profile()?'planning_user':email()==='visitante@senac.br'?'visitor':'admin',profile()?.regiao||'Todas');}window.APP_READ_ONLY=!ready||email()==='visitante@senac.br';document.body.classList.toggle('v29-loading',!ready);if(profile()){STATE.userType='planning_user';STATE.userRegion=profile().regiao;document.getElementById('roleDisplay').textContent='Planejamento · '+profile().nome;if(first)switchTab('planejamento')}refreshActions()}
 async function decode(meta){if(meta.chunked)return carregarNuvemV9633(firebase.firestore(),meta);return meta.payload?JSON.parse(LZString.decompressFromBase64(meta.payload)):meta}
 // V29.1: respostas regionais segmentadas. O documento principal guarda apenas o manifesto;
@@ -13730,12 +13746,13 @@ async function publishRegions(data){
    schema:'senac-regional-envelope-v29.1',
    userId:p.id,
    email:e,
-   generation:String(data.updatedAt),
+   generation:'stable-content',
    remote:projection(data,p),
    ack:data._collabAck?.[p.id]||[],
    errors:data._collabErrors?.[p.id]||[]
   };
   const packed=LZString.compressToBase64(JSON.stringify(envelope));
+  const checksum=hashV9637(packed);if(previousMeta?.checksum===checksum)continue;
   if(!packed)throw Error('Não foi possível compactar o recorte de '+p.nome+'.');
   const parts=[];
   for(let i=0;i<packed.length;i+=REGIONAL_CHUNK_SIZE_V291)parts.push(packed.slice(i,i+REGIONAL_CHUNK_SIZE_V291));
@@ -13753,20 +13770,11 @@ async function publishRegions(data){
   await main.set({
    schema:'senac-regional-v29.1',chunked:true,userId:p.id,email:e,
    storageGeneration:generation,dataGeneration:String(data.updatedAt),
-   chunkCount:parts.length,totalLength:packed.length,
+   chunkCount:parts.length,totalLength:packed.length,checksum,
    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
   });
-  // Limpeza somente depois de o novo manifesto estar publicado. Falha aqui não invalida a gravação.
-  if(previousMeta?.chunked&&previousMeta.storageGeneration&&Number(previousMeta.chunkCount)>0){
-   try{
-    const oldCount=Math.min(Number(previousMeta.chunkCount)||0,10000);
-    for(let start=0;start<oldCount;start+=400){
-     const batch=f.batch();
-     for(let i=start;i<Math.min(start+400,oldCount);i++)batch.delete(regionalChunkRefV291(p.id,previousMeta.storageGeneration,i));
-     await batch.commit();
-    }
-   }catch(cleanError){console.warn('Resposta regional publicada; limpeza antiga pendente para '+p.id,cleanError)}
-  }
+  // Partes antigas são preservadas para leitores concorrentes.
+
  }
 }
 async function readRegionalEnvelopeV291(meta){
@@ -13784,6 +13792,7 @@ async function readRegionalEnvelopeV291(meta){
   docs.forEach((doc,pos)=>{const i=indexes[pos];if(!doc.exists)throw Error('Resposta regional incompleta: parte '+(i+1)+' de '+count+' ausente.');const d=doc.data();if(d.generation!==meta.storageGeneration||Number(d.index)!==i)throw Error('Resposta regional inconsistente na parte '+(i+1)+'.');parts[i]=String(d.content||'')});
  }
  const packed=parts.join('');
+ if(meta.checksum&&hashV9637(packed)!==meta.checksum)throw Error('Resposta regional corrompida; cópia local preservada.');
  if(packed.length!==Number(meta.totalLength))throw Error('Resposta regional incompleta: tamanho divergente.');
  const json=LZString.decompressFromBase64(packed);
  if(!json)throw Error('Não foi possível descompactar a resposta regional.');
@@ -13824,7 +13833,7 @@ async function flush(){
   collabVersion=version;reviewedErrorsDirty=false;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
  if(!admin())return;
- if(same(DB,baseline)){tell('Base atualizada pela nuvem.');return}
+ if(same(DB,baseline)){await publishRegions(DB);tell('Base atualizada pela nuvem.');return}
  for(let attempt=0;attempt<3;attempt++){
   const sent=clone(DB);let result;
   try{result=await writeGlobal(sent,generation)}catch(e){
@@ -13846,10 +13855,10 @@ window.saveToStorage=async function(){
   DB.regioes_map=clone(baseline.regioes_map||{});DB.rede_cidades=clone(baseline.rede_cidades||{});
   const ops=changes(lastLocal||baseline,DB);pending.push(...ops);
  }
- revision++;await localStore();tell('Salvo neste dispositivo; sincronização pendente.');clearTimeout(writeTimer);writeTimer=setTimeout(()=>serial(flush).catch(fail),450);return true;
+ revision++;lastLocal=clone(DB);await localStore();tell('Salvo neste dispositivo; sincronização pendente.');clearTimeout(writeTimer);writeTimer=setTimeout(()=>serial(flush).catch(fail),450);return true;
 };
 // V29.3: sincronização manual completa e multidispositivo.
-window.sincronizarAgoraNuvem=()=>serial(async()=>{
+const syncManual31=()=>serial(async()=>{
  if(!ready)throw Error('A base ainda está carregando. Aguarde alguns segundos e tente novamente.');
  if(!firebase.auth().currentUser)throw Error('Entre novamente no sistema para sincronizar.');
  if(!navigator.onLine)throw Error('Sem conexão com a internet. As alterações locais continuam preservadas.');
@@ -13862,7 +13871,7 @@ window.sincronizarAgoraNuvem=()=>serial(async()=>{
   const resposta=await ref('resposta_'+profile().id).get({source:'server'});
   if(resposta.exists)await receiveRegion(resposta,session);
   if(pending.length||collabQueue.length)tell('Alterações sincronizadas entre dispositivos; aguardando processamento administrativo.');
-  else tell('Sincronização concluída em todos os dispositivos.');
+  else tell('Sua região está atualizada com a resposta confirmada pelo administrador.');
   return true;
  }
  if(admin()){
@@ -13874,6 +13883,8 @@ window.sincronizarAgoraNuvem=()=>serial(async()=>{
  }
  await flush();return true;
 }).catch(e=>{fail(e);throw e});
+let manualSyncBusy=false;
+window.sincronizarAgoraNuvem=async()=>{if(manualSyncBusy)return;manualSyncBusy=true;const b=document.getElementById('v29-sync');if(b){b.disabled=true;b.textContent='Sincronizando…'}tell('Iniciando sincronização…');try{await saveToStorage();await syncManual31();if(b)b.textContent='Sincronização verificada ✓';}catch(e){if(b)b.textContent='Falha: tentar novamente';throw e}finally{manualSyncBusy=false;if(b)b.disabled=false}};
 window.sincronizarComNuvem=()=>window.sincronizarAgoraNuvem();
 window.salvarNuvemIntegralV9637=async()=>{if(!admin())throw Error('Gravação global permitida somente ao administrador.');return serial(flush)};
 function validateOp(o,p,data){
@@ -13890,6 +13901,9 @@ function validateOp(o,p,data){
   if(o.field==='workflow_planejamento'&&(v.responsavelId!==p.id||!['rascunho','pendente','devolvido'].includes(v.status)||v.aprovadoPor||v.aprovadoEm))throw Error('Aprovação é exclusiva do administrador.');
  }else{
   if(v===null)throw Error('Solicitações e notificações não podem ser apagadas pelo usuário.');
+  if(o.field==='planning_attention'){
+   const prev=valueAt(data,o);if(!prev||prev.status!=='pendente'||!owns(prev.contexto,p,data)||v.status!=='ajustado'||v.ajustadoPor!==e||!v.ajustadoEm||!same({...v,status:prev.status,ajustadoPor:prev.ajustadoPor,ajustadoEm:prev.ajustadoEm},prev))throw Error('Somente a confirmação de ajuste da própria região é permitida.');
+  }
   if(o.field==='solicitacoes_status_visita'&&(v.solicitadoPor!==e||v.statusSolicitacao!=='pendente'||!owns(v.contexto,p,data)))throw Error('Solicitação de status inválida.');
   if(o.field==='solicitacoes_exclusao'&&(v.solicitante!==e||v.status!=='pendente'||!owns(v.contexto,p,data)))throw Error('Solicitação de exclusão inválida.');
   if(o.field==='solicitacoes_cidades'&&(v.solicitante!==e||v.status!=='pendente'||norm(v.regiao)!==norm(p.regiao)||!String(v.cidade||'').trim()))throw Error('Solicitação de cidade inválida.');
@@ -13902,7 +13916,7 @@ async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
  let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
  const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
- for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
+ for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=o.field==='planning'?merge(officialPlanRows(o.before,current,candidate),officialPlanRows(o.after,current,candidate),officialPlanRows(current,current,candidate),o.field+'.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
  // V29.7: recupera pedido de aprovação que chegou apenas como notificação.
  const requesterEmail=Object.keys(USERS).find(e=>USERS[e].id===p.id);
  const approvalNotices=(candidate.notificacoes_planejamento||[]).filter(n=>n&&n.destinatario==='admin'&&String(n.tipo||'').toLowerCase().includes('aprov')&&n.contexto&&n.solicitante===requesterEmail);
@@ -13938,9 +13952,13 @@ async function receiveOwnCollaboration(doc,token){
  // Isso elimina alternância 0/14 nas notificações e Realizar/Realizada nos status.
  if(collabQueue.length!==before){await localStore();tell('Alterações de outro dispositivo localizadas; aguardando consolidação administrativa.');}
 }
+let deferredRegion=null,refreshDeferred=false;
+function editingPlan(){return document.activeElement?.matches?.('#planContent input,#planContent textarea')||false;}
+document.addEventListener('focusout',()=>setTimeout(()=>{if(editingPlan())return;if(deferredRegion){const d=deferredRegion;deferredRegion=null;serial(()=>receiveRegion(...d)).catch(fail)}else if(refreshDeferred){refreshDeferred=false;refresh()}},0));
 async function receiveRegion(doc,token){
  if(token!==session||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
  if(!doc.exists){tell('Aguardando o administrador abrir a versão revisada para disponibilizar sua região.');return}
+ if(ready&&editingPlan()){deferredRegion=[doc,token];return;}
  const data=doc.data();
  const signature=data.chunked?String(data.storageGeneration||''):JSON.stringify([data.payload,data.ack||[],data.errors||[]]);
  if(signature===lastRegionSnapshot)return;
@@ -13948,8 +13966,8 @@ async function receiveRegion(doc,token){
  if(token!==session)return;
  const remote=envelope.remote;
  const ack=new Set(envelope.ack||[]);acknowledgedOps=ack;collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
- let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.after);
- baseline=clone(remote);applyData(next);ready=true;await localStore();openShell();
+ let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.field==='planning'?officialPlanRows(o.after,next.planning?.[o.key],next):o.after);
+ baseline=clone(remote);applyData(next);ready=true;await localStore();openShell();refresh();
  const unseenErrors=(envelope.errors||[]).filter(e=>e?.id&&!reviewedErrorIds.has(e.id));
  if(unseenErrors.length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
  window.__V29_COLLAB_ERRORS=unseenErrors;lastRegionSnapshot=signature;
@@ -13977,6 +13995,30 @@ window.carregarBaseAposAutenticacao=async function(){
 };
 firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>serial(flush).catch(fail));
+function attentionRecipient(ctx){const id=DB.workflow_planejamento?.[ctx]?.responsavelId;return Object.entries(USERS).find(([,p])=>p.id===id)?.[0];}
+window.addPlanningAttention=async function(text){
+ if(!admin()||!ready||!STATE.planContext)throw Error('Aguarde os dados e selecione um planejamento.');
+ text=String(text||'').trim();if(!text)return alert('Descreva o ponto de atenção.');
+ const ctx=STATE.planContext;DB.planning_attention??=[];DB.planning_attention.push({id:'attention_'+fresh(),contexto:ctx,texto:text.slice(0,3000),status:'pendente',criadoPor:email(),criadoEm:new Date().toISOString()});
+ const dest=attentionRecipient(ctx);if(dest)note(dest,'ponto_de_atencao',text,ctx);
+ await saveToStorage();renderAttention();return true;
+};
+window.markPlanningAttention=async function(id,reopen=false){
+ if(!ready)throw Error('Aguarde a sincronização.');const item=DB.planning_attention?.find(x=>x.id===id);if(!item||(!admin()&&(!profile()||!owns(item.contexto,profile()))))return;
+ if(reopen){if(!admin())return;item.status='pendente';delete item.ajustadoPor;delete item.ajustadoEm;const dest=attentionRecipient(item.contexto);if(dest)note(dest,'ponto_reaberto','Ponto de atenção reaberto: '+item.texto,item.contexto)}
+ else {if(item.status==='ajustado')return;item.status='ajustado';item.ajustadoPor=email();item.ajustadoEm=new Date().toISOString();note('admin','ponto_ajustado',(profile()?.nome||'Administrador')+' marcou como ajustado: '+item.texto,item.contexto)}
+ await saveToStorage();renderAttention();refreshActions();
+};
+function renderAttention(){
+ const anchor=document.getElementById('logisticsSection');if(!anchor)return;let box=document.getElementById('v30-attention');
+ if(!box){box=document.createElement('section');box.id='v30-attention';box.innerHTML='<div class="v30-attention-head"><div><h3>Pontos de atenção do planejamento</h3><p>Orientações registradas pelo administrador para este roteiro.</p></div><span id="v30-attention-count"></span></div><form id="v30-attention-form"><label for="v30-attention-text">Nova observação</label><textarea id="v30-attention-text" rows="2" maxlength="3000" placeholder="Ex.: conferir a data da visita, informar o deslocamento ou completar o horário de almoço."></textarea><button type="submit">Registrar ponto de atenção</button></form><div id="v30-attention-list"></div>';anchor.before(box);box.querySelector('form').onsubmit=async e=>{e.preventDefault();const input=box.querySelector('textarea');try{if(await window.addPlanningAttention(input.value))input.value=''}catch(err){fail(err);alert(err.message)}};}
+ if(box.dataset.context!==STATE.planContext){box.dataset.context=STATE.planContext||'';box.querySelector('textarea').value='';}
+ box.hidden=!STATE.planContext;box.querySelector('form').hidden=!admin();
+ const items=(DB.planning_attention||[]).filter(x=>x.contexto===STATE.planContext),list=box.querySelector('#v30-attention-list');list.replaceChildren();box.querySelector('#v30-attention-count').textContent=items.filter(x=>x.status!=='ajustado').length+' pendente(s)';
+ if(!items.length){const empty=document.createElement('p');empty.className='v30-empty';empty.textContent='Nenhum ponto de atenção registrado.';list.append(empty);}
+ items.forEach(item=>{const row=document.createElement('article');row.className='v30-attention-item '+(item.status==='ajustado'?'adjusted':'');const body=document.createElement('div'),text=document.createElement('p'),meta=document.createElement('small');text.textContent=item.texto;meta.textContent='Administrador · '+new Date(item.criadoEm).toLocaleString('pt-BR');body.append(text,meta);if(item.status==='ajustado'){const done=document.createElement('small');done.textContent='Ajustado por '+(USERS[item.ajustadoPor]?.nome||'Administrador')+' · '+new Date(item.ajustadoEm).toLocaleString('pt-BR');body.append(done);}row.append(body);if(item.status!=='ajustado')row.append(button('Pontos ajustados',()=>window.markPlanningAttention(item.id),'v30-adjust'));else if(admin())row.append(button('Reabrir ponto',()=>window.markPlanningAttention(item.id,true),'v30-reopen'));else{const done=document.createElement('span');done.textContent='✓ Ajustado';row.append(done)}list.append(row);});
+}
+
 // Interface e relatórios são instalados abaixo.
 function realizedApproved(item,ctx=STATE.planContext,data=DB){
  if(item?.status!=='Realizada')return false;
@@ -14000,7 +14042,7 @@ function requester(n){
  const m=DB.workflow_planejamento?.[n.contexto],sender=m?.enviadoPor||m?.historico?.findLast?.(h=>['enviado_aprovacao','criado'].includes(h.acao))?.por;
  return USERS[sender]?.nome||Object.values(USERS).find(p=>p.id===m?.responsavelId)?.nome||n.solicitanteNome||m?.responsavelNome||explicit||'Não informado';
 }
-function refreshActions(){
+function refreshActions(){renderAttention();
  window.renderControleProcessosV26?.();
  document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{const code=b.getAttribute('onclick')||'',rateio=code.includes('openRateioModal'),feedback=code.includes('feedback'),allowed=actionAllowed(rateio?'openRateioModal':'openEmailModal',feedback?'feedback':'agendamento');b.disabled=!allowed;b.title=allowed?'Ação disponível':(rateio||feedback?'Disponível após aprovação administrativa do status Realizada':'Disponível após aprovação administrativa do planejamento');b.setAttribute('aria-disabled',String(!allowed))});
  const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
@@ -14008,7 +14050,7 @@ function refreshActions(){
  const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
  const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?pendingReviews().length+Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
 }
-window.SenacV29={profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
+window.SenacV29={statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
 function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
 function exportLocal(){const data=clone(DB);data._v29_recuperacao={usuario:email(),em:new Date().toISOString(),pendentes:clone(pending),enviadas:clone(collabQueue),devolvidas:clone(window.__V29_COLLAB_ERRORS||[])};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='supervisao_copia_local_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function card(title,fields){const el=document.createElement('article');el.className='wf-card';const h=document.createElement('h4');h.textContent=title;el.append(h);for(const [label,value] of fields){const p=document.createElement('p'),b=document.createElement('b');b.textContent=label+': ';p.append(b,document.createTextNode(String(value||'Não informado')));el.append(p)}return el}
@@ -14024,6 +14066,41 @@ async function deleteDecision(req,approve){
  req.status=approve?'aprovado':'devolvido';req.decididoPor=email();req.decididoEm=new Date().toISOString();req.motivoDevolucao=reason;
  note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await saveToStorage();refresh();showNotifications(false);
 }
+function statusGroups31(data=DB){const groups=new Map();for(const r of data.solicitacoes_status_visita||[]){if(r.statusSolicitacao!=='pendente')continue;const key=JSON.stringify([r.contexto,r.solicitadoPor]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}return [...groups.values()]}
+function requestStatus31(indexes,status){
+ const p=profile(),ctx=STATE.planContext;if(!ready||!p||!owns(ctx,p))throw Error('Aguarde os dados do seu planejamento.');if(!['Realizada','Realizar','Não realizada'].includes(status))return;
+ DB.solicitacoes_status_visita??=[];const created=[];const batchId=fresh();
+ for(const idx of indexes){const item=DB.planning?.[ctx]?.[idx];if(!item||(item.status||'Realizar')===status)continue;if(DB.solicitacoes_status_visita.some(r=>r.contexto===ctx&&String(r.alunoId)===String(item.student?.id)&&r.statusSolicitacao==='pendente'))continue;
+ if(status==='Realizada'&&!/^\d{4}-\d{2}-\d{2}$/.test(item.date||''))throw Error('Informe a data da visita antes de solicitar Realizada.');
+ created.push({id:'sts_'+fresh(),batchId,contexto:ctx,indice:idx,alunoId:String(item.student.id),alunoNome:item.student.nome,visitaData:item.date||null,visitaTipo:item.visitaTipo,observacaoVisita:item.obs||'',statusAtual:item.status||'Realizar',statusSolicitado:status,solicitadoPor:email(),solicitanteNome:p.nome,solicitadoEm:new Date().toISOString(),statusSolicitacao:'pendente'});
+ }
+ if(!created.length){tell('Nenhuma nova mudança de status: os itens já estão nesse estado ou aguardam aprovação.');return;}
+ DB.solicitacoes_status_visita.push(...created);note('admin','status_lote',p.nome+' solicitou '+created.length+' alteração(ões) de status em '+ctx,ctx);saveToStorage().catch(fail);renderPlanningTable();refreshActions();tell(created.length+' alteração(ões) registrada(s); aguardando envio e aprovação administrativa.');
+}
+const previousUpdate31=window.updatePlanItem;
+window.updatePlanItem=function(idx,field,value){if(profile()&&field==='status'){try{return requestStatus31([idx],value)}catch(e){fail(e);alert(e.message);return}}return previousUpdate31.apply(this,arguments)};
+const previousBulk31=window.applyBulkStatus;
+window.applyBulkStatus=function(){if(!profile())return previousBulk31.apply(this,arguments);const input=document.getElementById('bulkStatusSelect');if(!input?.value)return alert('Selecione um status.');try{requestStatus31((DB.planning?.[STATE.planContext]||[]).map((_,i)=>i),input.value);input.value=''}catch(e){fail(e);alert(e.message)}};
+function applyStatusDecision31(data,ids,approve,reason=''){
+ const candidate=clone(data),requests=(candidate.solicitacoes_status_visita||[]).filter(r=>ids.includes(r.id)&&r.statusSolicitacao==='pendente');if(!requests.length)return candidate;
+ const now=new Date().toISOString();for(const r of requests){const item=(candidate.planning?.[r.contexto]||[]).find(x=>String(x.student?.id)===String(r.alunoId));if(!item)throw Error('Aluno não localizado: '+r.alunoNome);
+ if(approve){if(r.visitaData&&item.date!==r.visitaData)throw Error('A data de '+r.alunoNome+' mudou depois do pedido. Devolva o lote para conferência.');const student=[...(candidate.quali||[]),...(candidate.tec||[])].find(x=>String(x.id)===String(r.alunoId));if(!student)throw Error('Cadastro do aluno não localizado.');
+ const visitType=r.visitaTipo||item.visitaTipo;const match=String(visitType||'').match(/^(\d+)/);const idx=match?Number(match[1])-1:-1;if(idx<0||idx>5)throw Error('Selecione a visita correta de '+r.alunoNome+'.');
+ if(r.statusSolicitado==='Realizada'){
+ const date=r.visitaData||item.date;if(!/^\d{4}-\d{2}-\d{2}$/.test(date||''))throw Error('Data ausente: '+r.alunoNome);const parsed=new Date(date+'T12:00:00');if(isNaN(parsed)||parsed.getFullYear()<2020||parsed.getFullYear()>2035||[parsed.getFullYear(),String(parsed.getMonth()+1).padStart(2,'0'),String(parsed.getDate()).padStart(2,'0')].join('-')!==date)throw Error('Data inválida: '+r.alunoNome);
+ student.visits??=[];const existing=student.visits[idx];if(existing?.ok&&String(existing.date||'').slice(0,10)!==date)throw Error('A visita de '+r.alunoNome+' já possui outra data confirmada. Revise antes de aprovar.');
+ if(student.visits.some((v,i)=>i!==idx&&v?.ok&&String(v.date||'').slice(0,10)===date))throw Error('A data de '+r.alunoNome+' já está registrada em outra visita.');
+ while(student.visits.length<=idx)student.visits.push({ok:false,date:null});const obs=r.observacaoVisita??item.obs??'';student.visits[idx]={...student.visits[idx],ok:true,date:parsed.toISOString(),obs,protected:true,source:'planejamento_aprovado',updatedAt:Date.now(),aprovadoPor:ADMIN};student.obs_origem=obs;item.obs=obs;
+ }else {const v=student.visits?.[idx];if(v?.ok&&String(v.date||'').slice(0,10)===(r.visitaData||item.date)){v.ok=false;v.protected=false;v.updatedAt=Date.now();}}
+ item.status=r.statusSolicitado;item.student=student;r.statusSolicitacao='aprovado';r.aprovadoPor=ADMIN;r.aprovadoEm=now;
+ for(const rows of Object.values(candidate.planning||{}))for(const row of rows||[])if(String(row.student?.id)===String(r.alunoId)&&row.date===item.date&&String(row.visitaTipo||'').match(/^(\d+)/)?.[1]===String(idx+1)){row.status=item.status;row.student=student;row.obs=item.obs;}
+ }else{r.statusSolicitacao='devolvido';r.observacao=reason;r.decididoPor=ADMIN;r.decididoEm=now;}}
+ bindStudents(candidate);return candidate;
+}
+async function decideStatusGroup31(ids,approve){if(!admin())return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução do lote:')?.trim();if(!reason)return;}const requests=(DB.solicitacoes_status_visita||[]).filter(r=>ids.includes(r.id)&&r.statusSolicitacao==='pendente');const next=applyStatusDecision31(DB,ids,approve,reason);applyData(next);for(const dest of new Set(requests.map(r=>r.solicitadoPor)))note(dest,approve?'status_lote_aprovado':'status_lote_devolvido',approve?'Lote aprovado: '+requests.length+' alteração(ões). Visitas e cadastro atualizados.':'Lote devolvido: '+reason,requests[0]?.contexto);await saveToStorage();await window.sincronizarAgoraNuvem();refresh();showNotifications(false);}
+window.aprovarStatusVisitaV23=id=>decideStatusGroup31([id],true);
+window.recusarStatusVisitaV23=id=>decideStatusGroup31([id],false);
+
 function showNotifications(mark=true){
  const list=document.getElementById('workflowNotificationsList');if(!list)return;list.replaceChildren();
  const add=(title,fields,ctx,approve,decline)=>{const c=card(title,fields),actions=document.createElement('div');actions.className='wf-row';if(approve)actions.append(button('Aprovar',approve,'wf-btn wf-btn-ok'));if(decline)actions.append(button('Devolver',decline,'wf-btn wf-btn-warn'));if(ctx&&DB.planning?.[ctx])actions.append(button('Abrir planejamento',()=>openPlan(ctx)));c.append(actions);list.append(c)};
@@ -14035,7 +14112,7 @@ function showNotifications(mark=true){
    c.append(button('Concluir revisão',async()=>{if(!confirm('Confirma que revisou as versões e fez os ajustes necessários no planejamento? As cópias serão mantidas no histórico.'))return;DB._syncReviewedIds=[...new Set([...(DB._syncReviewedIds||[]),review.id])];await saveToStorage();refreshActions();showNotifications(false)}));list.append(c);
   });
   Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').forEach(m=>add('Aprovação de planejamento', [['Solicitante',requester(m)],['Região',regionFor(m.contexto)],['Planejamento',m.contexto],['Alteração solicitada','Aprovação do roteiro'],['Data',new Date(m.enviadoEm||m.atualizadoEm||m.criadoEm).toLocaleString('pt-BR')]],m.contexto,async()=>{await aprovarWorkflow(m.contexto);showNotifications(false)},async()=>{await devolverWorkflow(m.contexto);showNotifications(false)}));
-  (DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').forEach(s=>add('Alteração de status',[['Solicitante',requester(s)],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Aluno',s.alunoNome],['Alteração solicitada',s.statusAtual+' → '+s.statusSolicitado],['Data',new Date(s.solicitadoEm).toLocaleString('pt-BR')]],s.contexto,async()=>{await aprovarStatusVisitaV23(s.id);showNotifications(false)},async()=>{await recusarStatusVisitaV23(s.id);showNotifications(false)}));
+  statusGroups31().forEach(group=>{const first=group[0],ids=group.map(r=>r.id);add('Alterações de status — lote do planejamento',[['Solicitante',requester(first)],['Planejamento',first.contexto],['Quantidade',group.length+' aluno(s)'],['Pedidos',group.map(r=>r.alunoNome+': '+r.statusAtual+' → '+r.statusSolicitado+' ('+(r.visitaData||'data a conferir')+')').join('; ')]],first.contexto,()=>decideStatusGroup31(ids,true),()=>decideStatusGroup31(ids,false))});
   (DB.solicitacoes_exclusao||[]).filter(s=>s.status==='pendente').forEach(s=>add('Pedido de exclusão',[['Solicitante',requester(s)],['Região',regionFor(s.contexto)],['Planejamento',s.contexto],['Motivo',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],s.contexto,()=>deleteDecision(s,true),()=>deleteDecision(s,false)));
   (DB.solicitacoes_cidades||[]).filter(s=>s.status==='pendente').forEach(s=>add('Alteração de cidade',[['Solicitante',requester(s)],['Região',s.regiao],['Cidade',s.cidade],['Descrição',s.motivo],['Data',new Date(s.criadaEm).toLocaleString('pt-BR')]],null,()=>cityDecision(s,true),()=>cityDecision(s,false)));
  }
@@ -14059,17 +14136,17 @@ function mobileTable(){const body=document.getElementById('planTableBody');if(!b
 const presenceStateV297={};let presenceTimerV297=null,presenceStopsV297=[];
 function presenceRefV297(id){return ref('presenca_'+id)}
 function renderPresenceV297(){
- const box=document.getElementById('v297-presence');if(!box)return;box.innerHTML='';
+ const box=document.getElementById('v297-presence');if(!box)return;box.hidden=!admin();if(!admin())return;box.innerHTML='';
  for(const p of Object.values(USERS)){
   const d=presenceStateV297[p.id]||{},last=d.lastSeen?.toMillis?.()||0,online=d.online===true&&(Date.now()-last)<120000;
-  const item=document.createElement('span');item.className='v297-person';item.dataset.online=String(online);item.title=online?'Online agora':(last?'Último sinal: '+new Date(last).toLocaleString('pt-BR'):'Sem sinal recente');
-  const dot=document.createElement('span');dot.className='v297-dot';dot.setAttribute('aria-hidden','true');item.append(dot,document.createTextNode(p.nome));box.append(item);
+  const item=document.createElement('span');item.className='v297-person';item.dataset.online=String(online);item.title=online?'Sinal recebido nos últimos 2 minutos':(last?'Último sinal: '+new Date(last).toLocaleString('pt-BR'):'Sem sinal recente');
+  const dot=document.createElement('span');dot.className='v297-dot';dot.setAttribute('aria-hidden','true');dot.textContent=p.nome[0];item.append(dot,document.createTextNode(p.nome));box.append(item);
  }
 }
 async function sendPresenceV297(online=true){const p=profile();if(!p||!firebase.auth().currentUser)return;await presenceRefV297(p.id).set({userId:p.id,email:email(),online,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:false})}
 function startPresenceV297(){
  clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];
- if(profile()){sendPresenceV297(true).catch(fail);presenceTimerV297=setInterval(()=>sendPresenceV297(true).catch(()=>{}),45000)}
+ if(profile()){sendPresenceV297(true).catch(e=>console.warn('Presença indisponível',e));presenceTimerV297=setInterval(()=>sendPresenceV297(true).catch(()=>{}),45000)}
  else if(admin())for(const p of Object.values(USERS))presenceStopsV297.push(presenceRefV297(p.id).onSnapshot(d=>{presenceStateV297[p.id]=d.exists?d.data():{};renderPresenceV297()},fail));
  renderPresenceV297();
 }
@@ -14093,6 +14170,7 @@ function installUI(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
 })();
+
 
 
 
