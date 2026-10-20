@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V33</title>
+    <title>Supervisão Senac 2026 — Revisão V34</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -12715,16 +12715,15 @@ const oldExport=window.exportarRelatorioExcel;window.exportarRelatorioExcel=func
 
 
 #v30-attention{display:block!important;width:100%;margin:18px 0;padding:16px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;contain:layout style}
-#v30-attention .v30-attention-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
 #v30-attention-form{display:grid!important;grid-template-columns:minmax(240px,1fr) auto;grid-template-areas:'label label' 'text button';align-items:end;gap:8px 12px;width:100%;margin:0!important}
-#v30-attention-form label{grid-area:label;display:block;margin:0;font-size:12px;font-weight:800;color:#334155}
-#v30-attention-text{grid-area:text;display:block!important;width:100%!important;min-width:0!important;min-height:72px!important;max-height:180px;padding:10px 12px!important;border:1px solid #cbd5e1!important;border-radius:9px!important;background:#fff!important;color:#0f172a!important;line-height:1.4!important;resize:vertical!important;overflow:auto!important;box-sizing:border-box!important}
-#v30-attention-form button{grid-area:button;min-height:42px;padding:9px 14px;border:0;border-radius:9px;background:#07549b;color:#fff;font-weight:800;white-space:nowrap;cursor:pointer}
-#v30-attention-list{display:grid;gap:8px;margin-top:12px}
-#v30-attention,#planningLogisticsSection,#planningLunchSection,#planningAdminSection,.planning-section{content-visibility:auto;contain-intrinsic-size:auto 220px}
-body.v33-scrolling *,body.v33-scrolling *::before,body.v33-scrolling *::after{animation-play-state:paused!important;transition:none!important}
-body.v33-scrolling #viewPlanejamento *{box-shadow:none!important}
-#viewPlanejamento{overflow-anchor:none}#planTableBody{contain:layout style paint}
+#v30-attention-form label{grid-area:label;display:block;font-size:12px;font-weight:800;color:#334155}
+#v30-attention-text{grid-area:text;display:block!important;width:100%!important;min-width:0!important;min-height:72px!important;padding:10px 12px!important;border:1px solid #cbd5e1!important;border-radius:9px!important;background:#fff!important;resize:vertical!important;overflow:auto!important;box-sizing:border-box!important}
+#v30-attention-form button{grid-area:button;min-height:42px;padding:9px 14px;border:0;border-radius:9px;background:#07549b;color:#fff;font-weight:800;white-space:nowrap}
+#v30-attention,#planningLogisticsSection,#planningLunchSection,#planningAdminSection,.planning-section,.chart-wrapper{content-visibility:auto;contain-intrinsic-size:auto 220px}
+.chart-wrapper canvas{will-change:auto;contain:strict}
+body.v34-scrolling *,body.v34-scrolling *::before,body.v34-scrolling *::after{animation-play-state:paused!important;transition:none!important}
+body.v34-scrolling #viewPlanejamento *,body.v34-scrolling #viewDashboard *{box-shadow:none!important}
+#viewPlanejamento,#viewDashboard{overflow-anchor:none}#planTableBody{contain:layout style paint}
 @media(max-width:760px){#v30-attention-form{grid-template-columns:1fr;grid-template-areas:'label' 'text' 'button'}#v30-attention-form button{width:100%}}
 
 @media(max-width:700px){.desl-summary{grid-template-columns:repeat(2,1fr)}#alunosActionMenus{position:relative}.amenu-list{position:fixed;left:10px;right:10px;top:auto;min-width:0}}
@@ -13729,16 +13728,13 @@ function reconcileGlobal(base,local,remote){
  return result;
 }
 function pendingReviews(){const done=new Set(DB._syncReviewedIds||[]);return Object.values(DB._syncReviews||{}).filter(x=>!done.has(x.id));}
-function preserveStableUiStateV33(incoming,current=DB){
+function preserveStableUiStateV34(incoming,current=DB){
  const data=clone(incoming||{}),local=current||{};
- for(const [ctx,rows] of Object.entries(data.planning||{})){
-  if(!Array.isArray(rows))continue;const oldRows=local.planning?.[ctx]||[];
-  for(const row of rows){const old=oldRows.find(x=>String(x.student?.id)===String(row.student?.id));if(!old)continue;row.etapas={...(row.etapas||{})};for(const key of ['pedagogico','supervisor']){const a=old.etapas?.[key],b=row.etapas?.[key];if(a?.ok&&(!b?.ok||String(a.em||'')>String(b.em||'')))row.etapas[key]=clone(a)}if(old.status==='Realizada'&&row.status!=='Realizada')row.status='Realizada'}
- }
+ for(const [ctx,rows] of Object.entries(data.planning||{})){if(!Array.isArray(rows))continue;const oldRows=local.planning?.[ctx]||[];for(const row of rows){const old=oldRows.find(x=>String(x.student?.id)===String(row.student?.id));if(!old)continue;row.etapas={...(row.etapas||{})};for(const key of ['pedagogico','supervisor']){const a=old.etapas?.[key],b=row.etapas?.[key];if(a?.ok&&(!b?.ok||String(a.em||'')>String(b.em||'')))row.etapas[key]=clone(a)}if(old.status==='Realizada'&&row.status!=='Realizada')row.status='Realizada'}}
  return data;
 }
 function applyData(data){
- data=preserveStableUiStateV33(data);
+ data=preserveStableUiStateV34(data);
  // V27 usa limites globais: um recorte regional precisa de limites próprios.
  if(profile()){
   const defaults={planning:{},planning_logistics:{},planning_lunch:{},planning_admin:{},regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],custom_passwords:{}};
@@ -13748,8 +13744,8 @@ function applyData(data){
 }
 async function localStore(){const db=await dbPromise;const item={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision,collabVersion,collabQueue:clone(collabQueue)};await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});if(revision===item.revision)lastLocal=clone(item.data)}
 async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
-function refreshImmediateV33(){if(!ready)return;if(editingPlan()){refreshDeferred=true;refreshActions();return;}try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
-let refreshTimerV33=null;function refresh(){clearTimeout(refreshTimerV33);refreshTimerV33=setTimeout(refreshImmediateV33,140)}
+function refreshImmediateV34(){if(!ready)return;if(editingPlan()){refreshDeferred=true;refreshActions();return;}try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
+let refreshTimerV34=null;function refresh(){clearTimeout(refreshTimerV34);refreshTimerV34=setTimeout(refreshImmediateV34,180)}
 function openShell(){const first=shellSession!==uid();if(first){shellSession=uid();startApp(profile()?'planning_user':email()==='visitante@senac.br'?'visitor':'admin',profile()?.regiao||'Todas');}window.APP_READ_ONLY=!ready||email()==='visitante@senac.br';document.body.classList.toggle('v29-loading',!ready);if(profile()){STATE.userType='planning_user';STATE.userRegion=profile().regiao;document.getElementById('roleDisplay').textContent='Planejamento · '+profile().nome;if(first)switchTab('planejamento')}refreshActions()}
 async function decode(meta){if(meta.chunked)return carregarNuvemV9633(firebase.firestore(),meta);return meta.payload?JSON.parse(LZString.decompressFromBase64(meta.payload)):meta}
 // V29.1: respostas regionais segmentadas. O documento principal guarda apenas o manifesto;
@@ -14176,9 +14172,20 @@ function startPresenceV297(){
 }
 window.addEventListener('pagehide',()=>{if(profile())sendPresenceV297(false).catch(()=>{})});
 setInterval(renderPresenceV297,30000);
-let v33ScrollTimer=0;
-function v33Scrolling(){if(!document.body.classList.contains('v33-scrolling'))document.body.classList.add('v33-scrolling');clearTimeout(v33ScrollTimer);v33ScrollTimer=setTimeout(()=>document.body.classList.remove('v33-scrolling'),140)}
-window.addEventListener('scroll',v33Scrolling,{passive:true,capture:true});
+let v34ScrollTimer=0;
+function v34Scrolling(){if(!document.body.classList.contains('v34-scrolling'))document.body.classList.add('v34-scrolling');clearTimeout(v34ScrollTimer);v34ScrollTimer=setTimeout(()=>document.body.classList.remove('v34-scrolling'),160)}
+window.addEventListener('scroll',v34Scrolling,{passive:true,capture:true});
+// Evita destruir e recriar os mesmos gráficos em chamadas duplicadas de runFilter.
+const renderChartsV34Base=window.renderCharts;let chartSigV34='',chartTimeV34=0,chartRafV34=0,chartArgsV34=null;
+if(typeof renderChartsV34Base==='function')window.renderCharts=function(){
+ const dash=document.getElementById('viewDashboard');if(dash?.classList.contains('hidden'))return;
+ const rows=STATE?.filter||[];const sig=JSON.stringify([STATE?.scope,arguments[0]||0,rows.length,rows.map(x=>[x.id,x.status,x.situacao,(x.visits||[]).filter(v=>v.ok).length]).join('|')]);
+ if(sig===chartSigV34&&Date.now()-chartTimeV34<5000)return;chartSigV34=sig;chartTimeV34=Date.now();chartArgsV34=[...arguments];
+ cancelAnimationFrame(chartRafV34);chartRafV34=requestAnimationFrame(()=>{chartRafV34=0;renderChartsV34Base.apply(window,chartArgsV34)});
+};
+// Abertura de janelas ocorre no próximo quadro, sem competir com clique/rolagem atual.
+const showNotificationsV34Base=window.abrirWorkflowNotificacoes;
+if(typeof showNotificationsV34Base==='function')window.abrirWorkflowNotificacoes=function(){requestAnimationFrame(()=>showNotificationsV34Base.apply(this,arguments))};
 function installUI(){
  const plan=document.getElementById('btnPlan');let monthly=document.getElementById('v29-monthly-tab');if(plan&&!monthly){monthly=button('Relatório Mensal',openMonthly,'tab-btn');monthly.id='v29-monthly-tab';plan.after(monthly)}
  // O menu antigo pode mover seu botão; a aba permanece disponível independentemente dele.
@@ -14192,7 +14199,7 @@ function installUI(){
  if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(e=>console.warn('Instalação: service worker indisponível',e));
  const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;actions?.classList.add('v29-plan-actions');
  const filters=document.getElementById('planRegiao')?.closest('.grid');if(filters&&!filters.closest('details')){const details=document.createElement('details');details.className='v29-filter-drawer';details.open=innerWidth>700;const summary=document.createElement('summary');summary.textContent='Filtros do planejamento';filters.before(details);details.append(summary,filters)}
- const body=document.getElementById('planTableBody');if(body&&matchMedia('(max-width:700px)').matches){let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(mobileTable,100)}).observe(body,{childList:true});mobileTable()}
+ const body=document.getElementById('planTableBody');if(body&&matchMedia('(max-width:700px)').matches){let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(mobileTable,120)}).observe(body,{childList:true});mobileTable()}
  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.wf-modal.open').forEach(m=>m.classList.remove('open'))});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
