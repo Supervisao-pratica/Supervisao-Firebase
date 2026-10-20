@@ -1,31 +1,16 @@
 {
-  "id": "./",
-  "name": "Supervisão Senac 2026",
-  "short_name": "Supervisão",
-  "lang": "pt-BR",
-  "start_url": "./",
+  "name": "S.G.T - Gestao de Turmas",
+  "short_name": "S.G.T",
+  "description": "Gestao de turmas com sincronizacao local e Firebase",
+  "id": "./index.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#004587",
+  "lang": "pt-BR",
   "icons": [
-    {
-      "src": "./app-icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./app-icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./app-icon-maskable-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    {"src":"./app-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"},
+    {"src":"./apple-touch-icon-180.png","sizes":"180x180","type":"image/png","purpose":"any"}
   ]
 }
