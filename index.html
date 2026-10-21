@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V36</title>
+    <title>Supervisão Senac 2026 — Revisão V37</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -13726,8 +13726,25 @@ function applyData(data){
   ['quali','tec'].forEach(k=>DB[k]=(DB[k]||[]).map(a=>({...a,ini:a.ini?new Date(a.ini):null,fim:a.fim?new Date(a.fim):null,visits:(a.visits||[]).map(v=>({...v,date:v.date?new Date(v.date):null}))})));
  }else processDataLoad(data);bindStudents(DB);
 }
-async function localStore(){const db=await dbPromise;const item={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision,collabVersion,collabQueue:clone(collabQueue)};await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});if(revision===item.revision)lastLocal=clone(item.data)}
-async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+function quotaErrorV37(e){return e?.name==='QuotaExceededError'||e?.code===22||/quota/i.test(String(e?.message||e||''))}
+function packLocalV37(value){return LZString.compressToUTF16(JSON.stringify(value))}
+function unpackLocalV37(value){if(!value?.compressedV37)return value;try{return JSON.parse(LZString.decompressFromUTF16(value.payload)||'null')}catch(e){console.warn('Cache local compactado inválido:',e);return null}}
+async function localStore(){
+ const db=await dbPromise,currentRevision=revision;
+ const raw={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision:currentRevision,collabVersion,collabQueue:clone(collabQueue)};
+ const item={compressedV37:true,payload:packLocalV37(raw),revision:currentRevision,updatedAt:Date.now()};
+ try{
+  await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);st.delete('root');st.delete('last_known_good');st.put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
+ }catch(e){
+  if(!quotaErrorV37(e))throw e;
+  console.warn('Armazenamento local cheio; sincronização com a nuvem continuará.',e);
+  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME),req=st.openCursor();req.onsuccess=()=>{const c=req.result;if(!c)return;const k=String(c.key);if(k==='root'||k==='last_known_good'||(k.startsWith('v29:')&&k!=='v29:'+uid()))c.delete();c.continue()};req.onerror=()=>no(req.error);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(cleanError){console.warn('Limpeza local parcial:',cleanError)}
+  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(finalError){console.warn('Sem espaço para cache local; dados seguem na fila e serão enviados ao Firebase.',finalError)}
+ }
+ if(revision===currentRevision)lastLocal=clone(raw.data);
+ return true;
+}
+async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(unpackLocalV37(r.result));r.onerror=()=>no(r.error)})}
 function refreshImmediateV35(){if(!ready)return;if(editingPlan()){refreshDeferred=true;refreshActions();return;}try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
 let refreshTimerV35=null;function refresh(){clearTimeout(refreshTimerV35);refreshTimerV35=setTimeout(refreshImmediateV35,180)}
 function openShell(){const first=shellSession!==uid();if(first){shellSession=uid();startApp(profile()?'planning_user':email()==='visitante@senac.br'?'visitor':'admin',profile()?.regiao||'Todas');}window.APP_READ_ONLY=!ready||email()==='visitante@senac.br';document.body.classList.toggle('v29-loading',!ready);if(profile()){STATE.userType='planning_user';STATE.userRegion=profile().regiao;document.getElementById('roleDisplay').textContent='Planejamento · '+profile().nome;if(first)switchTab('planejamento')}refreshActions()}
@@ -13852,6 +13869,7 @@ async function flush(){
   const next=reconcileGlobal(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell(pendingReviews().length?'Salvo na nuvem; há divergências preservadas em Notificações.':'Salvo e confirmado na nuvem.');refresh();return;
  }
 }
+if(navigator.storage?.persist)navigator.storage.persist().catch(()=>false);
 window.saveToStorage=async function(){
  if(!ready)return false;if(lastLocal&&same(DB,lastLocal))return true;if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
  if(profile()){
