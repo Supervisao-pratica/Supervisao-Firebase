@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V38</title>
+    <title>Supervisão Senac 2026 — Revisão V39</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -13598,6 +13598,7 @@ body.workflow-operador #abrangenciaControl{display:none!important}
 <script id="senac-v29-script">
 
 
+
 /* Revisão V29. Transporte autorizado, fila durável e interface regional. */
 (function(){'use strict';
 const ADMIN='michel.farias@pr.senac.br';
@@ -13622,10 +13623,36 @@ const maps=['planning','planning_logistics','planning_lunch','planning_admin','w
 const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention'];
 // V38: cota remota é diferente de espaço no dispositivo. Nunca limpar filas por falha de rede.
 let quotaUntil38=0,quotaReported38=false,cloudConfirmed38=false,flushQueued38=null;
-const QUOTA_MESSAGE38='Limite de gravações da nuvem atingido. Novos envios aguardam a liberação da cota; mantenha as cópias locais e exporte um backup.';
+const QUOTA_MESSAGE38='Limite de gravações da nuvem atingido. Alterações ficam neste dispositivo quando o armazenamento local está disponível. O reenvio será tentado automaticamente; mantenha o sistema aberto ou reabra depois.';
 function quota38(e){return /resource-exhausted|quota exceeded/i.test(String(e?.code||'')+' '+String(e?.message||e||''));}
-function reportQuota38(){quotaReported38=true;quotaUntil38=Date.now()+15*60000;clearTimeout(retryTimer32);retryPending32=true;tell(QUOTA_MESSAGE38,true);renderPresenceV297();}
-function confirmedWrite38(){quotaUntil38=0;quotaReported38=false;}
+let quotaTimer39=null,resumeTimer39=null;
+function hasWork39(){return pending.length>0||reviewedErrorsDirty||retryPending32||(admin()&&(needsReplay||(baseline&&!same(DB,baseline))));}
+function armQuota39(){
+ clearTimeout(quotaTimer39);const token=session;if(!token)return;
+ quotaTimer39=setTimeout(()=>{quotaTimer39=null;if(token!==session)return;resumeCycle39();},Math.max(1000,quotaUntil38-Date.now()+100));
+}
+function scheduleResume39(){clearTimeout(resumeTimer39);const token=session;resumeTimer39=setTimeout(()=>{resumeTimer39=null;if(token===session)resumeCycle39();},500);}
+function resumeCycle39(){
+ if(!session||!firebase.auth().currentUser||!ready||!navigator.onLine)return;
+ if(quotaUntil38>Date.now()){if(!quotaTimer39)armQuota39();return;}
+ // Ao vencer a pausa, uma tentativa nova é permitida. O aviso só sai com confirmação real.
+ if(hasWork39())scheduleFlush38().catch(fail);
+ if(profile()&&quotaReported38)sendPresenceV297(true);
+}
+function reportQuota38(){
+ const first=!quotaReported38,expired=quotaUntil38<=Date.now();quotaReported38=true;
+ // Logs repetidos do SDK não empurram indefinidamente a próxima tentativa.
+ if(expired)quotaUntil38=Date.now()+15*60000;
+ clearTimeout(retryTimer32);retryPending32=true;armQuota39();
+ if(ready&&(first||expired))localStore().catch(e=>console.warn('Não foi possível guardar o estado da pausa',e));
+ tell(QUOTA_MESSAGE38,true);renderPresenceV297();
+}
+setInterval(resumeCycle39,60000);
+window.addEventListener('online',resumeCycle39);
+window.addEventListener('pageshow',resumeCycle39);
+window.addEventListener('focus',resumeCycle39);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')resumeCycle39();});
+function confirmedWrite38(){const wasBlocked=quotaReported38;quotaUntil38=0;quotaReported38=false;clearTimeout(quotaTimer39);quotaTimer39=null;if(wasBlocked)scheduleResume39();}
 if(typeof firebase.onLog==='function')firebase.onLog(entry=>{if(/firestore/i.test(String(entry.name))&&quota38(entry.message))reportQuota38();},{level:'error'});
 // O SDK 8 distribuído em scripts separados nem sempre encaminha Firestore ao onLog.
 // Observar só o erro explícito do serviço; manter integralmente o console original.
@@ -13745,7 +13772,7 @@ function packLocalV37(value){return LZString.compressToUTF16(JSON.stringify(valu
 function unpackLocalV37(value){if(!value?.compressedV37)return value;try{return JSON.parse(LZString.decompressFromUTF16(value.payload)||'null')}catch(e){console.warn('Cache local compactado inválido:',e);return null}}
 async function localStore(){
  const db=await dbPromise,currentRevision=revision;
- const raw={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision:currentRevision,collabVersion,collabQueue:clone(collabQueue)};
+ const raw={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision:currentRevision,collabVersion,collabQueue:clone(collabQueue),quotaPause:{until:quotaUntil38,reported:quotaReported38}};
  const item={compressedV37:true,payload:packLocalV37(raw),revision:currentRevision,updatedAt:Date.now()};
  try{
   await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);st.delete('root');st.delete('last_known_good');st.put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
@@ -13870,7 +13897,7 @@ async function rebase32(){
  baseline=clone(remote);generation=gen;applyData(next);await localStore();
 }
 async function flush(){
- if(quotaUntil38>Date.now()){tell(QUOTA_MESSAGE38,true);return false;}
+ if(quotaUntil38>Date.now()){armQuota39();tell(QUOTA_MESSAGE38,true);return false;}
  try{return await flushOnce32()}catch(e){
   if(quota38(e)){reportQuota38();await localStore();return false;}
   if(['unavailable','deadline-exceeded','aborted'].includes(e.code)){
@@ -13883,7 +13910,7 @@ async function flushOnce32(){
  if(!ready||!firebase.auth().currentUser||email()==='visitante@senac.br')return;
  if(!navigator.onLine){await localStore();scheduleRetry32();tell('Salvo neste dispositivo; aguardando conexão.');return false}
  if(profile()){
-  if(!pending.length&&!collabQueue.length&&!reviewedErrorsDirty){tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();let uploaded=[],didWrite38=false;
+  if(!pending.length&&!collabQueue.length&&!reviewedErrorsDirty){retryPending32=false;tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();let uploaded=[],didWrite38=false;
   await firebase.firestore().runTransaction(async tx=>{
    didWrite38=false;const snap=await tx.get(doc),current=snap.exists?snap.data():null;
    // V29.3: mescla as operações existentes no servidor com as deste dispositivo.
@@ -13908,7 +13935,7 @@ async function flushOnce32(){
   if(didWrite38)confirmedWrite38();collabVersion=version;reviewedErrorsDirty=false;collabQueue.push(...uploaded.filter(o=>!collabQueue.some(x=>x.id===o.id)));const uploadedIds=new Set(uploaded.map(o=>o.id));pending=pending.filter(o=>!uploadedIds.has(o.id));retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);await localStore();tell(pending.length?'Parte enviada; '+pending.length+' alteração(ões) preservada(s) neste dispositivo, aguardando confirmação para continuar.':'Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
  if(!admin())return;
- await rebase32();
+ needsReplay=false;await rebase32();
  if(same(DB,baseline)){await publishRegions(DB);retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);tell('Base atualizada pela nuvem.');return true}
  for(let attempt=0;attempt<3;attempt++){
   const sent=clone(DB);let result;
@@ -14067,7 +14094,7 @@ window.carregarBaseAposAutenticacao=async function(){
  ready=false;cloudConfirmed38=false;window.APP_READ_ONLY=true;openShell();startPresenceV297();tell('Autenticado; carregando dados autorizados…');
  setTimeout(()=>{if(token===session&&!cloudConfirmed38)tell('Aguardando confirmação da nuvem. A base local, quando disponível, permanece preservada.',true)},15000);
  const cached=await localRead();if(token!==session)return;
- if(cached){baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];needsReplay=!same(cached.data,cached.baseline);applyData(cached.data);ready=true;openShell();lastLocal=clone(DB);refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
+ if(cached){baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];needsReplay=!same(cached.data,cached.baseline);applyData(cached.data);quotaUntil38=Math.max(quotaUntil38,Number(cached.quotaPause?.until)||0);quotaReported38=quotaReported38||cached.quotaPause?.reported===true;retryPending32=retryPending32||quotaReported38;ready=true;openShell();lastLocal=clone(DB);refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
  const enqueue=fn=>serial(fn).catch(fail);
  if(profile()){
   // Recupera e acompanha a fila compartilhada em todos os dispositivos do usuário.
@@ -14077,9 +14104,9 @@ window.carregarBaseAposAutenticacao=async function(){
   stops.push(ref('dados_principais').onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveGlobal(d,token)),fail));
   if(admin())for(const p of Object.values(USERS))stops.push(ref('colaboracao_'+p.id).onSnapshot(d=>{if(d.exists&&!d.metadata?.hasPendingWrites&&!d.metadata?.fromCache){inbox[p.id]=d.data();enqueue(()=>ingest(p,d.data()))}},fail));
  }
- document.getElementById('globalLoader')?.classList.add('hidden');
+ document.getElementById('globalLoader')?.classList.add('hidden');scheduleResume39();
 };
-firebase.auth().onAuthStateChanged(u=>{if(!u){clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];quotaUntil38=0;quotaReported38=false;stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer);clearTimeout(retryTimer32);retryPending32=false;retryDelay32=1000}else window.carregarBaseAposAutenticacao().catch(fail)});
+firebase.auth().onAuthStateChanged(u=>{if(!u){clearTimeout(quotaTimer39);clearTimeout(resumeTimer39);quotaTimer39=null;resumeTimer39=null;clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];quotaUntil38=0;quotaReported38=false;stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer);clearTimeout(retryTimer32);retryPending32=false;retryDelay32=1000}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>scheduleFlush38().catch(fail));
 function attentionRecipient(ctx){const id=DB.workflow_planejamento?.[ctx]?.responsavelId;return Object.entries(USERS).find(([,p])=>p.id===id)?.[0];}
 window.addPlanningAttention=async function(text){
@@ -14136,7 +14163,7 @@ function refreshActions(){renderAttention();
  const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
  const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?pendingReviews().length+Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
 }
-window.SenacV29={get syncState(){return {cloudConfirmed:cloudConfirmed38,quotaBlocked:quotaReported38,pending:pending.length,awaitingAdmin:collabQueue.length,manualRunning:!!manualJob38}},statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
+window.SenacV29={get syncState(){return {cloudConfirmed:cloudConfirmed38,quotaBlocked:quotaReported38,nextRetryAt:quotaUntil38||null,pending:pending.length,awaitingAdmin:collabQueue.length,manualRunning:!!manualJob38}},statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
 function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
 function exportLocal(){const data=clone(DB);data._v29_recuperacao={usuario:email(),em:new Date().toISOString(),pendentes:clone(pending),enviadas:clone(collabQueue),devolvidas:clone(window.__V29_COLLAB_ERRORS||[])};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='supervisao_copia_local_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function card(title,fields){const el=document.createElement('article');el.className='wf-card';const h=document.createElement('h4');h.textContent=title;el.append(h);for(const [label,value] of fields){const p=document.createElement('p'),b=document.createElement('b');b.textContent=label+': ';p.append(b,document.createTextNode(String(value||'Não informado')));el.append(p)}return el}
@@ -14231,8 +14258,8 @@ function renderPresenceV297(){
 }
 async function sendPresenceV297(online=true){
  const p=profile();if(!p||!firebase.auth().currentUser||presenceInFlight38||quotaUntil38>Date.now()||!navigator.onLine)return;
- presenceInFlight38=true;
- try{await presenceRefV297(p.id).set({userId:p.id,email:email(),online,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:false});}
+ presenceInFlight38=true;const token=session;
+ try{await presenceRefV297(p.id).set({userId:p.id,email:email(),online,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:false});if(token===session){confirmedWrite38();if(ready)scheduleResume39();}} 
  catch(e){if(quota38(e))reportQuota38();else console.warn('Presença não confirmada',e);}
  finally{presenceInFlight38=false;}
 }
@@ -14263,6 +14290,7 @@ function installUI(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
 })();
+
 
 
 
