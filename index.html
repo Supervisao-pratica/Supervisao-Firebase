@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V40</title>
+    <title>Supervisão Senac 2026 — Revisão V41</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -12333,7 +12333,7 @@ const rm=window.runMergeImport;window.runMergeImport=async i=>{await rm(i);migra
 const rf=runFilter;runFilter=function(){return temp(rf,this,arguments)};const sf=setupFilters;setupFilters=function(){return temp(sf,this,arguments)};if(typeof setupPlanningFilters==='function'){let pf=setupPlanningFilters;setupPlanningFilters=function(){return temp(pf,this,arguments)}}
 window.abrirCidadesRede=function(){migrar();let arr=Object.values(DB.rede_cidades||{}).sort((a,b)=>(a.uf+a.cidade).localeCompare(b.uf+b.cidade,'pt-BR')),pend=arr.filter(x=>!x.regiao).length,html=arr.map(x=>`<tr><td>${x.uf}</td><td>${x.cidade}</td><td>${x.regiao||'<b style="color:#b45309">Pendente</b>'}</td><td>${x.unidade||''}</td></tr>`).join('');let w=window.open('','_blank','width=900,height=700');w.document.write(`<meta charset="utf-8"><title>Cidades da Rede</title><style>body{font:14px Arial;padding:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#005ca9;color:white}</style><h2>Cidades da Rede</h2><p>Total: ${arr.length} · Região pendente: ${pend}</p><table><thead><tr><th>UF</th><th>Cidade</th><th>Região</th><th>Unidade</th></tr></thead><tbody>${html}</tbody></table>`);w.document.close()};
 /* Firebase ativo: funcoes originais de sincronizacao e salvamento preservadas. */
-window.addEventListener('DOMContentLoaded',()=>{pintar();setTimeout(()=>{migrar();setupFilters();runFilter();let s=document.getElementById('saveStatus');if(s && navigator.onLine)s.innerHTML='<span class="text-emerald-600">Firebase ativo · sincronização em nuvem</span>'},1000)});
+window.addEventListener('DOMContentLoaded',()=>{pintar();setTimeout(()=>{migrar();setupFilters();runFilter();let s=document.getElementById('saveStatus');if(s && navigator.onLine && !window.SenacV29)s.innerHTML='<span class="text-emerald-600">Firebase ativo · sincronização em nuvem</span>'},1000)});
 })();</script>
 <script id="mapa-brasil-alunos-v1">
 (function(){'use strict';
@@ -13621,6 +13621,7 @@ let stops=[],session='',ready=false,baseline=null,generation=null,pending=[],rev
 let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false,acknowledgedOps=new Set(),reviewedErrorIds=new Set(),reviewedErrorsDirty=false;
 // V40: a tela contém rascunhos; somente submitted40 pode entrar na fila de envio.
 let submitted40=null,dirty40=false,submitJob40=null;
+let savePhase41="",saveLocal41=false;
 const regionalPublished40=new Map();
 function submittedData40(){return submitted40||baseline||DB;}
 function updateDraftState40(){dirty40=!!submitted40&&!same(DB,submitted40);renderSave40();}
@@ -13649,29 +13650,70 @@ function planSnapshot40(ctx){
  }
  return next;
 }
+// V41: a confirmação local e a confirmação remota são estados diferentes.
+function saveFeedback41(phase){savePhase41=phase;renderSave40();}
+function paintBeforeSave41(){return typeof requestAnimationFrame==='function'?new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0))):Promise.resolve();}
+async function waitSaveCloud41(){
+ if(quotaUntil38>Date.now()){armQuota39();saveFeedback41('pending');tell(QUOTA_MESSAGE38,true);return false;}
+ if(!navigator.onLine){scheduleRetry32();saveFeedback41('pending');tell(saveLocal41?'Salvo neste dispositivo; envio pendente até a conexão voltar.':'Envio pendente; mantenha esta aba aberta.',true);return false;}
+ saveFeedback41('sending');tell('Enviando alterações; aguardando confirmação da nuvem…');
+ // Reutiliza a operação em andamento. O prazo libera a interface, não cancela o envio.
+ const task=scheduleFlush38();let timer;
+ const result=task.then(value=>{
+  const waiting=value===false||quotaReported38||hasWork39();
+  saveFeedback41(waiting?'pending':collabQueue.length?'review':'saved');
+  return !waiting;
+ },e=>{saveFeedback41('error');fail(e);return false;});
+ const deadline=new Promise(resolve=>{timer=setTimeout(()=>{
+  saveFeedback41('pending');tell(saveLocal41?'Salvo neste dispositivo; a nuvem ainda não confirmou. Você pode continuar trabalhando. O envio permanece na fila.':'A nuvem ainda não confirmou. Mantenha esta aba aberta e exporte uma cópia local.',true);resolve(false);
+ },15000)});
+ try{return await Promise.race([result,deadline]);}finally{clearTimeout(timer);}
+}
 async function submit40(scope='plan'){
  if(submitJob40)return submitJob40;
  const ctx=STATE.planContext;
  if(!ready||window.APP_READ_ONLY)throw Error('Aguarde o carregamento dos seus dados.');
  if(scope==='all'&&!admin())throw Error('Somente o administrador pode salvar o cadastro geral.');
  if(scope==='plan'&&(!ctx||(profile()&&!owns(ctx,profile()))))throw Error('Selecione um planejamento da sua região.');
- // Congela a versão escolhida antes de qualquer espera. Novas edições continuam rascunhos.
- const before=clone(submittedData40()),next=scope==='all'?clone(DB):planSnapshot40(ctx);
- if(same(before,next)){tell('Nenhuma nova alteração para enviar.');return true;}
- submitted40=next;if(profile())pending.push(...changes(before,next));revision++;updateDraftState40();
- const job=(async()=>{await localStore();tell('Versão concluída salva neste dispositivo; enviando à nuvem.');})();
- submitJob40=job;renderSave40();try{await job}finally{submitJob40=null;renderSave40();}
- return scheduleFlush38();
+ saveFeedback41('local');tell('Salvando neste dispositivo…');
+ // Uma única cópia congela os dados do clique. Edições posteriores continuam rascunhos.
+ const owner=uid(),before=submittedData40(),next=scope==='all'?clone(DB):planSnapshot40(ctx);
+ const job=Promise.resolve().then(async()=>{
+  await paintBeforeSave41();if(owner!==uid())return false;
+  if(same(before,next)){
+   if(window.__LOCAL_CACHE_FAILED__)saveLocal41=await localStore();
+   if(flushQueued38||hasWork39())return waitSaveCloud41();
+   saveFeedback41(collabQueue.length?'review':quotaReported38?'pending':'saved');
+   tell(collabQueue.length?'Enviado à nuvem; aguardando processamento administrativo.':'Nenhuma nova alteração para enviar; não há envio pendente nesta sessão.');
+   return !quotaReported38;
+  }
+  const current=submittedData40(),combined=current===before?next:reconcileGlobal(before,next,current);
+  submitted40=combined;if(profile())pending.push(...changes(current,combined));revision++;updateDraftState40();
+  saveLocal41=await localStore();
+  if(owner!==uid())return false;
+  tell(saveLocal41?'Versão concluída salva neste dispositivo; preparando envio.':'Não foi possível confirmar a cópia neste dispositivo; tentando envio à nuvem.',!saveLocal41);
+  return waitSaveCloud41();
+ });
+ submitJob40=job;renderSave40();
+ try{return await job}catch(e){saveFeedback41('error');throw e}finally{if(submitJob40===job)submitJob40=null;renderSave40();}
 }
 window.salvarPlanejamentoConcluido=()=>submit40('plan').catch(fail);
 window.salvarAlteracoesConcluidas=()=>submit40('all').catch(fail);
+function saveButtonLabel41(normal){
+ if(savePhase41==='local')return 'Salvando no dispositivo…';
+ if(savePhase41==='sending')return 'Enviando à nuvem…';
+ if(savePhase41==='pending')return normal+' · envio pendente';
+ if(savePhase41==='review')return normal+' · enviado';
+ if(savePhase41==='error')return normal+' · tentar novamente';
+ return normal;
+}
 function renderSave40(){
  const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;
  let save=document.getElementById('v40-save-plan');
  if(actions&&!save){save=button('Salvar planejamento',()=>window.salvarPlanejamentoConcluido(),'wf-btn wf-btn-primary');save.id='v40-save-plan';save.style.cssText='background:#00579d;color:white;border:1px solid #004578;min-height:44px;font-weight:700;padding:10px 16px;border-radius:8px';actions.prepend(save);}
- if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;}
- document.querySelectorAll('button[onclick="enviarWorkflowAprovacao()"]').forEach(b=>{b.textContent='Concluir e enviar planejamento';b.disabled=!ready||!!submitJob40;});
- const all=document.getElementById('v40-save-all');if(all){all.hidden=!admin();all.disabled=!ready||!!submitJob40;}
+ if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;save.textContent=saveButtonLabel41('Salvar planejamento');save.setAttribute('aria-busy',String(!!submitJob40));}
+ document.querySelectorAll('button[onclick="enviarWorkflowAprovacao()"]').forEach(b=>{b.textContent=saveButtonLabel41('Concluir e enviar planejamento');b.disabled=!ready||!!submitJob40;});
+ const all=document.getElementById('v40-save-all');if(all){all.hidden=!admin();all.disabled=!ready||!!submitJob40;all.textContent=saveButtonLabel41('Salvar alterações');all.setAttribute('aria-busy',String(!!submitJob40));}
  let hint=document.getElementById('v40-draft-state');const root=document.getElementById('planContent');
  if(root&&!hint){hint=document.createElement('div');hint.id='v40-draft-state';hint.style.cssText='padding:8px 12px;margin:8px 0;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:12px';root.prepend(hint);}
  if(hint)hint.textContent='As edições ficam como rascunho neste dispositivo. '+(admin()?'Use Salvar planejamento; para cadastros e outras áreas, Salvar alterações.':'Use Concluir e enviar planejamento para compartilhar suas alterações.');
@@ -13717,7 +13759,7 @@ const consoleError38=console.error.bind(console);
 console.error=function(...args){consoleError38(...args);const message=args.filter(x=>typeof x==='string').join(' ');if(message.toLowerCase().includes('@firebase/firestore')&&quota38(message))reportQuota38();};
 function scheduleFlush38(){if(flushQueued38)return flushQueued38;const task=serial(flush);flushQueued38=task;task.then(()=>{if(flushQueued38===task)flushQueued38=null},()=>{if(flushQueued38===task)flushQueued38=null});return task;}
 function observeWait38(promise,label,ms=15000){let timer=setTimeout(()=>{tell(quotaReported38?QUOTA_MESSAGE38:label+' ainda aguarda confirmação da nuvem. A operação continua; novas tentativas não serão duplicadas.',true)},ms);return Promise.resolve(promise).finally(()=>clearTimeout(timer));}
-function tell(text,error=false){if(quotaReported38){text=QUOTA_MESSAGE38;error=true;}if(window.__LOCAL_CACHE_FAILED__){const warning='Armazenamento local cheio: mantenha esta aba aberta até confirmar o envio à nuvem. ';text=/dispositivo|salvas neste/i.test(text)?warning:warning+text;error=true;}errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.style.color=error?'#b45309':'#036642'} }
+function tell(text,error=false){if(quotaReported38){text=QUOTA_MESSAGE38;error=true;}if(window.__LOCAL_CACHE_FAILED__){const warning='Armazenamento local cheio: mantenha esta aba aberta até confirmar o envio à nuvem. ';text=/dispositivo|salvas neste/i.test(text)?warning:warning+text;error=true;}errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.setAttribute('aria-live','polite');el.style.color=error?'#b45309':'#036642'} }
 function fail(e){if(quota38(e)){reportQuota38();return}console.error('[V29]',e);window.__ULTIMO_ERRO_NUVEM__={codigo:e.code||'erro',mensagem:e.message};tell('Alterações locais preservadas; '+(e.code==='permission-denied'?'Firebase recusou a permissão. Verifique as regras publicadas.':e.message),true)}
 function serial(fn){const next=chain.catch(()=>{}).then(()=>observeWait38(Promise.resolve().then(fn),'Sincronização'));chain=next;return next}
 function ref(name){return firebase.firestore().collection('banco_senac').doc(name)}
@@ -13849,7 +13891,7 @@ function localStore(){
 }
 async function localStoreOnce40(){
  const cacheOwner40=uid();const db=await dbPromise,currentRevision=revision;if(cacheOwner40!==uid())return false;
- const raw={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision:currentRevision,collabVersion,collabQueue:clone(collabQueue),submitted40:clone(submitted40),quotaPause:{until:quotaUntil38,reported:quotaReported38}};
+ const raw={data:clone(DB),baseline,generation,pending,revision:currentRevision,collabVersion,collabQueue,submitted40,quotaPause:{until:quotaUntil38,reported:quotaReported38}};
  const item={compressedV37:true,payload:await packLocalAsync40(raw),revision:currentRevision,updatedAt:Date.now()};
  try{
   await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);st.delete('root');st.delete('last_known_good');st.put(item,'v29:'+cacheOwner40);tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
@@ -14188,7 +14230,7 @@ window.carregarBaseAposAutenticacao=async function(){
  }
  document.getElementById('globalLoader')?.classList.add('hidden');scheduleResume39();
 };
-firebase.auth().onAuthStateChanged(u=>{if(!u){clearTimeout(quotaTimer39);clearTimeout(resumeTimer39);quotaTimer39=null;resumeTimer39=null;clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];quotaUntil38=0;quotaReported38=false;stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;submitted40=null;dirty40=false;regionalPublished40.clear();generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer);clearTimeout(retryTimer32);retryPending32=false;retryDelay32=1000}else window.carregarBaseAposAutenticacao().catch(fail)});
+firebase.auth().onAuthStateChanged(u=>{if(!u){clearTimeout(quotaTimer39);clearTimeout(resumeTimer39);quotaTimer39=null;resumeTimer39=null;clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];quotaUntil38=0;quotaReported38=false;stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;submitted40=null;dirty40=false;savePhase41='';saveLocal41=false;regionalPublished40.clear();generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer);clearTimeout(retryTimer32);retryPending32=false;retryDelay32=1000}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>scheduleFlush38().catch(fail));
 function attentionRecipient(ctx){const id=DB.workflow_planejamento?.[ctx]?.responsavelId;return Object.entries(USERS).find(([,p])=>p.id===id)?.[0];}
 window.addPlanningAttention=async function(text){const actionBefore40=clone(DB);
@@ -14361,7 +14403,7 @@ window.enviarWorkflowAprovacao=async function(){
  const ctx=STATE.planContext,m=DB.workflow_planejamento?.[ctx];
  if(!m)throw Error('Selecione um planejamento válido.');
  const changed=!same(planSnapshot40(ctx),submittedData40());
- if(!changed&&m.status==='pendente'){tell('Este planejamento já foi enviado.');return;}
+ if(!changed&&m.status==='pendente')return submit40('plan');
  m.status='pendente';m.aprovadoPor=null;m.aprovadoEm=null;m.enviadoPor=email();m.enviadoEm=new Date().toISOString();m.atualizadoEm=m.enviadoEm;m.revisao=(m.revisao||0)+1;m.historico??=[];m.historico.push({acao:'enviado_aprovacao',por:email(),em:m.enviadoEm});
  note('admin','aprovacao',profile().nome+' concluiu e enviou '+ctx+' para aprovação.',ctx);
  return submit40('plan');
