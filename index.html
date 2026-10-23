@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisão Senac 2026 — Revisão V39</title>
+    <title>Supervisão Senac 2026 — Revisão V40</title>
     
     <link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#004587"><link rel="apple-touch-icon" href="./apple-touch-icon-180.png">
     
@@ -13619,6 +13619,63 @@ const fresh=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random
 let shellSession='',lastRegionSnapshot='';
 let stops=[],session='',ready=false,baseline=null,generation=null,pending=[],revision=0,writeTimer=null,chain=Promise.resolve(),remoteBusy=false;
 let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false,acknowledgedOps=new Set(),reviewedErrorIds=new Set(),reviewedErrorsDirty=false;
+// V40: a tela contém rascunhos; somente submitted40 pode entrar na fila de envio.
+let submitted40=null,dirty40=false,submitJob40=null;
+const regionalPublished40=new Map();
+function submittedData40(){return submitted40||baseline||DB;}
+function updateDraftState40(){dirty40=!!submitted40&&!same(DB,submitted40);renderSave40();}
+function applySubmitted40(next){
+ const previous=submitted40,visible=clone(DB);submitted40=clone(next);
+ applyData(previous?reconcileGlobal(previous,visible,next):next);updateDraftState40();
+}
+function enqueueDelta40(before,after){
+ const previous=clone(submittedData40()),next=reconcileGlobal(before,after,previous);
+ if(profile())pending.push(...changes(previous,next));
+ submitted40=next;updateDraftState40();
+}
+async function finishAction40(before,after=clone(DB)){
+ if(same(before,after))return false;
+ enqueueDelta40(before,after);revision++;await localStore();
+ tell('Ação concluída; envio à nuvem em andamento.');scheduleFlush38().catch(fail);return true;
+}
+function planSnapshot40(ctx){
+ const next=clone(submittedData40());
+ for(const field of maps.concat('planning_processos')){next[field]??={};if(DB[field]?.[ctx]===undefined)delete next[field][ctx];else next[field][ctx]=clone(DB[field][ctx]);}
+ for(const field of lists){next[field]=(next[field]||[]).filter(x=>x.contexto!==ctx).concat(clone((DB[field]||[]).filter(x=>x.contexto===ctx)));}
+ if(admin()){
+  const ids=new Set([...(DB.planning?.[ctx]||[]),...(submittedData40().planning?.[ctx]||[])].map(x=>String(x.student?.id)));
+  for(const field of ['quali','tec']){const edited=new Map((DB[field]||[]).filter(x=>ids.has(String(x.id))).map(x=>[String(x.id),x]));next[field]=(next[field]||[]).map(x=>clone(edited.get(String(x.id))||x));}
+  bindStudents(next);
+ }
+ return next;
+}
+async function submit40(scope='plan'){
+ if(submitJob40)return submitJob40;
+ const ctx=STATE.planContext;
+ if(!ready||window.APP_READ_ONLY)throw Error('Aguarde o carregamento dos seus dados.');
+ if(scope==='all'&&!admin())throw Error('Somente o administrador pode salvar o cadastro geral.');
+ if(scope==='plan'&&(!ctx||(profile()&&!owns(ctx,profile()))))throw Error('Selecione um planejamento da sua região.');
+ // Congela a versão escolhida antes de qualquer espera. Novas edições continuam rascunhos.
+ const before=clone(submittedData40()),next=scope==='all'?clone(DB):planSnapshot40(ctx);
+ if(same(before,next)){tell('Nenhuma nova alteração para enviar.');return true;}
+ submitted40=next;if(profile())pending.push(...changes(before,next));revision++;updateDraftState40();
+ const job=(async()=>{await localStore();tell('Versão concluída salva neste dispositivo; enviando à nuvem.');})();
+ submitJob40=job;renderSave40();try{await job}finally{submitJob40=null;renderSave40();}
+ return scheduleFlush38();
+}
+window.salvarPlanejamentoConcluido=()=>submit40('plan').catch(fail);
+window.salvarAlteracoesConcluidas=()=>submit40('all').catch(fail);
+function renderSave40(){
+ const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;
+ let save=document.getElementById('v40-save-plan');
+ if(actions&&!save){save=button('Salvar planejamento',()=>window.salvarPlanejamentoConcluido(),'wf-btn wf-btn-primary');save.id='v40-save-plan';save.style.cssText='background:#00579d;color:white;border:1px solid #004578;min-height:44px;font-weight:700;padding:10px 16px;border-radius:8px';actions.prepend(save);}
+ if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;}
+ document.querySelectorAll('button[onclick="enviarWorkflowAprovacao()"]').forEach(b=>{b.textContent='Concluir e enviar planejamento';b.disabled=!ready||!!submitJob40;});
+ const all=document.getElementById('v40-save-all');if(all){all.hidden=!admin();all.disabled=!ready||!!submitJob40;}
+ let hint=document.getElementById('v40-draft-state');const root=document.getElementById('planContent');
+ if(root&&!hint){hint=document.createElement('div');hint.id='v40-draft-state';hint.style.cssText='padding:8px 12px;margin:8px 0;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:12px';root.prepend(hint);}
+ if(hint)hint.textContent='As edições ficam como rascunho neste dispositivo. '+(admin()?'Use Salvar planejamento; para cadastros e outras áreas, Salvar alterações.':'Use Concluir e enviar planejamento para compartilhar suas alterações.');
+}
 const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
 const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention'];
 // V38: cota remota é diferente de espaço no dispositivo. Nunca limpar filas por falha de rede.
@@ -13626,7 +13683,7 @@ let quotaUntil38=0,quotaReported38=false,cloudConfirmed38=false,flushQueued38=nu
 const QUOTA_MESSAGE38='Limite de gravações da nuvem atingido. Alterações ficam neste dispositivo quando o armazenamento local está disponível. O reenvio será tentado automaticamente; mantenha o sistema aberto ou reabra depois.';
 function quota38(e){return /resource-exhausted|quota exceeded/i.test(String(e?.code||'')+' '+String(e?.message||e||''));}
 let quotaTimer39=null,resumeTimer39=null;
-function hasWork39(){return pending.length>0||reviewedErrorsDirty||retryPending32||(admin()&&(needsReplay||(baseline&&!same(DB,baseline))));}
+function hasWork39(){return pending.length>0||retryPending32||(admin()&&(needsReplay||(baseline&&!same(submittedData40(),baseline))));}
 function armQuota39(){
  clearTimeout(quotaTimer39);const token=session;if(!token)return;
  quotaTimer39=setTimeout(()=>{quotaTimer39=null;if(token!==session)return;resumeCycle39();},Math.max(1000,quotaUntil38-Date.now()+100));
@@ -13770,19 +13827,39 @@ function applyData(data){
 function quotaErrorV37(e){return e?.name==='QuotaExceededError'||e?.code===22||/quota/i.test(String(e?.message||e||''))}
 function packLocalV37(value){return LZString.compressToUTF16(JSON.stringify(value))}
 function unpackLocalV37(value){if(!value?.compressedV37)return value;try{return JSON.parse(LZString.decompressFromUTF16(value.payload)||'null')}catch(e){console.warn('Cache local compactado inválido:',e);return null}}
-async function localStore(){
- const db=await dbPromise,currentRevision=revision;
- const raw={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision:currentRevision,collabVersion,collabQueue:clone(collabQueue),quotaPause:{until:quotaUntil38,reported:quotaReported38}};
- const item={compressedV37:true,payload:packLocalV37(raw),revision:currentRevision,updatedAt:Date.now()};
+// Compactação do cache fora da interface; fila única consolida chamadas simultâneas.
+let cacheWorker40=null,localTask40=null,localAgain40=false,compressionId40=0;
+const compressionTasks40=new Map();
+async function compress40(raw,base64=false){
+ const fallback=()=>LZString[base64?'compressToBase64':'compressToUTF16'](JSON.stringify(raw));
+ if(typeof Worker!=='function')return fallback();
  try{
-  await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);st.delete('root');st.delete('last_known_good');st.put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
+  if(!cacheWorker40){const url=URL.createObjectURL(new Blob(["/* MIT License\n\nCopyright (c) 2013 pieroxy\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n */\nvar LZString=function(){var r=String.fromCharCode,o=\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\",n=\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$\",e={};function t(r,o){if(!e[r]){e[r]={};for(var n=0;n<r.length;n++)e[r][r.charAt(n)]=n}return e[r][o]}var i={compressToBase64:function(r){if(null==r)return\"\";var n=i._compress(r,6,function(r){return o.charAt(r)});switch(n.length%4){default:case 0:return n;case 1:return n+\"===\";case 2:return n+\"==\";case 3:return n+\"=\"}},decompressFromBase64:function(r){return null==r?\"\":\"\"==r?null:i._decompress(r.length,32,function(n){return t(o,r.charAt(n))})},compressToUTF16:function(o){return null==o?\"\":i._compress(o,15,function(o){return r(o+32)})+\" \"},decompressFromUTF16:function(r){return null==r?\"\":\"\"==r?null:i._decompress(r.length,16384,function(o){return r.charCodeAt(o)-32})},compressToUint8Array:function(r){for(var o=i.compress(r),n=new Uint8Array(2*o.length),e=0,t=o.length;e<t;e++){var s=o.charCodeAt(e);n[2*e]=s>>>8,n[2*e+1]=s%256}return n},decompressFromUint8Array:function(o){if(null==o)return i.decompress(o);for(var n=new Array(o.length/2),e=0,t=n.length;e<t;e++)n[e]=256*o[2*e]+o[2*e+1];var s=[];return n.forEach(function(o){s.push(r(o))}),i.decompress(s.join(\"\"))},compressToEncodedURIComponent:function(r){return null==r?\"\":i._compress(r,6,function(r){return n.charAt(r)})},decompressFromEncodedURIComponent:function(r){return null==r?\"\":\"\"==r?null:(r=r.replace(/ /g,\"+\"),i._decompress(r.length,32,function(o){return t(n,r.charAt(o))}))},compress:function(o){return i._compress(o,16,function(o){return r(o)})},_compress:function(r,o,n){if(null==r)return\"\";var e,t,i,s={},u={},a=\"\",p=\"\",c=\"\",l=2,f=3,h=2,d=[],m=0,v=0;for(i=0;i<r.length;i+=1)if(a=r.charAt(i),Object.prototype.hasOwnProperty.call(s,a)||(s[a]=f++,u[a]=!0),p=c+a,Object.prototype.hasOwnProperty.call(s,p))c=p;else{if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++),s[p]=f++,c=String(a)}if(\"\"!==c){if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++)}for(t=2,e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;for(;;){if(m<<=1,v==o-1){d.push(n(m));break}v++}return d.join(\"\")},decompress:function(r){return null==r?\"\":\"\"==r?null:i._decompress(r.length,32768,function(o){return r.charCodeAt(o)})},_decompress:function(o,n,e){var t,i,s,u,a,p,c,l=[],f=4,h=4,d=3,m=\"\",v=[],g={val:e(0),position:n,index:1};for(t=0;t<3;t+=1)l[t]=t;for(s=0,a=Math.pow(2,2),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 2:return\"\"}for(l[3]=c,i=c,v.push(c);;){if(g.index>o)return\"\";for(s=0,a=Math.pow(2,d),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(c=s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 2:return v.join(\"\")}if(0==f&&(f=Math.pow(2,d),d++),l[c])m=l[c];else{if(c!==h)return null;m=i+i.charAt(0)}v.push(m),l[h++]=i+m.charAt(0),i=m,0==--f&&(f=Math.pow(2,d),d++)}}};return i}();\"function\"==typeof define&&define.amd?define(function(){return LZString}):\"undefined\"!=typeof module&&null!=module?module.exports=LZString:\"undefined\"!=typeof angular&&null!=angular&&angular.module(\"LZString\",[]).factory(\"LZString\",function(){return LZString});\nself.onmessage=e=>{const {id,raw,base64}=e.data;try{self.postMessage({id,payload:LZString[base64?\"compressToBase64\":\"compressToUTF16\"](JSON.stringify(raw))})}catch(error){self.postMessage({id,error:String(error)})}};"],{type:'application/javascript'}));cacheWorker40=new Worker(url);URL.revokeObjectURL(url);
+   cacheWorker40.onmessage=e=>{const task=compressionTasks40.get(e.data.id);if(!task)return;compressionTasks40.delete(e.data.id);e.data.error?task.reject(Error(e.data.error)):task.resolve(e.data.payload);};
+   cacheWorker40.onerror=e=>{cacheWorker40?.terminate();cacheWorker40=null;for(const task of compressionTasks40.values())task.reject(e);compressionTasks40.clear();};
+  }
+  return await new Promise((resolve,reject)=>{const id=++compressionId40;compressionTasks40.set(id,{resolve,reject});try{cacheWorker40.postMessage({id,raw,base64})}catch(e){compressionTasks40.delete(id);reject(e)}});
+ }catch(e){return fallback();}
+}
+const packLocalAsync40=raw=>compress40(raw);
+function localStore(){
+ localAgain40=true;
+ if(!localTask40)localTask40=(async()=>{let result;do{localAgain40=false;result=await localStoreOnce40();}while(localAgain40);return result;})().finally(()=>{localTask40=null;});
+ return localTask40;
+}
+async function localStoreOnce40(){
+ const cacheOwner40=uid();const db=await dbPromise,currentRevision=revision;if(cacheOwner40!==uid())return false;
+ const raw={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision:currentRevision,collabVersion,collabQueue:clone(collabQueue),submitted40:clone(submitted40),quotaPause:{until:quotaUntil38,reported:quotaReported38}};
+ const item={compressedV37:true,payload:await packLocalAsync40(raw),revision:currentRevision,updatedAt:Date.now()};
+ try{
+  await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);st.delete('root');st.delete('last_known_good');st.put(item,'v29:'+cacheOwner40);tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
  }catch(e){
   if(!quotaErrorV37(e))throw e;
   console.warn('Armazenamento local cheio; sincronização com a nuvem continuará.',e);
   try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME),req=st.openCursor();req.onsuccess=()=>{const c=req.result;if(!c)return;const k=String(c.key);if(k==='root'||k==='last_known_good')c.delete();c.continue()};req.onerror=()=>no(req.error);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(cleanError){console.warn('Limpeza local parcial:',cleanError)}
-  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(finalError){window.__LOCAL_CACHE_FAILED__=true;console.warn('Sem espaço para cache local; mantenha a aba aberta até confirmação na nuvem.',finalError);return false}
+  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+cacheOwner40);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(finalError){window.__LOCAL_CACHE_FAILED__=true;console.warn('Sem espaço para cache local; mantenha a aba aberta até confirmação na nuvem.',finalError);return false}
  }
- window.__LOCAL_CACHE_FAILED__=false;if(revision===currentRevision)lastLocal=clone(raw.data);
+ window.__LOCAL_CACHE_FAILED__=false;if(cacheOwner40===uid()&&revision===currentRevision)lastLocal=raw.data;
  return true;
 }
 async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(unpackLocalV37(r.result));r.onerror=()=>no(r.error)})}
@@ -13801,8 +13878,7 @@ async function publishRegions(data, expectedGeneration=generation){
  const f=firebase.firestore();
  for(const [e,p] of Object.entries(USERS)){
   const main=ref('resposta_'+p.id);
-  const previous=await main.get();
-  const previousMeta=previous.exists?previous.data():null;
+  let previousMeta=null;
   const generation=Date.now()+'_'+fresh();
   const envelope={
    schema:'senac-regional-envelope-v29.1',
@@ -13813,8 +13889,12 @@ async function publishRegions(data, expectedGeneration=generation){
    ack:data._collabAck?.[p.id]||[],
    errors:data._collabErrors?.[p.id]||[]
   };
-  const packed=LZString.compressToBase64(JSON.stringify(envelope));
-  const checksum=hashV9637(packed);if(previousMeta?.checksum===checksum)continue;
+  const packed=await compress40(envelope,true);
+  const checksum=hashV9637(packed);
+  // A comparação em memória evita até a leitura do manifesto em publicações idênticas.
+  if(regionalPublished40.get(p.id)===packed)continue;
+  const previous=await main.get();previousMeta=previous.exists?previous.data():null;
+  if(previousMeta?.checksum===checksum){regionalPublished40.set(p.id,packed);continue;}
   if(!packed)throw Error('Não foi possível compactar o recorte de '+p.nome+'.');
   const parts=[];
   for(let i=0;i<packed.length;i+=REGIONAL_CHUNK_SIZE_V291)parts.push(packed.slice(i,i+REGIONAL_CHUNK_SIZE_V291));
@@ -13830,7 +13910,7 @@ async function publishRegions(data, expectedGeneration=generation){
    await batch.commit();
   }
   // A resposta só pode apontar para a geração global ainda vigente.
-  await f.runTransaction(async tx=>{
+  const published=await f.runTransaction(async tx=>{
    const root=await tx.get(ref('dados_principais'));
    const meta=root.exists?root.data():{};
    if(String(meta.generation||meta.updatedAt||'')!==String(expectedGeneration||''))return;
@@ -13839,8 +13919,9 @@ async function publishRegions(data, expectedGeneration=generation){
    storageGeneration:generation,dataGeneration:String(data.updatedAt),
    chunkCount:parts.length,totalLength:packed.length,checksum,
    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  });return true;
   });
-  });
+  if(published)regionalPublished40.set(p.id,packed);
   // Partes antigas são preservadas para leitores concorrentes.
 
  }
@@ -13875,7 +13956,7 @@ async function writeGlobal(data,expected){
  if(archivedLast)PROTECAO_ANTIPERDA_V27.autorizar('substituicao',0);
  try{PROTECAO_ANTIPERDA_V27.validar(data,'gravação')}finally{if(archivedLast)PROTECAO_ANTIPERDA_V27.encerrar()}
  const f=firebase.firestore(),root=ref('dados_principais');const gen=Date.now()+'_'+fresh();data.updatedAt=Date.now();
- const payload=LZString.compressToBase64(JSON.stringify(data)),parts=[];for(let i=0;i<payload.length;i+=300000)parts.push(payload.slice(i,i+300000));
+ const payload=await compress40(data,true),parts=[];for(let i=0;i<payload.length;i+=300000)parts.push(payload.slice(i,i+300000));
  for(let i=0;i<parts.length;i+=400){const batch=f.batch();parts.slice(i,i+400).forEach((conteudo,j)=>batch.set(root.collection('partes').doc(gen+'_'+String(i+j).padStart(5,'0')),{generation:gen,indice:i+j,conteudo}));await batch.commit()}
  await f.runTransaction(async tx=>{const doc=await tx.get(root),actual=doc.exists?String(doc.data().generation||doc.data().updatedAt||''):null;if(actual!==expected)throw Object.assign(Error('A base mudou em outro computador. A gravação foi interrompida para preservar as duas versões.'),{code:'senac/stale-generation'});tx.set(root,{chunked:true,generation:gen,chunkCount:parts.length,totalLength:payload.length,checksum:hashV9637(payload),updatedAt:data.updatedAt,schema:'senac-cloud-v29',updatedBy:email()})});
  // Gerações anteriores não são apagadas durante leituras concorrentes.
@@ -13893,8 +13974,8 @@ async function rebase32(){
  if(!doc.exists)throw Error('Base remota ausente; alterações locais preservadas.');
  const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');
  if(gen===generation)return;
- const remote=await decode(meta),next=reconcileGlobal(baseline,clone(DB),remote);
- baseline=clone(remote);generation=gen;applyData(next);await localStore();
+ const remote=await decode(meta),next=reconcileGlobal(baseline,clone(submittedData40()),remote);
+ baseline=clone(remote);generation=gen;applySubmitted40(next);await localStore();
 }
 async function flush(){
  if(quotaUntil38>Date.now()){armQuota39();tell(QUOTA_MESSAGE38,true);return false;}
@@ -13935,28 +14016,28 @@ async function flushOnce32(){
   if(didWrite38)confirmedWrite38();collabVersion=version;reviewedErrorsDirty=false;collabQueue.push(...uploaded.filter(o=>!collabQueue.some(x=>x.id===o.id)));const uploadedIds=new Set(uploaded.map(o=>o.id));pending=pending.filter(o=>!uploadedIds.has(o.id));retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);await localStore();tell(pending.length?'Parte enviada; '+pending.length+' alteração(ões) preservada(s) neste dispositivo, aguardando confirmação para continuar.':'Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
  if(!admin())return;
+ if(!needsReplay&&!retryPending32&&same(submittedData40(),baseline)){tell('Nenhum envio pendente. Rascunhos não são enviados por Sincronizar.');return true;}
  needsReplay=false;await rebase32();
- if(same(DB,baseline)){await publishRegions(DB);retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);tell('Base atualizada pela nuvem.');return true}
+ if(same(submittedData40(),baseline)){await publishRegions(submittedData40());retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);tell('Base atualizada pela nuvem.');return true}
  for(let attempt=0;attempt<3;attempt++){
-  const sent=clone(DB);let result;
+  const sent=clone(submittedData40());let result;
   try{result=await writeGlobal(sent,generation)}catch(e){
    if(e.code!=='senac/stale-generation')throw e;
    await rebase32();
    if(attempt===2){scheduleRetry32();tell('Atualizações simultâneas recebidas; alterações locais salvas. Reenvio automático em andamento.');return false;}
    continue;
   }
-  retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);const next=reconcileGlobal(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data,result.generation);if(!same(DB,baseline))scheduleRetry32();tell(pendingReviews().length?'Salvo na nuvem; há divergências preservadas em Notificações.':'Salvo e confirmado na nuvem.');refresh();return;
+  retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);const next=reconcileGlobal(sent,clone(submittedData40()),result.data);baseline=clone(result.data);generation=result.generation;applySubmitted40(next);await localStore();await publishRegions(result.data,result.generation);if(!same(submittedData40(),baseline))scheduleRetry32();tell(pendingReviews().length?'Salvo na nuvem; há divergências preservadas em Notificações.':'Salvo e confirmado na nuvem.');refresh();return;
  }
 }
 if(navigator.storage?.persist)navigator.storage.persist().catch(()=>false);
 window.saveToStorage=async function(){
- if(!ready)return false;if(lastLocal&&same(DB,lastLocal))return true;if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
- if(profile()){
-  // Configuração global nunca faz parte da colaboração regional.
-  DB.regioes_map=clone(baseline.regioes_map||{});DB.rede_cidades=clone(baseline.rede_cidades||{});
-  const ops=changes(lastLocal||baseline,DB);pending.push(...ops);
- }
- revision++;lastLocal=clone(DB);await localStore();tell('Salvo neste dispositivo; sincronização pendente.');clearTimeout(writeTimer);writeTimer=setTimeout(()=>scheduleFlush38().catch(fail),1800);return true;
+ if(!ready)return false;if(lastLocal&&same(DB,lastLocal))return true;
+ if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
+ if(!submitted40)submitted40=clone(baseline||lastLocal||DB);
+ if(profile()){DB.regioes_map=clone(baseline.regioes_map||{});DB.rede_cidades=clone(baseline.rede_cidades||{});}
+ revision++;lastLocal=clone(DB);updateDraftState40();await localStore();
+ tell('Rascunho salvo neste dispositivo. Conclua ou salve para enviar.');return true;
 };
 // V29.3: sincronização manual completa e multidispositivo.
 const syncManual31=()=>serial(async()=>{
@@ -13972,15 +14053,16 @@ const syncManual31=()=>serial(async()=>{
   const resposta=await ref('resposta_'+profile().id).get({source:'server'});
   if(resposta.exists)await receiveRegion(resposta,session);
   if(pending.length||collabQueue.length)tell('Alterações sincronizadas entre dispositivos; aguardando processamento administrativo.');
-  else tell('Sua região está atualizada com a resposta confirmada pelo administrador.');
+  else tell('Sua região está atualizada. Para enviar rascunhos, use Concluir e enviar planejamento.');
   return sent!==false&&!pending.length&&!collabQueue.length;
  }
  if(admin()){
+  await rebase32();
   for(const p of Object.values(USERS)){
    const c=await ref('colaboracao_'+p.id).get({source:'server'});
    if(c.exists){inbox[p.id]=c.data();await ingest(p,c.data())}
   }
-  const saved=await flush();refresh();if(saved===false)return false;tell('Sincronização administrativa concluída.');return true;
+  const saved=await flush();refresh();if(saved===false)return false;tell('Sincronização administrativa concluída. Para enviar rascunhos, use Salvar planejamento ou Salvar alterações.');return true;
  }
  await flush();return true;
 }).catch(e=>{fail(e);throw e});
@@ -14024,7 +14106,7 @@ function validateOp(o,p,data){
 }
 async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
- let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
+ let candidate=clone(submittedData40()),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
  const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
  for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=o.field==='planning'?merge(officialPlanRows(o.before,current,candidate),officialPlanRows(o.after,current,candidate),officialPlanRows(current,current,candidate),o.field+'.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
  // V29.7: recupera pedido de aprovação que chegou apenas como notificação.
@@ -14039,17 +14121,17 @@ async function ingest(p,message){
   candidate.workflow_planejamento[ctx]={...(current||{}),contexto:ctx,status:'pendente',responsavelId:p.id,responsavelNome:p.nome,enviadoPor:requesterEmail,enviadoEm:n.criadaEm||new Date().toISOString(),atualizadoEm:new Date().toISOString(),revisao:Number(current?.revisao||0)+1,historico:[...(current?.historico||[]),{acao:'enviado_aprovacao_recuperado',por:requesterEmail,em:new Date().toISOString()}]};
   count++;
  }
- if(!count){if(reviewedChanged){applyData(candidate);await localStore();await flush()}return}
+ if(!count){if(reviewedChanged){applySubmitted40(candidate);await localStore();await flush()}return}
  // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
- applyData(candidate);await localStore();await flush();
+ applySubmitted40(candidate);await localStore();await flush();
 }
 async function receiveGlobal(doc,token){
  if(token!==session||!doc.exists||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
  if(ready&&editingPlan()){deferredGlobal=[doc,token];releaseDeferredPlanningSync();return;}
  const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(gen===generation&&ready){cloudConfirmed38=true;tell('Base conferida com a nuvem.');if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
- const remote=await decode(meta);if(token!==session)return;cloudConfirmed38=true;const current=clone(DB);
+ const remote=await decode(meta);if(token!==session)return;cloudConfirmed38=true;const current=clone(submittedData40());
  const combined=baseline?reconcileGlobal(baseline,current,remote):remote;
- baseline=clone(remote);generation=gen;applyData(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(DB,baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
+ baseline=clone(remote);generation=gen;applySubmitted40(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(submittedData40(),baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
 }
 async function receiveOwnCollaboration(doc,token){
  if(token!==session||!profile()||doc.metadata?.hasPendingWrites||doc.metadata?.fromCache||!doc.exists)return;
@@ -14081,7 +14163,7 @@ async function receiveRegion(doc,token){
  const remote=envelope.remote;cloudConfirmed38=true;
  const ack=new Set(envelope.ack||[]);acknowledgedOps=ack;collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
  let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.field==='planning'?officialPlanRows(o.after,next.planning?.[o.key],next):o.after);
- baseline=clone(remote);applyData(next);ready=true;await localStore();openShell();refresh();
+ baseline=clone(remote);applySubmitted40(next);ready=true;await localStore();openShell();refresh();
  const unseenErrors=(envelope.errors||[]).filter(e=>e?.id&&!reviewedErrorIds.has(e.id));
  if(unseenErrors.length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
  window.__V29_COLLAB_ERRORS=unseenErrors;lastRegionSnapshot=signature;if(pending.length){clearTimeout(writeTimer);writeTimer=setTimeout(()=>scheduleFlush38().catch(fail),450);}
@@ -14094,7 +14176,7 @@ window.carregarBaseAposAutenticacao=async function(){
  ready=false;cloudConfirmed38=false;window.APP_READ_ONLY=true;openShell();startPresenceV297();tell('Autenticado; carregando dados autorizados…');
  setTimeout(()=>{if(token===session&&!cloudConfirmed38)tell('Aguardando confirmação da nuvem. A base local, quando disponível, permanece preservada.',true)},15000);
  const cached=await localRead();if(token!==session)return;
- if(cached){baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];needsReplay=!same(cached.data,cached.baseline);applyData(cached.data);quotaUntil38=Math.max(quotaUntil38,Number(cached.quotaPause?.until)||0);quotaReported38=quotaReported38||cached.quotaPause?.reported===true;retryPending32=retryPending32||quotaReported38;ready=true;openShell();lastLocal=clone(DB);refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
+ if(cached){baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];submitted40=clone(cached.submitted40||cached.data);needsReplay=admin()&&!same(submitted40,cached.baseline);applyData(cached.data);updateDraftState40();quotaUntil38=Math.max(quotaUntil38,Number(cached.quotaPause?.until)||0);quotaReported38=quotaReported38||cached.quotaPause?.reported===true;retryPending32=retryPending32||quotaReported38;ready=true;openShell();lastLocal=clone(DB);refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
  const enqueue=fn=>serial(fn).catch(fail);
  if(profile()){
   // Recupera e acompanha a fila compartilhada em todos os dispositivos do usuário.
@@ -14106,21 +14188,21 @@ window.carregarBaseAposAutenticacao=async function(){
  }
  document.getElementById('globalLoader')?.classList.add('hidden');scheduleResume39();
 };
-firebase.auth().onAuthStateChanged(u=>{if(!u){clearTimeout(quotaTimer39);clearTimeout(resumeTimer39);quotaTimer39=null;resumeTimer39=null;clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];quotaUntil38=0;quotaReported38=false;stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer);clearTimeout(retryTimer32);retryPending32=false;retryDelay32=1000}else window.carregarBaseAposAutenticacao().catch(fail)});
+firebase.auth().onAuthStateChanged(u=>{if(!u){clearTimeout(quotaTimer39);clearTimeout(resumeTimer39);quotaTimer39=null;resumeTimer39=null;clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];quotaUntil38=0;quotaReported38=false;stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;submitted40=null;dirty40=false;regionalPublished40.clear();generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer);clearTimeout(retryTimer32);retryPending32=false;retryDelay32=1000}else window.carregarBaseAposAutenticacao().catch(fail)});
 window.addEventListener('online',()=>scheduleFlush38().catch(fail));
 function attentionRecipient(ctx){const id=DB.workflow_planejamento?.[ctx]?.responsavelId;return Object.entries(USERS).find(([,p])=>p.id===id)?.[0];}
-window.addPlanningAttention=async function(text){
+window.addPlanningAttention=async function(text){const actionBefore40=clone(DB);
  if(!admin()||!ready||!STATE.planContext)throw Error('Aguarde os dados e selecione um planejamento.');
  text=String(text||'').trim();if(!text)return alert('Descreva o ponto de atenção.');
  const ctx=STATE.planContext;DB.planning_attention??=[];DB.planning_attention.push({id:'attention_'+fresh(),contexto:ctx,texto:text.slice(0,3000),status:'pendente',criadoPor:email(),criadoEm:new Date().toISOString()});
  const dest=attentionRecipient(ctx);if(dest)note(dest,'ponto_de_atencao',text,ctx);
- await saveToStorage();renderAttention();return true;
+ await finishAction40(actionBefore40);renderAttention();return true;
 };
-window.markPlanningAttention=async function(id,reopen=false){
+window.markPlanningAttention=async function(id,reopen=false){const actionBefore40=clone(DB);
  if(!ready)throw Error('Aguarde a sincronização.');const item=DB.planning_attention?.find(x=>x.id===id);if(!item||(!admin()&&(!profile()||!owns(item.contexto,profile()))))return;
  if(reopen){if(!admin())return;item.status='pendente';delete item.ajustadoPor;delete item.ajustadoEm;const dest=attentionRecipient(item.contexto);if(dest)note(dest,'ponto_reaberto','Ponto de atenção reaberto: '+item.texto,item.contexto)}
  else {if(item.status==='ajustado')return;item.status='ajustado';item.ajustadoPor=email();item.ajustadoEm=new Date().toISOString();note('admin','ponto_ajustado',(profile()?.nome||'Administrador')+' marcou como ajustado: '+item.texto,item.contexto)}
- await saveToStorage();renderAttention();refreshActions();
+ await finishAction40(actionBefore40);renderAttention();refreshActions();
 };
 function renderAttention(){
  const anchor=document.getElementById('logisticsSection');if(!anchor)return;let box=document.getElementById('v30-attention');
@@ -14155,7 +14237,7 @@ function requester(n){
  const m=DB.workflow_planejamento?.[n.contexto],sender=m?.enviadoPor||m?.historico?.findLast?.(h=>['enviado_aprovacao','criado'].includes(h.acao))?.por;
  return USERS[sender]?.nome||Object.values(USERS).find(p=>p.id===m?.responsavelId)?.nome||n.solicitanteNome||m?.responsavelNome||explicit||'Não informado';
 }
-function refreshActions(){renderAttention();
+function refreshActions(){renderAttention();renderSave40();
  window.renderControleProcessosV26?.();
  document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{const code=b.getAttribute('onclick')||'',rateio=code.includes('openRateioModal'),feedback=code.includes('feedback'),allowed=actionAllowed(rateio?'openRateioModal':'openEmailModal',feedback?'feedback':'agendamento');b.disabled=!allowed;b.title=allowed?'Ação disponível':(rateio||feedback?'Disponível após aprovação administrativa do status Realizada':'Disponível após aprovação administrativa do planejamento');b.setAttribute('aria-disabled',String(!allowed))});
  const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
@@ -14163,21 +14245,21 @@ function refreshActions(){renderAttention();
  const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
  const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?pendingReviews().length+Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
 }
-window.SenacV29={get syncState(){return {cloudConfirmed:cloudConfirmed38,quotaBlocked:quotaReported38,nextRetryAt:quotaUntil38||null,pending:pending.length,awaitingAdmin:collabQueue.length,manualRunning:!!manualJob38}},statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
+window.SenacV29={get syncState(){return {cloudConfirmed:cloudConfirmed38,quotaBlocked:quotaReported38,draftLocal:dirty40,submittedPending:admin()?!same(submittedData40(),baseline):pending.length>0,nextRetryAt:quotaUntil38||null,pending:pending.length,awaitingAdmin:collabQueue.length,manualRunning:!!manualJob38}},statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
 function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
 function exportLocal(){const data=clone(DB);data._v29_recuperacao={usuario:email(),em:new Date().toISOString(),pendentes:clone(pending),enviadas:clone(collabQueue),devolvidas:clone(window.__V29_COLLAB_ERRORS||[])};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='supervisao_copia_local_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function card(title,fields){const el=document.createElement('article');el.className='wf-card';const h=document.createElement('h4');h.textContent=title;el.append(h);for(const [label,value] of fields){const p=document.createElement('p'),b=document.createElement('b');b.textContent=label+': ';p.append(b,document.createTextNode(String(value||'Não informado')));el.append(p)}return el}
 function regionFor(ctx){const m=DB.workflow_planejamento?.[ctx];return Object.values(USERS).find(p=>p.id===m?.responsavelId)?.regiao||(DB.planning?.[ctx]||[])[0]?.student?.regiao||'Administração'}
 function openPlan(ctx){if(profile()&&!owns(ctx,profile()))return;fecharWorkflowModal('workflowNotificationsModal');switchTab('planejamento');switchPlan(ctx)}
 function note(dest,tipo,mensagem,contexto){DB.notificacoes_planejamento??=[];DB.notificacoes_planejamento.unshift({id:'v29_'+fresh(),destinatario:dest,tipo,mensagem,contexto,solicitante:email(),criadaEm:new Date().toISOString(),lida:false})}
-async function requestCity(){const p=profile();if(!p)return;const city=prompt('Cidade a incluir ou corrigir na região '+p.regiao+':')?.trim();if(!city)return;const reason=prompt('Descreva a inclusão ou correção necessária:')?.trim();if(!reason)return alert('Informe a descrição.');DB.solicitacoes_cidades??=[];DB.solicitacoes_cidades.push({id:'cidade_'+fresh(),cidade:city,regiao:p.regiao,motivo:reason,solicitante:email(),solicitanteNome:p.nome,status:'pendente',criadaEm:new Date().toISOString()});await saveToStorage();alert('Solicitação registrada. Acompanhe a confirmação no indicador de sincronização.');}
-async function cityDecision(s,approve){if(!admin()||s.status!=='pendente')return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return}if(approve){const conflict=Object.entries(DB.regioes_map||{}).find(([r,c])=>norm(r)!==norm(s.regiao)&&Array.isArray(c)&&c.some(v=>norm(v)===norm(s.cidade)));if(conflict)return alert('Esta cidade já está vinculada a '+conflict[0]+'. A transferência exige revisão do cadastro e dos alunos.');const key=Object.keys(DB.regioes_map||{}).find(r=>norm(r)===norm(s.regiao))||s.regiao;DB.regioes_map??={};DB.regioes_map[key]??=[];if(!DB.regioes_map[key].some(c=>norm(c)===norm(s.cidade)))DB.regioes_map[key].push(s.cidade);DB.cidades_auditoria??=[];DB.cidades_auditoria.push({regiao:key,cidade:s.cidade,por:email(),em:new Date().toISOString(),solicitacao:s.id})}s.status=approve?'aprovado':'devolvido';s.motivoDevolucao=reason;s.decididoPor=email();s.decididoEm=new Date().toISOString();note(s.solicitante,approve?'cidade_aprovada':'cidade_devolvida',approve?'Cidade incluída: '+s.cidade:'Solicitação de cidade devolvida: '+reason,'');await saveToStorage();showNotifications(false);refresh();}
-async function deleteDecision(req,approve){
+async function requestCity(){const actionBefore40=clone(DB);const p=profile();if(!p)return;const city=prompt('Cidade a incluir ou corrigir na região '+p.regiao+':')?.trim();if(!city)return;const reason=prompt('Descreva a inclusão ou correção necessária:')?.trim();if(!reason)return alert('Informe a descrição.');DB.solicitacoes_cidades??=[];DB.solicitacoes_cidades.push({id:'cidade_'+fresh(),cidade:city,regiao:p.regiao,motivo:reason,solicitante:email(),solicitanteNome:p.nome,status:'pendente',criadaEm:new Date().toISOString()});await finishAction40(actionBefore40);alert('Solicitação registrada. Acompanhe a confirmação no indicador de sincronização.');}
+async function cityDecision(s,approve){const actionBefore40=clone(DB);if(!admin()||s.status!=='pendente')return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return}if(approve){const conflict=Object.entries(DB.regioes_map||{}).find(([r,c])=>norm(r)!==norm(s.regiao)&&Array.isArray(c)&&c.some(v=>norm(v)===norm(s.cidade)));if(conflict)return alert('Esta cidade já está vinculada a '+conflict[0]+'. A transferência exige revisão do cadastro e dos alunos.');const key=Object.keys(DB.regioes_map||{}).find(r=>norm(r)===norm(s.regiao))||s.regiao;DB.regioes_map??={};DB.regioes_map[key]??=[];if(!DB.regioes_map[key].some(c=>norm(c)===norm(s.cidade)))DB.regioes_map[key].push(s.cidade);DB.cidades_auditoria??=[];DB.cidades_auditoria.push({regiao:key,cidade:s.cidade,por:email(),em:new Date().toISOString(),solicitacao:s.id})}s.status=approve?'aprovado':'devolvido';s.motivoDevolucao=reason;s.decididoPor=email();s.decididoEm=new Date().toISOString();note(s.solicitante,approve?'cidade_aprovada':'cidade_devolvida',approve?'Cidade incluída: '+s.cidade:'Solicitação de cidade devolvida: '+reason,'');await finishAction40(actionBefore40);showNotifications(false);refresh();}
+async function deleteDecision(req,approve){const actionBefore40=clone(DB);
  if(!admin()||req.status!=='pendente')return;
  let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return alert('Informe o motivo para devolver.')}else if(!confirm('Aprovar exclusão de '+req.contexto+'? Uma cópia será preservada no histórico interno.'))return;
  if(approve){DB.planejamentos_excluidos??={};const archive={por:email(),em:new Date().toISOString(),dados:{}};maps.concat('planning_processos').forEach(k=>{if(DB[k]?.[req.contexto]!==undefined){archive.dados[k]=clone(DB[k][req.contexto]);delete DB[k][req.contexto]}});DB.planejamentos_excluidos[req.id]=archive;if(STATE.planContext===req.contexto)STATE.planContext=null}
  req.status=approve?'aprovado':'devolvido';req.decididoPor=email();req.decididoEm=new Date().toISOString();req.motivoDevolucao=reason;
- note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await saveToStorage();refresh();showNotifications(false);
+ note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await finishAction40(actionBefore40);refresh();showNotifications(false);
 }
 function statusGroups31(data=DB){const groups=new Map();for(const r of data.solicitacoes_status_visita||[]){if(r.statusSolicitacao!=='pendente')continue;const key=JSON.stringify([r.contexto,r.solicitadoPor]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}return [...groups.values()]}
 function requestStatus31(indexes,status){
@@ -14188,7 +14270,7 @@ function requestStatus31(indexes,status){
  created.push({id:'sts_'+fresh(),batchId,contexto:ctx,indice:idx,alunoId:String(item.student.id),alunoNome:item.student.nome,visitaData:item.date||null,visitaTipo:item.visitaTipo,observacaoVisita:item.obs||'',statusAtual:item.status||'Realizar',statusSolicitado:status,solicitadoPor:email(),solicitanteNome:p.nome,solicitadoEm:new Date().toISOString(),statusSolicitacao:'pendente'});
  }
  if(!created.length){tell('Nenhuma nova mudança de status: os itens já estão nesse estado ou aguardam aprovação.');return;}
- DB.solicitacoes_status_visita.push(...created);note('admin','status_lote',p.nome+' solicitou '+created.length+' alteração(ões) de status em '+ctx,ctx);saveToStorage().catch(fail);renderPlanningTable();refreshActions();tell(created.length+' alteração(ões) registrada(s); aguardando envio e aprovação administrativa.');
+ DB.solicitacoes_status_visita.push(...created);note('admin','status_lote',p.nome+' solicitou '+created.length+' alteração(ões) de status em '+ctx,ctx);saveToStorage().catch(fail);renderPlanningTable();refreshActions();tell(created.length+' alteração(ões) no rascunho. Clique em Concluir e enviar planejamento para solicitar aprovação.');
 }
 const previousUpdate31=window.updatePlanItem;
 window.updatePlanItem=function(idx,field,value){if(profile()&&field==='status'){try{return requestStatus31([idx],value)}catch(e){fail(e);alert(e.message);return}}return previousUpdate31.apply(this,arguments)};
@@ -14210,7 +14292,7 @@ function applyStatusDecision31(data,ids,approve,reason=''){
  }else{r.statusSolicitacao='devolvido';r.observacao=reason;r.decididoPor=ADMIN;r.decididoEm=now;}}
  bindStudents(candidate);return candidate;
 }
-async function decideStatusGroup31(ids,approve){if(!admin())return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução do lote:')?.trim();if(!reason)return;}const requests=(DB.solicitacoes_status_visita||[]).filter(r=>ids.includes(r.id)&&r.statusSolicitacao==='pendente');const next=applyStatusDecision31(DB,ids,approve,reason);applyData(next);for(const dest of new Set(requests.map(r=>r.solicitadoPor)))note(dest,approve?'status_lote_aprovado':'status_lote_devolvido',approve?'Lote aprovado: '+requests.length+' alteração(ões). Visitas e cadastro atualizados.':'Lote devolvido: '+reason,requests[0]?.contexto);await saveToStorage();await window.sincronizarAgoraNuvem();refresh();showNotifications(false);}
+async function decideStatusGroup31(ids,approve){const actionBefore40=clone(DB);if(!admin())return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução do lote:')?.trim();if(!reason)return;}const requests=(DB.solicitacoes_status_visita||[]).filter(r=>ids.includes(r.id)&&r.statusSolicitacao==='pendente');const next=applyStatusDecision31(DB,ids,approve,reason);applyData(next);for(const dest of new Set(requests.map(r=>r.solicitadoPor)))note(dest,approve?'status_lote_aprovado':'status_lote_devolvido',approve?'Lote aprovado: '+requests.length+' alteração(ões). Visitas e cadastro atualizados.':'Lote devolvido: '+reason,requests[0]?.contexto);await finishAction40(actionBefore40);await scheduleFlush38();refresh();showNotifications(false);}
 window.aprovarStatusVisitaV23=id=>decideStatusGroup31([id],true);
 window.recusarStatusVisitaV23=id=>decideStatusGroup31([id],false);
 
@@ -14222,7 +14304,7 @@ function showNotifications(mark=true){
    const v=review.versions,c=card('Divergência preservada para revisão',[['Registro',v.local?.contexto||v.remote?.contexto||v.key||'Cadastro compartilhado'],['Área',v.field],['Descrição','A versão já confirmada na nuvem permanece ativa. Sua alteração local foi preservada abaixo; os demais roteiros continuam sincronizando.']]);
    for(const [label,value] of [['Sua alteração local',v.local],['Versão da nuvem ao detectar a divergência',v.remote],['Versão anterior comum',v.base]]){const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent=label;pre.textContent=JSON.stringify(value,null,2);pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto';details.append(summary,pre);c.append(details);}
    if(DB.planning?.[v.key])c.append(button('Abrir planejamento',()=>openPlan(v.key)));
-   c.append(button('Concluir revisão',async()=>{if(!confirm('Confirma que revisou as versões e fez os ajustes necessários no planejamento? As cópias serão mantidas no histórico.'))return;DB._syncReviewedIds=[...new Set([...(DB._syncReviewedIds||[]),review.id])];await saveToStorage();refreshActions();showNotifications(false)}));list.append(c);
+   c.append(button('Concluir revisão',async()=>{const actionBefore40=clone(DB);if(!confirm('Confirma que revisou as versões e fez os ajustes necessários no planejamento? As cópias serão mantidas no histórico.'))return;DB._syncReviewedIds=[...new Set([...(DB._syncReviewedIds||[]),review.id])];await finishAction40(actionBefore40);refreshActions();showNotifications(false)}));list.append(c);
   });
   Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').forEach(m=>add('Aprovação de planejamento', [['Solicitante',requester(m)],['Região',regionFor(m.contexto)],['Planejamento',m.contexto],['Alteração solicitada','Aprovação do roteiro'],['Data',new Date(m.enviadoEm||m.atualizadoEm||m.criadoEm).toLocaleString('pt-BR')]],m.contexto,async()=>{await aprovarWorkflow(m.contexto);showNotifications(false)},async()=>{await devolverWorkflow(m.contexto);showNotifications(false)}));
   statusGroups31().forEach(group=>{const first=group[0],ids=group.map(r=>r.id);add('Alterações de status — lote do planejamento',[['Solicitante',requester(first)],['Planejamento',first.contexto],['Quantidade',group.length+' aluno(s)'],['Pedidos',group.map(r=>r.alunoNome+': '+r.statusAtual+' → '+r.statusSolicitado+' ('+(r.visitaData||'data a conferir')+')').join('; ')]],first.contexto,()=>decideStatusGroup31(ids,true),()=>decideStatusGroup31(ids,false))});
@@ -14236,7 +14318,7 @@ function showNotifications(mark=true){
  if(mark&&profile()&&(window.__V29_COLLAB_ERRORS||[]).length){
   (window.__V29_COLLAB_ERRORS||[]).forEach(e=>{if(e?.id)reviewedErrorIds.add(e.id)});reviewedErrorsDirty=true;
   window.__V29_COLLAB_ERRORS=[];
-  setTimeout(()=>scheduleFlush38().catch(fail),300);
+  localStore().catch(fail); // recibos de leitura seguem junto do próximo envio explícito
  }
 }
 window.abrirWorkflowNotificacoes=()=>showNotifications();window.abrirWorkflowAdmin=()=>showNotifications();
@@ -14251,8 +14333,8 @@ function presenceRefV297(id){return ref('presenca_'+id)}
 function renderPresenceV297(){
  const box=document.getElementById('v297-presence');if(!box)return;box.hidden=!admin();if(!admin())return;box.innerHTML='';
  for(const p of Object.values(USERS)){
-  const d=presenceStateV297[p.id]||{},last=d.lastSeen?.toMillis?.()||0,online=!quotaReported38&&presenceConfirmed38[p.id]&&d.online===true&&(Date.now()-last)<210000;
-  const item=document.createElement('span');item.className='v297-person';item.dataset.online=String(online);item.title=quotaReported38?'Presença sem confirmação: cota da nuvem atingida':online?'Conexão confirmada nos últimos 3 minutos e meio':(last?'Sem sinal recente. Última confirmação: '+new Date(last).toLocaleString('pt-BR'):'Presença ainda não confirmada');
+  const d=presenceStateV297[p.id]||{},last=d.lastSeen?.toMillis?.()||0,online=!quotaReported38&&presenceConfirmed38[p.id]&&d.online===true&&(Date.now()-last)<390000;
+  const item=document.createElement('span');item.className='v297-person';item.dataset.online=String(online);item.title=quotaReported38?'Presença sem confirmação: cota da nuvem atingida':online?'Conexão confirmada nos últimos 6 minutos e meio':(last?'Sem sinal recente. Última confirmação: '+new Date(last).toLocaleString('pt-BR'):'Presença ainda não confirmada');
   const dot=document.createElement('span');dot.className='v297-dot';dot.setAttribute('aria-hidden','true');dot.textContent=p.nome[0];item.append(dot,document.createTextNode(p.nome+(online?' · online':' · não confirmado')));box.append(item);
  }
 }
@@ -14265,13 +14347,29 @@ async function sendPresenceV297(online=true){
 }
 function startPresenceV297(){
  clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];
- if(profile()){sendPresenceV297(true);presenceTimerV297=setInterval(()=>sendPresenceV297(true),90000)}
+ if(profile()){sendPresenceV297(true);presenceTimerV297=setInterval(()=>{if(document.visibilityState!=='hidden')sendPresenceV297(true)},180000)}
  else if(admin())for(const p of Object.values(USERS))presenceStopsV297.push(presenceRefV297(p.id).onSnapshot({includeMetadataChanges:true},d=>{presenceConfirmed38[p.id]=!d.metadata?.fromCache&&!d.metadata?.hasPendingWrites;presenceStateV297[p.id]=d.exists?d.data():{};renderPresenceV297()},e=>{presenceConfirmed38[p.id]=false;if(quota38(e))reportQuota38();renderPresenceV297();}));
  renderPresenceV297();
 }
 // O vencimento do último sinal trata fechamento abrupto; não enfileirar escrita no fechamento.
 window.addEventListener('online',()=>sendPresenceV297(true));
 setInterval(renderPresenceV297,30000);
+const sendWorkflow40=window.enviarWorkflowAprovacao;
+window.enviarWorkflowAprovacao=async function(){
+ if(!profile()||!ready||!STATE.planContext||!owns(STATE.planContext,profile()))return;
+ if(submitJob40)return submitJob40;
+ const ctx=STATE.planContext,m=DB.workflow_planejamento?.[ctx];
+ if(!m)throw Error('Selecione um planejamento válido.');
+ const changed=!same(planSnapshot40(ctx),submittedData40());
+ if(!changed&&m.status==='pendente'){tell('Este planejamento já foi enviado.');return;}
+ m.status='pendente';m.aprovadoPor=null;m.aprovadoEm=null;m.enviadoPor=email();m.enviadoEm=new Date().toISOString();m.atualizadoEm=m.enviadoEm;m.revisao=(m.revisao||0)+1;m.historico??=[];m.historico.push({acao:'enviado_aprovacao',por:email(),em:m.enviadoEm});
+ note('admin','aprovacao',profile().nome+' concluiu e enviou '+ctx+' para aprovação.',ctx);
+ return submit40('plan');
+};
+for(const name of ['aprovarWorkflow','devolverWorkflow','solicitarExclusaoWorkflow']){
+ const fn=window[name];if(typeof fn!=='function')continue;
+ window[name]=async function(...args){const before=clone(DB);const promise=fn.apply(this,args),after=clone(DB);const result=await promise;await finishAction40(before,after);return result;};
+}
 function installUI(){
  const plan=document.getElementById('btnPlan');let monthly=document.getElementById('v29-monthly-tab');if(plan&&!monthly){monthly=button('Relatório Mensal',openMonthly,'tab-btn');monthly.id='v29-monthly-tab';plan.after(monthly)}
  // O menu antigo pode mover seu botão; a aba permanece disponível independentemente dele.
@@ -14281,7 +14379,9 @@ function installUI(){
  if(header&&!document.getElementById('v297-presence')){const box=document.createElement('div');box.id='v297-presence';box.className='v297-presence';box.setAttribute('aria-label','Usuários conectados');header.append(box)}
  if(header&&!document.getElementById('v29-notifications')){const b=button('Notificações (0)',()=>showNotifications());b.id='v29-notifications';header.append(b)}
  if(header&&!document.getElementById('v29-local-backup')){const b=button('Exportar cópia local',exportLocal);b.id='v29-local-backup';header.append(b)}
+ if(header&&!document.getElementById('v40-save-all')){const b=button('Salvar alterações',()=>window.salvarAlteracoesConcluidas(),'wf-btn wf-btn-primary');b.id='v40-save-all';b.title='Concluir e enviar todos os rascunhos do administrador, incluindo cadastros';header.append(b);}
  if(header&&!document.getElementById('v29-sync')){const b=button('Sincronizar agora',()=>window.sincronizarAgoraNuvem());b.id='v29-sync';header.append(b)}
+ renderSave40();
  if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(e=>console.warn('Instalação: service worker indisponível',e));
  const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;actions?.classList.add('v29-plan-actions');
  const filters=document.getElementById('planRegiao')?.closest('.grid');if(filters&&!filters.closest('details')){const details=document.createElement('details');details.className='v29-filter-drawer';details.open=innerWidth>700;const summary=document.createElement('summary');summary.textContent='Filtros do planejamento';filters.before(details);details.append(summary,filters)}
