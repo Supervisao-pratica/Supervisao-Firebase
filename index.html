@@ -4208,10 +4208,9 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
             let contPedagogico = 0;
             let contSupervisores = 0;
             
-            const __tecIdsPlanejamento = new Set((DB.tec || []).map(t => String(t.id)));
             currentItems.forEach(item => {
                 if(item && item.student) {
-                    const isTec = __tecIdsPlanejamento.has(String(item.student.id));
+                    const isTec = (DB.tec || []).some(t => t.id === item.student.id);
                     if(isTec) contTec++; else contQuali++;
                 }
                 
@@ -14302,46 +14301,95 @@ firebase.auth().onAuthStateChanged(()=>setTimeout(init,1400));setInterval(()=>{i
 })();
 </script>
 
-
-<style id="sgt-v51-performance-style">
-#planContent.v51-opening{opacity:.78;pointer-events:none}
-#planContent.v51-opening:before{content:'Abrindo planejamento...';display:block;position:sticky;top:0;z-index:40;padding:7px 12px;background:#eff6ff;color:#075985;border-bottom:1px solid #bae6fd;font-size:11px;font-weight:800}
-#viewPlanejamento input,#viewPlanejamento select,#viewPlanejamento textarea{touch-action:manipulation}
-#planTableBody tr,#logisticsTableBody>div,#lunchTableBody>div,#adminTableBody>div{content-visibility:auto;contain-intrinsic-size:auto 44px}
-.v51-pending{border-color:#f59e0b!important}.v51-ok{border-color:#10b981!important}
+<style id="sgt-v49-performance-style">
+#viewPlanejamento input,#viewPlanejamento select,#viewPlanejamento textarea{touch-action:manipulation;transition:border-color .12s,box-shadow .12s;background-clip:padding-box}
+#viewPlanejamento input:focus,#viewPlanejamento select:focus,#viewPlanejamento textarea:focus{will-change:auto;outline:none;box-shadow:0 0 0 2px rgba(0,75,135,.14)}
+#planningTableWrapper,#logisticsTable,#lunchTable,#adminTable{contain:layout style paint}
+body.v49-editing #saveStatus{color:#b45309!important}
 </style>
-<script id="sgt-v51-performance-consolidada">
-/* V51: motor unico de desempenho. Preserva V48 e substitui as camadas V49/V50. */
+<script id="sgt-v49-performance-interacao">
+/* V49 - edição instantânea: não bloqueia data, horário, colagem nem troca de campo. */
 (function(){'use strict';
-const JOURNAL='sgt_v51_edit_journal';
-let installed=false,heavyTimer=0,opening=false,lastPlan='',openSeq=0,appliedJournal=false;
-let originalSave=null,originals={},metrics=[];
-const T=()=>performance.now(), clone=x=>JSON.parse(JSON.stringify(x));
-function badge(t,c='text-amber-700'){const e=document.getElementById('saveStatus');if(!e)return;e.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border '+c;e.textContent=t}
-function readJournal(){try{return JSON.parse(localStorage.getItem(JOURNAL)||'[]')}catch(_){return[]}}
-function writeJournal(op){try{const a=readJournal();a.push(op);if(a.length>1200)a.splice(0,a.length-1200);localStorage.setItem(JOURNAL,JSON.stringify(a))}catch(e){console.warn('Diario local indisponivel',e)}}
-function clearJournal(){try{localStorage.removeItem(JOURNAL)}catch(_){}}
-function row(map,ctx,idx){return DB?.[map]?.[ctx]?.[idx]||null}
-function applyOp(op){const r=row(op.map,op.ctx,op.idx);if(!r)return false;r[op.field]=op.value;return true}
-function replayJournal(){if(appliedJournal||!window.DB)return;const a=readJournal();if(!a.length){appliedJournal=true;return}let n=0;a.forEach(op=>{if(applyOp(op))n++});appliedJournal=true;if(n){badge(n+' alteração(ões) locais recuperada(s)','text-blue-700');scheduleHeavy(1800)}}
-async function heavyCommit(){clearTimeout(heavyTimer);heavyTimer=0;if(typeof originalSave!=='function')return;badge('Gravando base consolidada...','text-blue-700');try{await originalSave();clearJournal();badge('Dados seguros','text-emerald-700')}catch(e){badge('Alterações preservadas localmente','text-red-700');throw e}}
-function scheduleHeavy(delay=10000){clearTimeout(heavyTimer);badge('Alterações locais pendentes');heavyTimer=setTimeout(()=>{const run=()=>heavyCommit().catch(console.error);if(window.requestIdleCallback)requestIdleCallback(run,{timeout:2500});else setTimeout(run,0)},delay)}
-function validDate(item,v){if(!v)return true;if(!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;const y=+v.slice(0,4);if(y<2020||y>2035)return false;const d=new Date(v+'T12:00:00'),m={1:'seg',2:'ter',3:'qua',4:'qui',5:'sex'};return !(m[d.getDay()]&&item?.student?.contraTurno?.[m[d.getDay()]])}
-function updateObs(item,v){const id=String(item?.student?.id||'');for(const a of [DB.quali||[],DB.tec||[]]){const s=a.find(x=>String(x.id)===id);if(s){s.obs=v;s.obs_origem=v}}if(item?.student){item.student.obs=v;item.student.obs_origem=v}}
-function fast(map,idx,field,value){const t=T(),ctx=STATE.planContext,r=row(map,ctx,idx);if(!r)return false;if(map==='planning'&&field==='date'&&!validDate(r,value)){setTimeout(()=>alert('Data inválida ou incompatível com o contra-turno deste aluno.'),0);return false}r[field]=value;if(map==='planning'&&field==='obs')updateObs(r,value);writeJournal({map,ctx,idx,field,value,at:Date.now()});scheduleHeavy();metrics.push({field,map,ms:+(T()-t).toFixed(3)});if(metrics.length>400)metrics.shift();return true}
-function installEditors(){
- const p=window.updatePlanItem;if(typeof p==='function'&&!p.__v51){originals.updatePlanItem=p;const f=function(i,k,v){if(k==='status'||k==='visitaTipo')return p.apply(this,arguments);return fast('planning',i,k,v)};f.__v51=true;window.updatePlanItem=f}
- for(const [n,m] of [['updateLogistics','planning_logistics'],['updateLunch','planning_lunch'],['updateAdmin','planning_admin']]){const fn=window[n];if(typeof fn==='function'&&!fn.__v51){originals[n]=fn;const f=function(i,k,v){return fast(m,i,k,v)};f.__v51=true;window[n]=f}}
+let installed=false,editing=false,editDepth=0,saveTimer=0,saveIdle=0,pendingSave=false,savePromise=null,deferred=new Set(),lastEdit=0;
+const editor=el=>!!el?.closest?.('#viewPlanejamento')&&el.matches?.('input,select,textarea');
+const activeEditor=()=>editor(document.activeElement);
+const idle=(fn,timeout=1400)=>window.requestIdleCallback?requestIdleCallback(fn,{timeout}):setTimeout(fn,50);
+const cancelIdle=id=>{if(!id)return;if(window.cancelIdleCallback)cancelIdleCallback(id);else clearTimeout(id)};
+function badge(text,color='text-amber-700'){const e=document.getElementById('saveStatus');if(!e)return;e.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border '+color;e.textContent=text}
+function installSaveBuffer(){
+ const current=window.saveToStorage;if(typeof current!=='function'||current.__v49)return;
+ async function commit(){clearTimeout(saveTimer);cancelIdle(saveIdle);saveTimer=saveIdle=0;if(!pendingSave)return true;if(savePromise)return savePromise;pendingSave=false;badge('Salvando alterações...','text-blue-700');savePromise=Promise.resolve(current()).then(v=>{badge('Salvo localmente','text-emerald-700');return v}).catch(e=>{pendingSave=true;badge('Falha ao salvar','text-red-700');throw e}).finally(()=>{savePromise=null;if(pendingSave)schedule(300)});return savePromise}
+ function schedule(delay=900){pendingSave=true;clearTimeout(saveTimer);cancelIdle(saveIdle);badge('Alterações locais pendentes');saveTimer=setTimeout(()=>{saveTimer=0;saveIdle=idle(()=>commit().catch(console.error),1200)},delay);return Promise.resolve(true)}
+ const buffered=function(){return schedule(activeEditor()?950:500)};buffered.__v49=true;buffered.flush=commit;buffered.original=current;window.saveToStorage=buffered;window.forcarSalvamentoV49=commit;
+ window.addEventListener('pagehide',()=>{if(pendingSave)commit().catch(()=>{})});window.addEventListener('beforeunload',()=>{if(pendingSave)commit().catch(()=>{})});
 }
-function renderPlanStaged(name){const seq=++openSeq,box=document.getElementById('planContent');opening=true;lastPlan=name;box?.classList.add('v51-opening');STATE.planContext=name;const title=document.getElementById('activePlanTitle');if(title)title.textContent=name;closeHistoryModal?.();requestAnimationFrame(()=>{if(seq!==openSeq)return;const t=T();window.renderPlanningTable?.();requestAnimationFrame(()=>{if(seq!==openSeq)return;window.loadLogistics?.();window.renderLunchTable?.();window.renderAdminTable?.();opening=false;box?.classList.remove('v51-opening');metrics.push({field:'open',map:'planning',ms:+(T()-t).toFixed(3)});showToast?.(`Roteiro "${name}" carregado com sucesso!`)})})}
-function installOpening(){
- const oldLoad=window.loadPlanFromHistory||((n)=>{});if(!oldLoad.__v51){const f=function(n){if(!n||!DB.planning?.[n])return;if(opening&&n===lastPlan)return;renderPlanStaged(n)};f.__v51=true;window.loadPlanFromHistory=f}
- const oldSwitch=window.switchPlan||((n)=>{});if(!oldSwitch.__v51){const f=function(n){if(!n||!DB.planning?.[n])return;if(n===STATE.planContext&&document.getElementById('planTableBody')?.children.length)return;renderPlanStaged(n)};f.__v51=true;window.switchPlan=f}
+function installRenderGate(name){const current=window[name];if(typeof current!=='function'||current.__v49)return;const wrapped=function(){if(editing||activeEditor()||Date.now()-lastEdit<180){deferred.add(name);return}return current.apply(this,arguments)};wrapped.__v49=true;wrapped.original=current;window[name]=wrapped}
+function flushRenders(){if(editing||activeEditor())return;const names=[...deferred];deferred.clear();requestAnimationFrame(()=>names.forEach(n=>{try{window[n]?.original?window[n].original():window[n]?.()}catch(e){console.warn('Atualização visual adiada',n,e)}}))}
+function installEvents(){
+ document.addEventListener('focusin',e=>{if(!editor(e.target))return;editDepth++;editing=true;document.body.classList.add('v49-editing')},true);
+ document.addEventListener('input',e=>{if(!editor(e.target))return;lastEdit=Date.now();editing=true;document.body.classList.add('v49-editing');badge('Editando...');},true);
+ document.addEventListener('paste',e=>{if(!editor(e.target))return;lastEdit=Date.now();editing=true;badge('Conteúdo colado; salvamento pendente')},true);
+ document.addEventListener('focusout',e=>{if(!editor(e.target))return;editDepth=Math.max(0,editDepth-1);setTimeout(()=>{if(!activeEditor()&&editDepth===0){editing=false;document.body.classList.remove('v49-editing');window.saveToStorage?.();setTimeout(flushRenders,60)}},0)},true);
+ document.addEventListener('keydown',e=>{if(!editor(e.target)||e.key!=='Enter'||e.target.tagName==='TEXTAREA')return;e.preventDefault();const items=[...document.querySelectorAll('#viewPlanejamento input:not([disabled]),#viewPlanejamento select:not([disabled]),#viewPlanejamento textarea:not([disabled])')].filter(x=>x.offsetParent!==null);const i=items.indexOf(e.target);if(i>=0)items[(i+1)%items.length]?.focus()},true);
 }
-function fieldFeedback(){document.addEventListener('change',e=>{const x=e.target;if(!x.closest?.('#viewPlanejamento')||!x.matches('input,select,textarea'))return;x.classList.add('v51-pending');setTimeout(()=>{x.classList.remove('v51-pending');x.classList.add('v51-ok');setTimeout(()=>x.classList.remove('v51-ok'),350)},20)},true)}
-function install(){if(!originalSave&&typeof window.saveToStorage==='function')originalSave=window.saveToStorage;installEditors();installOpening();replayJournal();if(installed)return;installed=true;fieldFeedback();window.addEventListener('pagehide',()=>{if(readJournal().length)badge('Alterações preservadas no dispositivo')});document.addEventListener('visibilitychange',()=>{if(document.hidden&&readJournal().length)scheduleHeavy(800)});console.info('[S.G.T V51] desempenho consolidado ativo')}
-firebase.auth().onAuthStateChanged(()=>setTimeout(install,1200));setTimeout(install,2200);const boot=setInterval(()=>{install();if(installed&&window.updatePlanItem?.__v51)clearInterval(boot)},1000);setTimeout(()=>clearInterval(boot),15000);
-window.SGTV51={flush:heavyCommit,metrics:()=>clone(metrics),journal:readJournal,benchmark(n=10000){const ctx=STATE.planContext,r=DB.planning?.[ctx]?.[0];if(!r)return null;const old=r.hrAtend,t=T();for(let i=0;i<n;i++)r.hrAtend=(i%24).toString().padStart(2,'0')+':00';r.hrAtend=old;return{operations:n,totalMs:+(T()-t).toFixed(3),averageUs:+((T()-t)*1000/n).toFixed(3)}}};
+function install(){if(installed)return;installed=true;installSaveBuffer();['renderPlanningTable','renderLogisticsTable','renderLunchTable','renderAdminTable','renderControleRateio'].forEach(installRenderGate);installEvents();console.info('[S.G.T V49] edição fluida ativa')}
+firebase.auth().onAuthStateChanged(()=>setTimeout(install,1700));setTimeout(install,2600);setInterval(()=>{installSaveBuffer();['renderPlanningTable','renderLogisticsTable','renderLunchTable','renderAdminTable'].forEach(installRenderGate)},2500);
+window.SGTV49={flush:()=>window.forcarSalvamentoV49?.(),state:()=>({editing,pendingSave,deferred:[...deferred]})};
+})();
+</script>
+
+<style id="sgt-v50-performance-style">
+#planContent.v50-loading{opacity:.72;pointer-events:none}#planContent.v50-loading::before{content:'Abrindo planejamento...';position:sticky;top:0;display:block;z-index:30;padding:7px 12px;background:#eff6ff;color:#075985;font-size:11px;font-weight:800;border-bottom:1px solid #bae6fd}
+.v50-field-saved{border-color:#10b981!important}.v50-field-pending{border-color:#f59e0b!important}
+</style>
+<script id="sgt-v50-performance-profunda">
+/* V50 - caminho rapido real: mutacao O(1), sem render e sem serializacao no evento do campo. */
+(function(){'use strict';
+let installed=false,dirty=false,flushTimer=0,opening=false,lastContext='',openTimer=0;const metrics=[];
+const now=()=>performance.now();
+const mark=(name,t)=>{metrics.push({name,ms:+(now()-t).toFixed(3),at:Date.now()});if(metrics.length>500)metrics.shift()};
+function queueSave(){dirty=true;clearTimeout(flushTimer);flushTimer=setTimeout(async()=>{if(!dirty)return;dirty=false;try{await (window.forcarSalvamentoV49?.()||window.forcarSalvamentoV48?.()||window.saveToStorage?.())}catch(e){dirty=true;console.error(e)}},1300)}
+function validDate(item,val){if(!val)return true;if(!/^\d{4}-\d{2}-\d{2}$/.test(val))return false;const y=+val.slice(0,4);if(y<2020||y>2035)return false;const d=new Date(val+'T12:00:00'),map={1:'seg',2:'ter',3:'qua',4:'qui',5:'sex'};return !(map[d.getDay()]&&item?.student?.contraTurno?.[map[d.getDay()]])}
+function syncObs(item,val){const id=String(item?.student?.id||'');for(const arr of [DB.quali||[],DB.tec||[]]){const s=arr.find(x=>String(x.id)===id);if(s){s.obs=val;s.obs_origem=val}}if(item?.student){item.student.obs=val;item.student.obs_origem=val}}
+function fastPlan(idx,field,val){const t=now(),ctx=STATE.planContext,item=DB.planning?.[ctx]?.[idx];if(!item)return false;if(field==='date'&&!validDate(item,val)){setTimeout(()=>alert('Data inválida ou incompatível com o contra-turno deste aluno.'),0);return false}item[field]=val;if(field==='obs')syncObs(item,val);queueSave();mark('editar_planejamento_'+field,t);return true}
+function fastMap(map,idx,field,val){const t=now(),row=DB[map]?.[STATE.planContext]?.[idx];if(!row)return false;row[field]=val;queueSave();mark('editar_'+map+'_'+field,t);return true}
+function wrapEditors(){
+ const old=window.updatePlanItem;if(typeof old==='function'&&!old.__v50){const f=function(idx,field,val){if(field==='status'||field==='visitaTipo')return old.apply(this,arguments);return fastPlan(idx,field,val)};f.__v50=true;f.original=old;window.updatePlanItem=f}
+ for(const [name,map] of [['updateLogistics','planning_logistics'],['updateLunch','planning_lunch'],['updateAdmin','planning_admin']]){const prior=window[name];if(typeof prior==='function'&&!prior.__v50){const f=function(idx,field,val){return fastMap(map,idx,field,val)};f.__v50=true;f.original=prior;window[name]=f}}
+}
+function wrapOpen(){const old=window.selectPlan;if(typeof old==='function'&&!old.__v50){const f=function(plan){const t=now(),content=document.getElementById('planContent');if(opening&&plan===lastContext)return;opening=true;lastContext=plan;if(content)content.classList.add('v50-loading');clearTimeout(openTimer);requestAnimationFrame(()=>{try{old.apply(this,arguments)}finally{openTimer=setTimeout(()=>{opening=false;content?.classList.remove('v50-loading');mark('abrir_planejamento',t)},0)}})};f.__v50=true;window.selectPlan=f}
+ const render=window.renderPlanningTable;if(typeof render==='function'&&!render.__v50open){let queued=false,lastSig='';const f=function(){const ctx=STATE.planContext,rows=DB.planning?.[ctx]||[],sig=ctx+'|'+rows.length+'|'+(rows[0]?.student?.id||'')+'|'+(rows[rows.length-1]?.student?.id||'');if(queued)return;if(sig===lastSig&&document.getElementById('planTableBody')?.children.length===rows.length)return;queued=true;requestAnimationFrame(()=>{queued=false;lastSig=sig;render.apply(this,arguments)})};f.__v50open=true;f.original=render;window.renderPlanningTable=f}}
+function fieldFeedback(){document.addEventListener('change',e=>{if(!e.target.closest?.('#viewPlanejamento'))return;e.target.classList.add('v50-field-pending');setTimeout(()=>{e.target.classList.remove('v50-field-pending');e.target.classList.add('v50-field-saved');setTimeout(()=>e.target.classList.remove('v50-field-saved'),500)},20)},true)}
+function install(){wrapEditors();wrapOpen();if(installed)return;installed=true;fieldFeedback();console.info('[S.G.T V50] caminho rápido de edição e abertura ativo')}
+firebase.auth().onAuthStateChanged(()=>setTimeout(install,1800));setTimeout(install,2800);setInterval(install,2200);window.SGTV50={fastPlan,fastMap,metrics:()=>[...metrics],benchmark(n=5000){const ctx=STATE.planContext,item=DB.planning?.[ctx]?.[0];if(!item)return null;const old=item.hrAtend,t=now();for(let i=0;i<n;i++)item.hrAtend=String(i%24).padStart(2,'0')+':00';item.hrAtend=old;return {operations:n,totalMs:+(now()-t).toFixed(3),averageMicroseconds:+((now()-t)*1000/n).toFixed(3)}}};
+})();
+</script>
+
+<style id="sgt-v52-manual-save-style">
+#v52-save-local,#v52-admin-conclude{white-space:nowrap}.v52-local-dirty{box-shadow:0 0 0 2px rgba(245,158,11,.2)}
+</style>
+<script id="sgt-v52-salvamento-manual">
+/* V52 - edicao somente em memoria/diario; persistencia local manual; nuvem apenas em concluir/enviar/aprovar. */
+(function(){'use strict';
+let installed=false,dirty=false,cloudBusy=false,originalPublicSave=null;
+const adminMail='michel.farias@pr.senac.br';
+const mail=()=>String(firebase.auth().currentUser?.email||'').toLowerCase();
+const isAdmin=()=>mail()===adminMail;
+function badge(text,color='text-amber-700'){const e=document.getElementById('saveStatus');if(!e)return;e.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border '+color;e.textContent=text}
+function markDirty(){dirty=true;document.body.classList.add('v52-local-dirty');badge('Alterações em rascunho local')}
+function journalPersist(){try{localStorage.setItem('sgt_v52_draft_context',JSON.stringify({contexto:window.STATE?.planContext||'',alteradoEm:new Date().toISOString()}))}catch(e){console.warn('Marcador de rascunho indisponível',e)}}
+async function saveLocal(show=true){journalPersist();if(typeof originalPublicSave!=='function')throw new Error('Motor de salvamento local não disponível.');if(show)badge('Salvando localmente...','text-blue-700');await originalPublicSave();dirty=false;document.body.classList.remove('v52-local-dirty');if(show){badge('Salvo localmente neste dispositivo','text-emerald-700');window.showToast?.('Planejamento salvo localmente. Nada foi enviado à nuvem.')}return true}
+function interceptAutomaticSave(){const current=window.saveToStorage;if(typeof current!=='function'||current.__v52)return;if(!originalPublicSave)originalPublicSave=current;const localDraft=function(){markDirty();journalPersist();return Promise.resolve({localDraft:true,cloud:false})};localDraft.__v52=true;localDraft.original=current;window.saveToStorage=localDraft}
+async function cloudFinishAdmin(){if(cloudBusy)return;cloudBusy=true;const b=document.getElementById('v52-admin-conclude');try{if(b){b.disabled=true;b.textContent='Concluindo...'}await saveLocal(false);if(typeof window.sincronizarAgoraNuvem!=='function')throw new Error('Sincronizador da nuvem não encontrado.');await window.sincronizarAgoraNuvem();badge('Concluído e sincronizado com a nuvem','text-emerald-700');window.showToast?.('Planejamento concluído e salvo na nuvem.')}catch(e){console.error(e);alert('Não foi possível concluir e sincronizar:\n'+e.message);badge('Falha na sincronização','text-red-700')}finally{cloudBusy=false;if(b){b.disabled=false;b.textContent='Concluir planejamento'}}}
+function wrapCloudButtons(){
+ for(const id of ['v48-send','v48-complete','v48-approve']){const b=document.getElementById(id);if(!b||b.__v52)return;const old=b.onclick;b.onclick=async function(ev){if(cloudBusy)return;cloudBusy=true;const text=b.textContent;b.disabled=true;b.textContent=id==='v48-send'?'Enviando...':id==='v48-approve'?'Aprovando...':'Concluindo...';try{await saveLocal(false);return await old?.call(this,ev)}catch(e){console.error(e);alert('A operação não foi concluída:\n'+e.message)}finally{cloudBusy=false;b.disabled=false;b.textContent=text}};b.__v52=true
+ }
+}
+function addButtons(){const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;if(!actions)return;if(!document.getElementById('v52-save-local')){const b=document.createElement('button');b.id='v52-save-local';b.type='button';b.className='px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold';b.textContent='Salvar localmente';b.title='Grava o rascunho somente neste dispositivo, sem enviar ao Firebase.';b.onclick=()=>saveLocal(true).catch(e=>{console.error(e);alert('Falha ao salvar localmente:\n'+e.message)});actions.prepend(b)}if(isAdmin()&&!document.getElementById('v52-admin-conclude')){const b=document.createElement('button');b.id='v52-admin-conclude';b.type='button';b.className='px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-bold';b.textContent='Concluir planejamento';b.title='Salva localmente e envia as alterações administrativas para a nuvem.';b.onclick=cloudFinishAdmin;actions.prepend(b)}}
+function notificationHint(){const n=document.getElementById('v29-notifications')||[...document.querySelectorAll('button')].find(b=>/notifica/i.test(b.textContent||''));if(n&&!n.dataset.v52){n.dataset.v52='1';n.title='Pedidos de aprovação, devoluções, sinalizações dos usuários e resultados do planejamento aparecem aqui.'}}
+function events(){document.addEventListener('input',e=>{if(e.target.closest?.('#viewPlanejamento'))markDirty()},true);document.addEventListener('change',e=>{if(e.target.closest?.('#viewPlanejamento'))markDirty()},true);window.addEventListener('pagehide',journalPersist);document.addEventListener('visibilitychange',()=>{if(document.hidden)journalPersist()})}
+function install(){interceptAutomaticSave();addButtons();wrapCloudButtons();notificationHint();if(installed)return;installed=true;events();badge('Modo rascunho local ativo','text-blue-700');console.info('[S.G.T V52] salvamento manual ativo')}
+firebase.auth().onAuthStateChanged(()=>setTimeout(install,1400));setTimeout(install,2400);const boot=setInterval(()=>{install();if(document.getElementById('v52-save-local')&&window.saveToStorage?.__v52)clearInterval(boot)},900);setTimeout(()=>clearInterval(boot),20000);window.SGTV52={saveLocal,cloudFinishAdmin,state:()=>({dirty,cloudBusy})};
 })();
 </script>
 
