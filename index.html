@@ -6100,7 +6100,11 @@ window.exportControlePDF = function() {
 .v30-attention-item{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:13px;background:white;border:1px solid #f3d18b;border-radius:9px;margin-top:12px}.v30-attention-item p{font-size:12px;white-space:pre-wrap;color:#334155}.v30-attention-item small{display:block;color:#64748b;font-size:10px;margin-top:6px}.v30-attention-item.adjusted{border-color:#a7d7c5;background:#f5fcf9}.v30-adjust,.v30-reopen{flex-shrink:0;border-radius:7px;padding:10px;border:1px solid #b9d5ca;font-size:11px;font-weight:700;color:#006b4d;background:#effaf5}.v30-reopen{background:white;color:#475569;border-color:#cbd5e1}.v30-empty{font-size:12px;color:#64748b;margin-top:12px}
 @media(max-width:640px){#cidadePartidaBase{width:230px!important;max-width:100%}.v30-attention-item{align-items:stretch;flex-direction:column}.v30-attention-head{align-items:flex-start}}
 
-.v297-dot{display:inline-flex!important;align-items:center;justify-content:center;width:23px!important;height:23px!important;border-radius:50%;color:white;font:bold 12px system-ui}.v297-person[data-online="false"] .v297-dot{background:#64748b}.v297-person[data-online="true"] .v297-dot{background:#15803d}</style></body>
+.v297-dot{display:inline-flex!important;align-items:center;justify-content:center;width:23px!important;height:23px!important;border-radius:50%;color:white;font:bold 12px system-ui}.v297-person[data-online="false"] .v297-dot{background:#64748b}.v297-person[data-online="true"] .v297-dot{background:#15803d}</style>
+
+
+
+</body>
     </html>`;
     
     printWindow.document.write(html);
@@ -14017,5 +14021,198 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>scheduleExcelInstallV36(),{once:true});else scheduleExcelInstallV36();
 })();
 </script>
-</div></div></div></body>
+</div></div></div>
+<script id="rateio-por-alunos-periodo-v9665">
+/* V9.6.65 - Rateio por quantidade de alunos efetivamente atendidos em cada periodo.
+   Usa hrAtend do planejamento somente para classificar manha/tarde; nunca usa horario de pratica.
+   Agrupa alunos da mesma turma, impede turmas fora do planejamento e evita parcelas menores que 10 minutos. */
+(function(){
+'use strict';
+window.APP_VERSION='9.6.65-RATEIO-ALUNOS-PERIODO';
+const MIN=10;
+const N=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9]+/gi,' ').replace(/\s+/g,' ').trim().toUpperCase();
+const M=t=>{const m=String(t||'').match(/^(\d{1,2}):(\d{2})/);if(!m)return null;const h=+m[1],n=+m[2];return h>=0&&h<24&&n>=0&&n<60?h*60+n:null};
+const H=m=>{m=Math.max(0,Math.round(m));return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
+const ok=v=>['REALIZADA','REALIZADO','VISITADO','VISITADA'].includes(N(v));
+const turmas=v=>String(v?.student?.turma||'').split(/[,;/]+/).map(x=>x.trim()).filter(Boolean);
+const centro=t=>{try{return typeof obterCentroCustoTurma==='function'?(obterCentroCustoTurma(t)||'-'):'-'}catch(e){return '-'}};
+function cidadeIgual(a,b){return N(a)===N(b)&&!!N(a)}
+function periodoVisita(v){const m=M(v?.hrAtend);return m===null?null:(m<720?'MANHA':'TARDE')}
+function periodoSegmento(s,e){return ((s+e)/2)<720?'MANHA':'TARDE'}
+function subtrair(s,e,bloqueios){let partes=[[s,e]];bloqueios.forEach(b=>{partes=partes.flatMap(([a,z])=>b.e<=a||b.s>=z?[[a,z]]:[[a,Math.max(a,b.s)],[Math.min(z,b.e),z]].filter(x=>x[1]>x[0]))});return partes}
+function grupos(visitas){const map=new Map();visitas.forEach(v=>{const ts=turmas(v);ts.forEach(t=>{const g=map.get(t)||{turma:t,qtd:0};g.qtd++;map.set(t,g)})});return [...map.values()]}
+function alocar(segmentos,gs,meta,out,base){
+  if(!segmentos.length||!gs.length)return;
+  const total=segmentos.reduce((n,x)=>n+x.e-x.s,0),peso=gs.reduce((n,g)=>n+g.qtd,0);
+  const fila=gs.map((g,i)=>({...g,alvo:i===gs.length-1?0:Math.round(total*g.qtd/peso)}));
+  fila[fila.length-1].alvo=total-fila.slice(0,-1).reduce((n,g)=>n+g.alvo,0);
+  let gi=0,restante=fila[0].alvo;
+  segmentos.forEach((seg,si)=>{
+    let cur=seg.s,livre=seg.e-seg.s;
+    while(livre>0&&gi<fila.length){
+      let usar=Math.min(livre,restante);
+      // Se a sobra do grupo ou do segmento ficaria inviavel, incorpora ao bloco atual.
+      if(restante-usar>0&&restante-usar<MIN)usar=Math.min(livre,restante);
+      if(livre-usar>0&&livre-usar<MIN)usar=livre;
+      if(usar<MIN){
+        if(out.length&&out[out.length-1].date===meta.date&&out[out.length-1].type==='ATENDIMENTO'&&out[out.length-1].end===H(cur)){
+          out[out.length-1].end=H(cur+livre);out[out.length-1].hours+=(livre/60);cur+=livre;livre=0;break;
+        }
+        usar=livre;
+      }
+      const g=fila[gi],fim=cur+usar;
+      out.push({date:meta.date,type:'ATENDIMENTO',origin:meta.local,dest:'-',start:H(cur),end:H(fim),hours:usar/60,turma:g.turma,cc:centro(g.turma),sequence:base+si/100+gi/10000,periodoRateio:meta.periodo,alunosRateados:g.qtd,allocationRule:'quantidade_alunos_periodo_min10_v9665'});
+      cur=fim;livre-=usar;restante-=usar;
+      if(restante<=0||restante<MIN){gi++;if(gi<fila.length)restante=fila[gi].alvo}
+    }
+    // Se acabaram os grupos, o tempo restante fica com o ultimo grupo para fechar toda a jornada.
+    if(livre>0&&fila.length){const g=fila[fila.length-1],fim=cur+livre;out.push({date:meta.date,type:'ATENDIMENTO',origin:meta.local,dest:'-',start:H(cur),end:H(fim),hours:livre/60,turma:g.turma,cc:centro(g.turma),sequence:base+si/100+.0099,periodoRateio:meta.periodo,alunosRateados:g.qtd,allocationRule:'quantidade_alunos_periodo_min10_v9665'})}
+  });
+}
+window.generateRateio=function(){
+ let out=[],warnings=[];RATEIO_DATA=[];window.RATEIO_DATA=RATEIO_DATA;
+ const ctx=STATE.planContext,plano=DB.planning?.[ctx]||[],visitas=plano.filter(v=>v?.student?.id&&v.date&&ok(v.status));
+ const logs=DB.planning_logistics?.[ctx]||[],lunch=DB.planning_lunch?.[ctx]||[],admins=DB.planning_admin?.[ctx]||[];
+ if(!visitas.length){renderRateioTable([],['Nenhum aluno realizado/visitado no planejamento atual.']);return}
+ [...new Set(visitas.map(v=>v.date))].forEach(date=>{
+   const vd=visitas.filter(v=>v.date===date),pernas=logs.filter(x=>x.date===date&&M(x.originTime)!==null&&M(x.destTime)>M(x.originTime)).map(x=>({...x,s:M(x.originTime),e:M(x.destTime)})).sort((a,b)=>a.s-b.s);
+   const descansos=lunch.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end),start:x.start,end:x.end}));
+   const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end)}));
+   const pacotes=new Map();
+   pernas.forEach((p,i)=>{
+     const cand=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));const td=turmas(cand[0])[0]||'-';
+     out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:td,cc:td==='-'?'-':centro(td),sequence:i*10,allocationRule:'destino_planejado_v9665'});
+     if(i===pernas.length-1)return;const prox=pernas[i+1];if(!cidadeIgual(p.dest,prox.origin)||prox.s<=p.e)return;
+     subtrair(p.e,prox.s,[...descansos,...adm]).forEach(([s,e])=>{if(e-s<MIN)return;const periodo=periodoSegmento(s,e),key=N(p.dest)+'|'+periodo;const pack=pacotes.get(key)||{date,local:p.dest,periodo,segmentos:[]};pack.segmentos.push({s,e});pacotes.set(key,pack)})
+   });
+   pacotes.forEach((pack,key)=>{
+     const elegiveis=vd.filter(v=>cidadeIgual(v.student?.cidade,pack.local)&&periodoVisita(v)===pack.periodo);
+     const gs=grupos(elegiveis);
+     if(!gs.length){warnings.push(`${date.split('-').reverse().join('/')} - ${pack.local}: sem aluno realizado no período ${pack.periodo==='MANHA'?'da manhã':'da tarde'}; intervalo não rateado.`);return}
+     alocar(pack.segmentos,gs,pack,out,500+(pack.periodo==='TARDE'?100:0));
+   });
+   descansos.forEach((d,i)=>out.push({date,type:'DESCANSO',origin:'INTERVALO DE ALMOÇO',dest:'-',start:d.start,end:d.end,hours:(d.e-d.s)/60,turma:'-',cc:'-',sequence:900+i}));
+ });
+ out.sort((a,b)=>a.date.localeCompare(b.date)||(M(a.start)-M(b.start))||(a.sequence-b.sequence));
+ // Consolida blocos consecutivos da mesma turma, sem atravessar almoço, administrativo ou deslocamento.
+ const consolidado=[];out.forEach(x=>{const a=consolidado[consolidado.length-1];if(a&&x.type==='ATENDIMENTO'&&a.type==='ATENDIMENTO'&&a.date===x.date&&a.turma===x.turma&&a.end===x.start){a.end=x.end;a.hours+=x.hours}else consolidado.push(x)});out=consolidado;
+ RATEIO_DATA=out;window.RATEIO_DATA=out;renderRateioTable(out,warnings);
+ const trab=out.filter(x=>x.type!=='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),desc=out.filter(x=>x.type==='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),admMin=admins.reduce((n,x)=>n+Math.max(0,(M(x.end)||0)-(M(x.start)||0)),0);
+ const st=document.getElementById('rateioStatusText');if(st)st.innerText=`Rateio por alunos atendidos: manhã e tarde separados | Mínimo por bloco: ${MIN} min | Jornada: ${H(trab)} | Almoço: ${H(desc)} | Administrativo: ${H(admMin)}.`;
+ if(typeof window.renderControleRateio==='function')window.renderControleRateio();
+};
+})();
+</script>
+<script id="workflow-planejamento-local-v40">
+/* V40 - rascunho local, envio/aprovacao explicitos, conclusao e navegacao leve. */
+(function(){'use strict';
+const C='planejamento_fluxo_v40', ADMIN='michel.farias@pr.senac.br';
+let oldSave=null, installed=false, unsub=null, busy=false, localTimer=null, lastTab='';
+const E=()=>String(firebase.auth().currentUser?.email||'').trim().toLowerCase();
+const isAdmin=()=>E()===ADMIN||window.SenacV29?.admin?.();
+const isUser=()=>!!window.SenacV29?.profile?.();
+const ctx=()=>String(STATE?.planContext||'').trim();
+const key=(email,context)=>btoa(unescape(encodeURIComponent(email+'|'+context))).replace(/[+/=]/g,'_').slice(0,700);
+const clone=x=>JSON.parse(JSON.stringify(x));
+const now=()=>new Date().toISOString();
+const fdb=()=>firebase.firestore();
+function pack(context){return {planning:clone(DB.planning?.[context]||[]),logistics:clone(DB.planning_logistics?.[context]||[]),lunch:clone(DB.planning_lunch?.[context]||[]),admin:clone(DB.planning_admin?.[context]||[])};}
+function apply(context,p){DB.planning??={};DB.planning_logistics??={};DB.planning_lunch??={};DB.planning_admin??={};DB.planning[context]=clone(p.planning||[]);DB.planning_logistics[context]=clone(p.logistics||[]);DB.planning_lunch[context]=clone(p.lunch||[]);DB.planning_admin[context]=clone(p.admin||[]);}
+function label(text,kind='local'){const el=document.getElementById('saveStatus');if(!el)return;const colors={local:'text-amber-700',cloud:'text-emerald-700',wait:'text-blue-700',error:'text-red-700'};el.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border '+colors[kind];el.innerHTML='<span>'+text+'</span>';}
+function localPersist(){clearTimeout(localTimer);return new Promise(resolve=>{localTimer=setTimeout(async()=>{try{const db=await dbPromise;const data={db:clone(DB),savedAt:Date.now(),email:E()};await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(data,'workflow_v40:'+E());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)});label('Rascunho salvo localmente','local');resolve(true)}catch(e){console.error(e);label('Falha no salvamento local','error');resolve(false)}},180)});}
+async function restoreLocal(){if(!isUser())return;try{const db=await dbPromise;const raw=await new Promise(ok=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('workflow_v40:'+E());r.onsuccess=()=>ok(r.result);r.onerror=()=>ok(null)});if(raw?.db&&raw.savedAt>Date.now()-1000*60*60*24*30){const cloudStamp=Number(DB.updatedAt||0);if(raw.savedAt>cloudStamp){processDataLoad(raw.db);label('Rascunho local recuperado','local');}}}catch(e){console.warn('Rascunho local',e)}}
+async function publish(type){if(!isUser()||busy)return;const context=ctx();if(!context)return alert('Selecione um planejamento.');const rows=DB.planning?.[context]||[];if(!rows.length)return alert('O planejamento está vazio.');busy=true;try{await localPersist();const p=window.SenacV29.profile(),id=key(E(),context),ref=fdb().collection(C).doc(id),prev=await ref.get();const previous=prev.exists?prev.data():{};const status=type==='approval'?'aguardando_aprovacao':'concluido';await ref.set({schema:'senac-planejamento-v40',ownerEmail:E(),ownerId:p.id,ownerName:p.nome,region:p.regiao,context,status,package:pack(context),requestedAt:type==='approval'?firebase.firestore.FieldValue.serverTimestamp():(previous.requestedAt||null),completedAt:type==='complete'?firebase.firestore.FieldValue.serverTimestamp():(previous.completedAt||null),approvedAt:type==='approval'?null:(previous.approvedAt||null),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),revision:Number(previous.revision||0)+1},{merge:true});label(type==='approval'?'Enviado para aprovação':'Planejamento concluído e enviado','cloud');alert(type==='approval'?'Planejamento enviado. O administrador recebeu a solicitação.':'Planejamento concluído. As alterações e os status foram enviados ao administrador.');}catch(e){console.error(e);label('Falha no envio; rascunho preservado','error');alert('Não foi possível enviar agora. O rascunho permanece salvo neste computador.\n\n'+e.message)}finally{busy=false}}
+async function approve(id){if(!isAdmin()||busy)return;const ref=fdb().collection(C).doc(id),snap=await ref.get();if(!snap.exists)return;const d=snap.data(),context=d.context;busy=true;try{await ref.set({status:'aprovado',package:pack(context),approvedBy:E(),approvedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),revision:Number(d.revision||0)+1},{merge:true});label('Planejamento aprovado e usuário notificado','cloud');alert('Planejamento aprovado. O usuário receberá a atualização.');}finally{busy=false}}
+async function openRequest(id){const snap=await fdb().collection(C).doc(id).get();if(!snap.exists)return alert('Solicitação não encontrada.');const d=snap.data();apply(d.context,d.package||{});STATE.planContext=d.context;switchTab('planejamento');if(typeof initPlanSelector==='function')initPlanSelector();if(typeof renderPlanningTable==='function')renderPlanningTable();window.__V40_OPEN_DOC=id;label('Visualizando solicitação de '+(d.ownerName||d.ownerEmail),'wait');renderAdminApprove(d);}
+function renderAdminApprove(d){let b=document.getElementById('v40-admin-approve');if(!b){b=document.createElement('button');b.id='v40-admin-approve';b.className='px-3 py-1.5 bg-emerald-700 text-white rounded text-xs font-bold shadow';const actions=document.querySelector('button[onclick="openRateioModal()"]').parentElement;actions.prepend(b)}b.textContent='Aprovar planejamento de '+(d.ownerName||'usuário');b.onclick=()=>approve(window.__V40_OPEN_DOC);b.hidden=d.status!=='aguardando_aprovacao';}
+function button(id,text,klass,fn){let b=document.getElementById(id);if(b)return b;b=document.createElement('button');b.id=id;b.type='button';b.className=klass;b.textContent=text;b.addEventListener('click',fn);return b}
+function installButtons(){const rate=document.querySelector('button[onclick="openRateioModal()"]');if(!rate)return;const actions=rate.parentElement;if(isUser()){actions.prepend(button('v40-complete','Concluir planejamento','px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-xs font-bold shadow',()=>publish('complete')));actions.prepend(button('v40-request','Enviar para aprovação','px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded text-xs font-bold shadow',()=>publish('approval')));}if(isAdmin())renderAdminApprove({status:'oculto'});}
+function renderInbox(rows){let b=document.getElementById('v40-inbox');const header=document.querySelector('#appContainer header .flex.items-center.gap-3');if(!header)return;if(!b){b=button('v40-inbox','Solicitações','px-3 py-2 bg-amber-500 text-white rounded-lg text-xs font-bold shadow',()=>showInbox());header.prepend(b)}const pending=rows.filter(x=>x.status==='aguardando_aprovacao'||x.status==='concluido').length;b.textContent='Solicitações ('+pending+')';window.__V40_INBOX=rows;}
+function showInbox(){let m=document.getElementById('v40-modal');if(!m){m=document.createElement('div');m.id='v40-modal';m.className='modal-overlay';document.body.append(m)}const rows=window.__V40_INBOX||[];m.innerHTML='<div class="bg-white rounded-xl max-w-3xl w-[94%] max-h-[82vh] overflow-auto p-5"><div class="flex justify-between mb-4"><h3 class="font-black text-senac-blue">Comunicação dos planejamentos</h3><button id="v40-close">Fechar</button></div><div id="v40-list" class="space-y-2"></div></div>';m.querySelector('#v40-close').onclick=()=>m.remove();const list=m.querySelector('#v40-list');rows.sort((a,b)=>(b.updatedMillis||0)-(a.updatedMillis||0)).forEach(d=>{const c=document.createElement('div');c.className='border rounded-lg p-3 flex justify-between items-center gap-3';c.innerHTML='<div><b>'+esc(d.ownerName||d.ownerEmail)+'</b><div class="text-xs text-slate-500">'+esc(d.context)+' · '+esc(d.region||'')+'</div><div class="text-xs font-bold mt-1">'+(d.status==='aguardando_aprovacao'?'AGUARDANDO APROVAÇÃO':d.status==='concluido'?'PLANEJAMENTO CONCLUÍDO':d.status==='aprovado'?'APROVADO':'ATUALIZADO')+'</div></div>';const a=button('tmp_'+Math.random(),'Abrir','px-3 py-2 bg-senac-blue text-white rounded text-xs font-bold',()=>{m.remove();openRequest(d.id)});c.append(a);list.append(c)});if(!rows.length)list.innerHTML='<p class="text-sm text-slate-500">Nenhuma comunicação recebida.</p>';}
+function esc(x){return String(x||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function listen(){unsub?.();if(!firebase.auth().currentUser)return;if(isAdmin()){unsub=fdb().collection(C).onSnapshot(s=>renderInbox(s.docs.map(x=>({...x.data(),id:x.id,updatedMillis:x.data().updatedAt?.toMillis?.()||0}))),e=>console.warn(e));}else if(isUser()){unsub=fdb().collection(C).where('ownerEmail','==',E()).onSnapshot(s=>{const rows=s.docs.map(x=>({...x.data(),id:x.id}));renderInbox(rows);const approved=rows.filter(x=>x.status==='aprovado').sort((a,b)=>(b.approvedAt?.toMillis?.()||0)-(a.approvedAt?.toMillis?.()||0))[0];if(approved&&sessionStorage.getItem('v40-approved')!==approved.id+':'+approved.revision){apply(approved.context,approved.package||{});sessionStorage.setItem('v40-approved',approved.id+':'+approved.revision);localPersist();if(STATE.planContext===approved.context)renderPlanningTable();alert('Planejamento aprovado pelo administrador. As informações pedagógicas e de supervisores foram atualizadas.');}renderInbox(rows)},e=>console.warn(e));}}
+function performance(){// Evita redesenho integral repetido ao trocar rapidamente de aba.
+ const original=window.switchTab;if(typeof original==='function'&&!original.__v40){let lock=false;const wrapped=function(tab){if(lock&&tab===lastTab)return;lastTab=tab;lock=true;requestAnimationFrame(()=>lock=false);return original.apply(this,arguments)};wrapped.__v40=true;window.switchTab=wrapped;}
+ // Gráficos somente quando o painel estiver visível.
+ const rf=window.runFilter;if(typeof rf==='function'&&!rf.__v40){const wrapped=function(){if(document.getElementById('viewDashboard')?.classList.contains('hidden'))return;return rf.apply(this,arguments)};wrapped.__v40=true;window.runFilter=wrapped;}}
+async function init(){if(installed||!window.SenacV29?.ready)return;installed=true;oldSave=window.saveToStorage;if(isUser())window.saveToStorage=localPersist;performance();await restoreLocal();installButtons();listen();label(isUser()?'Rascunho local ativo':'Painel administrativo conectado',isUser()?'local':'cloud');}
+firebase.auth().onAuthStateChanged(()=>setTimeout(init,900));setInterval(()=>{if(!installed)init();installButtons()},1500);
+})();
+</script>
+<script id="ponte-migracao-legado-v41">
+/* V41 - Ponte auditavel entre as filas V29/V31 e o fluxo consolidado V40. */
+(function(){'use strict';
+const COL='planejamento_fluxo_v40', USERS=[
+ {id:'kleber',email:'kleber.sato@docente.pr.senac.br',nome:'Kleber',regiao:'UMUARAMA'},
+ {id:'michelly',email:'michelly.gronkoski@docente.pr.senac.br',nome:'Michelly',regiao:'GUARAPUAVA'},
+ {id:'fernando',email:'fernando.scaraveli@docente.pr.senac.br',nome:'Fernando',regiao:'CAMPO MOURAO'}
+];
+let running=false,installed=false;
+const mail=()=>String(firebase.auth().currentUser?.email||'').toLowerCase();
+const admin=()=>window.SenacV29?.admin?.()===true;
+const profile=()=>window.SenacV29?.profile?.()||null;
+const copy=x=>JSON.parse(JSON.stringify(x));
+const safe=x=>String(x||'').replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,700);
+const pack=(d,c)=>({planning:copy(d?.planning?.[c]||[]),logistics:copy(d?.planning_logistics?.[c]||[]),lunch:copy(d?.planning_lunch?.[c]||[]),admin:copy(d?.planning_admin?.[c]||[])});
+const empty=p=>!(p.planning.length||p.logistics.length||p.lunch.length||p.admin.length);
+const db=()=>firebase.firestore();
+function toast(t){const e=document.getElementById('saveStatus');if(e){e.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border text-blue-700';e.textContent=t}}
+function ownerFor(context,fallback){const n=String(context||'').toLowerCase();return USERS.find(u=>n.includes(u.id)||n.includes(u.nome.toLowerCase()))||fallback||null}
+function applyOps(base,ops){const d=copy(base||{}),allowed=new Set(['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention']);
+ for(const o of ops||[]){if(!o||!allowed.has(o.field)||!o.key)continue;const v=o.after;if(['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'].includes(o.field)){d[o.field]??={};if(v===null)delete d[o.field][o.key];else d[o.field][o.key]=copy(v)}else{d[o.field]=Array.isArray(d[o.field])?d[o.field]:[];d[o.field]=d[o.field].filter(x=>x?.id!==o.key);if(v!==null)d[o.field].push(copy(v))}}
+ return d;
+}
+function contextsFrom(data,ops){const out=new Set();for(const o of ops||[])if(['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'].includes(o.field)&&o.key)out.add(o.key);for(const r of data?.solicitacoes_status_visita||[])if(r.statusSolicitacao==='pendente'&&r.contexto)out.add(r.contexto);for(const m of Object.values(data?.workflow_planejamento||{}))if(m?.status==='pendente'&&m.contexto)out.add(m.contexto);return [...out]}
+async function writeMigration(owner,context,payload,meta){if(!owner||!context||empty(payload))return false;const id='migracao_'+owner.id+'_'+safe(context),ref=db().collection(COL).doc(id),old=await ref.get();if(old.exists&&old.data()?.migration?.fingerprint===meta.fingerprint)return false;await ref.set({schema:'senac-planejamento-v41-migracao',ownerEmail:owner.email,ownerId:owner.id,ownerName:owner.nome,region:owner.regiao,context,status:'migrado_pendente_revisao',package:payload,migration:{source:meta.source,fingerprint:meta.fingerprint,legacyOps:meta.ops||0,legacyStatusRequests:meta.status||0,migratedBy:mail(),migratedAt:firebase.firestore.FieldValue.serverTimestamp(),preservedOriginal:true},updatedAt:firebase.firestore.FieldValue.serverTimestamp(),revision:Number(old.data()?.revision||0)+1},{merge:true});return true}
+async function migrateCloud(){if(!admin()||running)return;running=true;let created=0,found=0,errors=[];toast('Verificando pendências antigas…');try{
+ // Primeiro deixa o motor legado aplicar e confirmar o que conseguir, sem excluir o original.
+ try{if(typeof window.sincronizarAgoraNuvem==='function')await window.sincronizarAgoraNuvem()}catch(e){errors.push('Sincronização legada: '+e.message)}
+ for(const u of USERS){try{const snap=await db().collection('sistema').doc('colaboracao_'+u.id).get({source:'server'});if(!snap.exists)continue;const msg=snap.data(),ops=Array.isArray(msg.ops)?msg.ops:[];if(!ops.length)continue;found+=ops.length;const projected=applyOps(DB,ops),contexts=contextsFrom(projected,ops);for(const c of contexts){const relevant=ops.filter(o=>o.key===c||o.after?.contexto===c),requests=(projected.solicitacoes_status_visita||[]).filter(r=>r.contexto===c&&r.statusSolicitacao==='pendente');const fingerprint=String(msg.version||msg.updatedAt?.toMillis?.()||'legacy')+'_'+relevant.map(x=>x.id).sort().join('_');if(await writeMigration(u,c,pack(projected,c),{source:'firebase_colaboracao_v29',fingerprint,ops:relevant.length,status:requests.length}))created++;}}catch(e){errors.push(u.nome+': '+e.message)}}
+ // Converte também pendências que já foram incorporadas à base global pelo mecanismo antigo.
+ const workflow=DB.workflow_planejamento||{};for(const m of Object.values(workflow)){if(m?.status!=='pendente'||!m.contexto)continue;const o=ownerFor(m.contexto,USERS.find(u=>u.id===m.responsavelId));if(!o)continue;found++;if(await writeMigration(o,m.contexto,pack(DB,m.contexto),{source:'base_global_workflow_legado',fingerprint:'wf_'+m.contexto+'_'+(m.revisao||0),ops:1,status:0}))created++;}
+ const reqs=(DB.solicitacoes_status_visita||[]).filter(r=>r.statusSolicitacao==='pendente');for(const r of reqs){if(!r.contexto)continue;const o=USERS.find(u=>u.email===r.solicitadoPor)||ownerFor(r.contexto);if(!o)continue;found++;const p=pack(DB,r.contexto);const item=p.planning.find(x=>String(x.student?.id)===String(r.alunoId)&&(!r.visitaData||x.date===r.visitaData));if(item&&r.statusSolicitado)item.status=r.statusSolicitado;if(await writeMigration(o,r.contexto,p,{source:'solicitacao_status_legada',fingerprint:'status_'+r.id,ops:0,status:1}))created++;}
+ localStorage.setItem('migracao_v41_admin',JSON.stringify({at:Date.now(),found,created,errors}));alert('Verificação concluída.\n\nPendências encontradas: '+found+'\nPlanejamentos novos na revisão: '+created+(errors.length?'\n\nAvisos:\n'+errors.join('\n'):'\n\nOs registros antigos foram preservados e não foram excluídos.'));toast('Migração verificada: '+created+' item(ns) para revisão');
+ }finally{running=false}}
+async function readLegacyLocal(){if(!profile()||!firebase.auth().currentUser)return null;try{const idb=await dbPromise,key='v29:'+firebase.auth().currentUser.uid;const raw=await new Promise(ok=>{const tx=idb.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get(key);r.onsuccess=()=>ok(r.result);r.onerror=()=>ok(null)});if(!raw)return null;if(raw.compressedV37){const txt=LZString.decompressFromUTF16(raw.payload);return txt?JSON.parse(txt):null}return raw}catch(e){console.warn('Leitura do cache legado',e);return null}}
+async function recoverLocal(){if(!profile()||running)return;running=true;try{const raw=await readLegacyLocal();if(!raw?.data)return alert('Não foi localizado um rascunho da versão anterior neste navegador.');const d=raw.data,ops=[...(raw.pending||[]),...(raw.collabQueue||[])],contexts=new Set(contextsFrom(d,ops));for(const c of Object.keys(d.planning||{}))if((d.planning[c]||[]).length)contexts.add(c);let sent=0;for(const c of contexts){const p=pack(d,c);if(empty(p))continue;const fp='local_'+String(raw.revision||0)+'_'+String(raw.generation||'')+'_'+c;if(await writeMigration({...profile(),email:mail()},c,p,{source:'indexeddb_local_v29',fingerprint:fp,ops:ops.filter(o=>o.key===c||o.after?.contexto===c).length,status:(d.solicitacoes_status_visita||[]).filter(r=>r.contexto===c&&r.statusSolicitacao==='pendente').length}))sent++;}localStorage.setItem('migracao_v41_usuario',JSON.stringify({at:Date.now(),sent}));alert(sent?'Recuperação concluída. '+sent+' planejamento(s) foram enviados ao administrador para revisão.':'O conteúdo local já havia sido recuperado anteriormente ou não possui diferença para enviar.');}catch(e){console.error(e);alert('Falha na recuperação local. Nenhum dado foi apagado.\n\n'+e.message)}finally{running=false}}
+function addButtons(){const header=document.querySelector('#appContainer header .flex.items-center.gap-3');if(!header)return;if(admin()&&!document.getElementById('v41-migrate')){const b=document.createElement('button');b.id='v41-migrate';b.type='button';b.className='px-3 py-2 bg-indigo-700 text-white rounded-lg text-xs font-bold shadow';b.textContent='Verificar pendências anteriores';b.onclick=migrateCloud;header.prepend(b)}if(profile()&&!document.getElementById('v41-recover')){const b=document.createElement('button');b.id='v41-recover';b.type='button';b.className='px-3 py-2 bg-indigo-700 text-white rounded-lg text-xs font-bold shadow';b.textContent='Recuperar versão anterior';b.onclick=recoverLocal;header.prepend(b)}}
+function enhanceInbox(){const old=window.showInbox;if(typeof old==='function'&&!old.__v41){const wrap=function(){const r=old.apply(this,arguments);setTimeout(()=>document.querySelectorAll('#v40-list>div').forEach(c=>{if(/MIGRADO|REVISÃO/i.test(c.textContent))c.classList.add('ring-2','ring-indigo-400')}),0);return r};wrap.__v41=true;window.showInbox=wrap}}
+function init(){if(installed||!window.SenacV29?.ready)return;installed=true;addButtons();enhanceInbox();if(admin()&&!localStorage.getItem('migracao_v41_admin'))setTimeout(()=>{if(confirm('Existem estruturas de sincronização da versão anterior. Deseja verificar e trazer as pendências agora?'))migrateCloud()},1200);if(profile()&&!localStorage.getItem('migracao_v41_usuario'))setTimeout(()=>{if(confirm('Deseja verificar se este computador possui alterações preservadas da versão anterior?'))recoverLocal()},1200)}
+firebase.auth().onAuthStateChanged(()=>setTimeout(init,1300));setInterval(()=>{if(!installed)init();addButtons()},1800);
+window.migrarPendenciasAnterioresV41=migrateCloud;window.recuperarPendenciasLocaisV41=recoverLocal;
+})();
+</script>
+
+<style id="performance-v46-style">
+/* Reduz pintura e layout fora da área visível sem alterar os dados. */
+#viewDashboard section,#viewPlanejamento section,#viewControleRateio section,.wf-card,.v29-plan-table tr{content-visibility:auto;contain-intrinsic-size:auto 72px}
+body.perf-v46-busy{cursor:progress}.perf-v46-badge{font-variant-numeric:tabular-nums}
+</style>
+<script id="performance-definitiva-v46">
+/* V46 - agendamento cooperativo, deduplicação de renderização e teste de carga no navegador. */
+(function(){'use strict';
+let installed=false,lastTab='',tabBusy=false,planQueued=false,planAgain=false,filterTimer=0,metrics=[],longTasks=[],observer=null;
+const clock=()=>performance.now();
+const idle=fn=>window.requestIdleCallback?requestIdleCallback(fn,{timeout:220}):setTimeout(fn,16);
+const visible=id=>!document.getElementById(id)?.classList.contains('hidden');
+function measure(name,fn){const t=clock();try{return fn()}finally{const ms=clock()-t;metrics.push({name,ms:+ms.toFixed(2),at:new Date().toISOString()});if(metrics.length>300)metrics.shift();if(ms>50)console.warn('[Desempenho]',name,ms.toFixed(1)+' ms')}}
+function installLongTask(){if(!('PerformanceObserver'in window))return;try{observer=new PerformanceObserver(list=>{for(const x of list.getEntries())longTasks.push({start:+x.startTime.toFixed(1),duration:+x.duration.toFixed(1)});if(longTasks.length>200)longTasks.shift()});observer.observe({type:'longtask',buffered:true})}catch(e){console.info('Long Task API indisponível',e)}}
+function optimizeSwitch(){const old=window.switchTab;if(typeof old!=='function'||old.__perfV46)return;function fast(tab){if(tabBusy&&tab===lastTab)return;lastTab=tab;tabBusy=true;document.body.classList.add('perf-v46-busy');const r=measure('troca_aba_'+tab,()=>old.apply(this,arguments));requestAnimationFrame(()=>{tabBusy=false;document.body.classList.remove('perf-v46-busy')});return r}fast.__perfV46=true;window.switchTab=fast}
+function optimizePlanning(){const old=window.renderPlanningTable;if(typeof old!=='function'||old.__perfV46)return;function scheduled(){if(!visible('viewPlanejamento')){planAgain=true;return}if(planQueued){planAgain=true;return}planQueued=true;const args=arguments,that=this;requestAnimationFrame(()=>{measure('render_planejamento',()=>old.apply(that,args));planQueued=false;if(planAgain){planAgain=false;idle(()=>scheduled())}})}scheduled.__perfV46=true;scheduled.flush=()=>measure('render_planejamento_forcado',()=>old());window.renderPlanningTable=scheduled}
+function optimizeFilter(){const old=window.runFilter;if(typeof old!=='function'||old.__perfV46)return;function debounced(){const args=arguments,that=this;if(!visible('viewDashboard'))return;clearTimeout(filterTimer);filterTimer=setTimeout(()=>measure('filtro_dashboard',()=>old.apply(that,args)),90)}debounced.__perfV46=true;debounced.flush=()=>measure('filtro_dashboard_forcado',()=>old());window.runFilter=debounced}
+function optimizeResize(){let timer=0;window.addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(()=>{if(visible('viewPlanejamento'))window.renderPlanningTable?.();else if(visible('viewDashboard'))window.runFilter?.()},180)},{passive:true})}
+function synthetic(n){const cities=['CURITIBA','GUARAPUAVA','UMUARAMA','CAMPO MOURAO'],rows=[];for(let i=0;i<n;i++)rows.push({id:'T'+i,nome:'Aluno '+i,turma:String(202600000+i%900),cidade:cities[i%4],status:i%3?'ATIVO':'REALIZADA',empresa:{razao:'Empresa '+i%300},supervisor:{display:'Supervisor '+i%90}});return rows}
+function exercise(rows){const t0=clock();const normalized=rows.map(x=>({id:x.id,key:(x.nome+' '+x.turma+' '+x.cidade).toUpperCase(),status:x.status}));const filtered=normalized.filter(x=>x.key.includes('A')&&x.status);const grouped=new Map();for(const x of filtered)grouped.set(x.status,(grouped.get(x.status)||0)+1);filtered.sort((a,b)=>a.key.localeCompare(b.key,'pt-BR'));const host=document.createElement('div');host.style.cssText='position:absolute;left:-100000px;top:0;width:1200px;contain:strict';const frag=document.createDocumentFragment();for(const x of filtered.slice(0,Math.min(1000,filtered.length))){const r=document.createElement('div');r.textContent=x.id+' '+x.key;frag.append(r)}host.append(frag);document.body.append(host);host.getBoundingClientRect();host.remove();return {elapsed:+(clock()-t0).toFixed(2),matched:filtered.length,groups:Object.fromEntries(grouped)}}
+async function runLoadTest(){if(window.__PERF_TEST_RUNNING)return;window.__PERF_TEST_RUNNING=true;const button=document.getElementById('v46-load-test');if(button){button.disabled=true;button.textContent='Testando…'}const beforeLong=longTasks.length,results=[];try{for(const n of [1000,5000,10000]){await new Promise(r=>requestAnimationFrame(r));const rows=synthetic(n),round=[];for(let i=0;i<3;i++)round.push(exercise(rows));results.push({records:n,runs:round,averageMs:+(round.reduce((a,x)=>a+x.elapsed,0)/round.length).toFixed(2),maxMs:Math.max(...round.map(x=>x.elapsed))})}
+ const tabs=[];for(const tab of ['planejamento','qualificacao','tecnico','planejamento']){const t=clock();window.switchTab(tab);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));tabs.push({tab,ms:+(clock()-t).toFixed(2)})}
+ const report={test:'S.G.T browser load test V46',createdAt:new Date().toISOString(),userAgent:navigator.userAgent,memory:navigator.deviceMemory||null,cpu:navigator.hardwareConcurrency||null,connection:navigator.connection?{effectiveType:navigator.connection.effectiveType,downlink:navigator.connection.downlink,rtt:navigator.connection.rtt}:null,datasetResults:results,tabSwitches:tabs,longTasksDuringTest:longTasks.slice(beforeLong),applicationMetrics:metrics.slice(-100),limits:{targetTabMs:500,targetSynthetic10kMs:1000,longTaskMs:50}};window.__ULTIMO_TESTE_CARGA_V46=report;showReport(report)}catch(e){console.error(e);alert('Falha no teste de carga: '+e.message)}finally{window.__PERF_TEST_RUNNING=false;if(button){button.disabled=false;button.textContent='Teste de carga'}}}
+function showReport(r){let m=document.getElementById('v46-perf-modal');if(!m){m=document.createElement('div');m.id='v46-perf-modal';m.className='modal-overlay';document.body.append(m)}const maxTab=Math.max(...r.tabSwitches.map(x=>x.ms)),ten=r.datasetResults.find(x=>x.records===10000),ok=maxTab<=r.limits.targetTabMs&&ten.averageMs<=r.limits.targetSynthetic10kMs&&r.longTasksDuringTest.length<=5;m.innerHTML='<div class="bg-white rounded-xl max-w-4xl w-[95%] max-h-[88vh] overflow-auto p-5"><div class="flex justify-between gap-3"><div><h3 class="text-lg font-black text-senac-blue">Teste de carga no navegador</h3><p class="text-xs text-slate-500">Resultado: <b class="'+(ok?'text-emerald-700':'text-amber-700')+'">'+(ok?'APROVADO':'ATENÇÃO')+'</b></p></div><button id="v46-close">Fechar</button></div><div class="grid md:grid-cols-3 gap-3 my-4"><div class="border rounded p-3"><b>10.000 registros</b><div>'+ten.averageMs+' ms (média)</div></div><div class="border rounded p-3"><b>Troca mais lenta</b><div>'+maxTab+' ms</div></div><div class="border rounded p-3"><b>Tarefas longas</b><div>'+r.longTasksDuringTest.length+'</div></div></div><pre class="text-xs bg-slate-950 text-slate-100 rounded p-3 overflow-auto max-h-80">'+escapeHtml(JSON.stringify(r,null,2))+'</pre><div class="mt-4 flex gap-2"><button id="v46-download" class="px-3 py-2 bg-senac-blue text-white rounded text-xs font-bold">Baixar relatório JSON</button><button id="v46-repeat" class="px-3 py-2 bg-slate-200 rounded text-xs font-bold">Executar novamente</button></div></div>';m.querySelector('#v46-close').onclick=()=>m.remove();m.querySelector('#v46-repeat').onclick=()=>{m.remove();runLoadTest()};m.querySelector('#v46-download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(r,null,2)],{type:'application/json'}));a.download='teste_carga_sgt_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}}
+function escapeHtml(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function addButton(){const header=document.querySelector('#appContainer header .flex.items-center.gap-3');if(!header||document.getElementById('v46-load-test'))return;const b=document.createElement('button');b.id='v46-load-test';b.type='button';b.className='px-3 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold shadow perf-v46-badge';b.textContent='Teste de carga';b.onclick=runLoadTest;header.prepend(b)}
+function install(){if(installed||!window.SenacV29?.ready)return;installed=true;installLongTask();optimizeSwitch();optimizePlanning();optimizeFilter();optimizeResize();addButton();console.info('[S.G.T V46] Otimização ativa')}
+firebase.auth().onAuthStateChanged(()=>setTimeout(install,1600));setInterval(()=>{if(!installed)install();addButton()},2000);window.executarTesteCargaV46=runLoadTest;window.metricasDesempenhoV46=()=>({metrics:[...metrics],longTasks:[...longTasks]});
+})();
+</script>
+
+</body>
 </html>
