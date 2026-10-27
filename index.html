@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V57-CADASTROS-2026-10-27"/>
+<meta name="sgt-build" content="V58-RATEIO-2026-10-27"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V57</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V58</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -14535,7 +14535,7 @@ function alocar(segmentos,gs,meta,out,base){
   });
 }
 window.generateRateio=function(){
- let out=[],warnings=[];RATEIO_DATA=[];window.RATEIO_DATA=RATEIO_DATA;
+ let out=[],warnings=[];window.__rateioWarnings58=warnings;RATEIO_DATA=[];window.RATEIO_DATA=RATEIO_DATA;
  const ctx=STATE.planContext,plano=DB.planning?.[ctx]||[],visitas=plano.filter(v=>v?.student?.id&&v.date&&ok(v.status));
  const logs=DB.planning_logistics?.[ctx]||[],lunch=DB.planning_lunch?.[ctx]||[],admins=DB.planning_admin?.[ctx]||[];
  if(!visitas.length){renderRateioTable([],['Nenhum aluno realizado/visitado no planejamento atual.']);return}
@@ -14547,11 +14547,23 @@ window.generateRateio=function(){
    pernas.forEach((p,i)=>{
      const cand=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));const td=turmas(cand[0])[0]||'-';
      out.push({date,type:'DESLOCAMENTO',origin:p.origin,dest:p.dest,start:p.originTime,end:p.destTime,hours:(p.e-p.s)/60,turma:td,cc:td==='-'?'-':centro(td),sequence:i*10,allocationRule:'destino_planejado_v9665'});
-     if(i===pernas.length-1)return;const prox=pernas[i+1];if(!cidadeIgual(p.dest,prox.origin)||prox.s<=p.e)return;
-     subtrair(p.e,prox.s,[...descansos,...adm]).forEach(([s,e])=>{if(e-s<MIN)return;const periodo=periodoSegmento(s,e),key=N(p.dest)+'|'+periodo;const pack=pacotes.get(key)||{date,local:p.dest,periodo,segmentos:[]};pack.segmentos.push({s,e});pacotes.set(key,pack)})
+     const prox=pernas[i+1];let fim;
+     if(prox){if(!cidadeIgual(p.dest,prox.origin)||prox.s<=p.e){warnings.push('Continuidade do deslocamento não reconhecida em '+p.dest+'. Confira origem, destino e horários.');return}fim=prox.s;}
+     else {
+       // Sem retorno informado, só contabilizar até um marco explícito já preenchido.
+       const marco=[...descansos,...adm].filter(b=>b.s>p.e).sort((a,b)=>a.s-b.s)[0];
+       const temAluno=vd.some(v=>cidadeIgual(v.student?.cidade,p.dest));
+       if(!temAluno)return;
+       warnings.push('Falta o próximo deslocamento/retorno em '+p.dest+'. Atendimento calculado somente até o próximo intervalo informado; complete o retorno para fechar o dia.');
+       if(!marco)return;fim=marco.s;
+     }
+     subtrair(p.e,fim,[...descansos,...adm]).forEach(([s,e])=>{if(e-s<MIN)return;const periodo=periodoSegmento(s,e),key=N(p.dest)+'|'+periodo;const pack=pacotes.get(key)||{date,local:p.dest,periodo,segmentos:[]};pack.segmentos.push({s,e});pacotes.set(key,pack)})
    });
    pacotes.forEach((pack,key)=>{
-     const elegiveis=vd.filter(v=>cidadeIgual(v.student?.cidade,pack.local)&&periodoVisita(v)===pack.periodo);
+     const locais=vd.filter(v=>cidadeIgual(v.student?.cidade,pack.local));
+     // O horário do aluno orienta a divisão; não pode eliminar a permanência comprovada na cidade.
+     let elegiveis=locais.filter(v=>periodoVisita(v)===pack.periodo||periodoVisita(v)===null);
+     if(!elegiveis.length&&locais.length)elegiveis=locais;
      const gs=grupos(elegiveis);
      if(!gs.length){warnings.push(`${date.split('-').reverse().join('/')} - ${pack.local}: sem aluno realizado no período ${pack.periodo==='MANHA'?'da manhã':'da tarde'}; intervalo não rateado.`);return}
      alocar(pack.segmentos,gs,pack,out,500+(pack.periodo==='TARDE'?100:0));
@@ -14561,7 +14573,7 @@ window.generateRateio=function(){
  out.sort((a,b)=>a.date.localeCompare(b.date)||(M(a.start)-M(b.start))||(a.sequence-b.sequence));
  // Consolida blocos consecutivos da mesma turma, sem atravessar almoço, administrativo ou deslocamento.
  const consolidado=[];out.forEach(x=>{const a=consolidado[consolidado.length-1];if(a&&x.type==='ATENDIMENTO'&&a.type==='ATENDIMENTO'&&a.date===x.date&&a.turma===x.turma&&a.end===x.start){a.end=x.end;a.hours+=x.hours}else consolidado.push(x)});out=consolidado;
- RATEIO_DATA=out;window.RATEIO_DATA=out;renderRateioTable(out,warnings);
+ RATEIO_DATA=out;window.RATEIO_DATA=out;window.__rateioWarnings58=warnings;renderRateioTable(out,warnings);
  const trab=out.filter(x=>x.type!=='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),desc=out.filter(x=>x.type==='DESCANSO').reduce((n,x)=>n+Math.round(x.hours*60),0),admMin=admins.reduce((n,x)=>n+Math.max(0,(M(x.end)||0)-(M(x.start)||0)),0);
  const st=document.getElementById('rateioStatusText');if(st)st.innerText=`Rateio por alunos atendidos: manhã e tarde separados | Mínimo por bloco: ${MIN} min | Jornada: ${H(trab)} | Almoço: ${H(desc)} | Administrativo: ${H(admMin)}.`;
  if(typeof window.renderControleRateio==='function')window.renderControleRateio();
@@ -14620,7 +14632,7 @@ window.generateRateio=function(){
  if(Array.isArray(window.RATEIO_DATA)){
   completarDeslocamentos(window.RATEIO_DATA);
   RATEIO_DATA=window.RATEIO_DATA;
-  if(typeof renderRateioTable==='function')renderRateioTable(window.RATEIO_DATA,[]);
+  if(typeof renderRateioTable==='function')renderRateioTable(window.RATEIO_DATA,window.__rateioWarnings58||[]);
  }
  atualizarTotais();
  if(typeof window.renderControleRateio==='function')window.renderControleRateio();
@@ -14719,7 +14731,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V57');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V58');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
