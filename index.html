@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V56-CONCLUSAO-LOCAL-2026-10-27"/>
+<meta name="sgt-build" content="V57-CADASTROS-2026-10-27"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V56</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V57</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -32,6 +32,7 @@
 
       if (!firebase.apps.length) {
           firebase.initializeApp(firebaseConfig);
+ firebase.firestore().settings?.({experimentalForceLongPolling:true});
       }
     </script>
 <style>
@@ -525,7 +526,7 @@ th {
 <input id="editStudentId" type="hidden"/>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
 <div class="md:col-span-2 bg-red-50 p-3 rounded-lg border border-red-100 flex items-center justify-between"><div><h4 class="text-xs font-black text-red-600 uppercase flex items-center gap-2"><i class="w-4 h-4" data-lucide="alert-triangle"></i> Status do Contrato</h4></div><div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-red-100 shadow-sm"><label class="text-xs font-bold text-slate-600 cursor-pointer select-none" for="editDesligado">DESLIGADO/ENCERRADO?</label><input class="w-5 h-5 accent-red-600 cursor-pointer" id="editDesligado" type="checkbox"/></div></div>
-<div class="md:col-span-2 bg-slate-50 p-3 rounded-lg border border-slate-100"><h4 class="text-xs font-bold text-slate-500 uppercase mb-3">Dados Pessoais</h4><div class="grid grid-cols-1 md:grid-cols-4 gap-3"><div class="md:col-span-2"><label class="text-[10px] font-bold text-slate-400 uppercase">Nome</label><input class="w-full p-2 border rounded text-sm" id="editNome" required="" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">CPF</label><input class="w-full p-2 border rounded text-sm" id="editCPF" placeholder="Apenas N°" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Turma</label><input class="w-full p-2 border rounded text-sm" id="editTurma" required="" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Região</label><select class="w-full p-2 border rounded text-sm" id="editRegiao"></select></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Cidade</label><input class="w-full p-2 border rounded text-sm" id="editCidade" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Teórica (Dias/Hr)</label><input class="w-full p-2 border rounded text-sm" id="editTeoria" placeholder="Ex: Seg 13:30" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Prática (Dias/Hr)</label><input class="w-full p-2 border rounded text-sm" id="editPratica" placeholder="Ex: Ter a Sex" type="text"/></div><div class="md:col-span-4 mt-1 border-t border-slate-200 pt-2"><label class="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">Contra-Turno (Dias na Prática)</label><div class="flex flex-wrap gap-4"><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctSeg" type="checkbox"/> Segunda</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctTer" type="checkbox"/> Terça</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctQua" type="checkbox"/> Quarta</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctQui" type="checkbox"/> Quinta</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctSex" type="checkbox"/> Sexta</label></div></div></div></div>
+<div class="md:col-span-2 bg-slate-50 p-3 rounded-lg border border-slate-100"><h4 class="text-xs font-bold text-slate-500 uppercase mb-3">Dados Pessoais</h4><div class="grid grid-cols-1 md:grid-cols-4 gap-3"><div class="md:col-span-2"><label class="text-[10px] font-bold text-slate-400 uppercase">Nome</label><input class="w-full p-2 border rounded text-sm" id="editNome" required="" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Turma</label><input class="w-full p-2 border rounded text-sm" id="editTurma" required="" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Região</label><select class="w-full p-2 border rounded text-sm" id="editRegiao"></select></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Cidade</label><input class="w-full p-2 border rounded text-sm" id="editCidade" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Teórica (Dias/Hr)</label><input class="w-full p-2 border rounded text-sm" id="editTeoria" placeholder="Ex: Seg 13:30" type="text"/></div><div><label class="text-[10px] font-bold text-slate-400 uppercase">Prática (Dias/Hr)</label><input class="w-full p-2 border rounded text-sm" id="editPratica" placeholder="Ex: Ter a Sex" type="text"/></div><div class="md:col-span-4 mt-1 border-t border-slate-200 pt-2"><label class="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">Contra-Turno (Dias na Prática)</label><div class="flex flex-wrap gap-4"><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctSeg" type="checkbox"/> Segunda</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctTer" type="checkbox"/> Terça</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctQua" type="checkbox"/> Quarta</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctQui" type="checkbox"/> Quinta</label><label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer"><input class="w-4 h-4 accent-senac-blue cursor-pointer" id="ctSex" type="checkbox"/> Sexta</label></div></div></div></div>
 <div class="md:col-span-2 bg-yellow-50 p-3 rounded-lg border border-yellow-100"><h4 class="text-xs font-bold text-yellow-700 uppercase mb-2 flex items-center gap-2"><i class="w-4 h-4" data-lucide="sticky-note"></i> Observações / Histórico</h4><textarea class="w-full p-2 border border-yellow-200 rounded text-sm bg-white focus:outline-yellow-400" id="editObs" placeholder="Anote aqui informações importantes..." rows="3"></textarea></div>
 <div class="md:col-span-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
 <div class="flex items-center justify-between mb-3">
@@ -1763,7 +1764,7 @@ window.requestRestore = function() {
             document.getElementById('modalTitle').innerText = "Novo Aluno"; 
             document.getElementById('studentForm').reset(); 
             document.getElementById('editDesligado').checked = false; 
-            document.getElementById('editCPF').value = ""; 
+             
             document.getElementById('editTeoria').value = ""; 
             document.getElementById('editPratica').value = ""; 
             document.getElementById('ctSeg').checked = false; 
@@ -2003,7 +2004,7 @@ window.requestRestore = function() {
 
                 const newData = { 
                     id: STATE.editingId || ("NEW_" + Date.now()), 
-                    nome: getVal('editNome'), cpf: getVal('editCPF'), turma: getVal('editTurma'), contraturno: getVal('editContraturno'),
+                    nome: getVal('editNome'), turma: getVal('editTurma'), contraturno: getVal('editContraturno'),
                     regiao: regiaoSalva, // <- Salva a região corrigida
                     cidade: cidadeSalva,
                     teoria: getVal('editTeoria'), pratica: getVal('editPratica'),
@@ -2077,7 +2078,7 @@ window.requestRestore = function() {
             // Monta o texto formatado para WhatsApp/Teams (com negritos)
             const texto = `🎓 *FICHA DO ALUNO*
 Nome: ${nome}
-Turma: ${turma} | CPF: ${cpf}
+Turma: ${turma}
 Localidade: ${cidade} (${regiao})
 
 🕒 *JORNADA*
@@ -8815,7 +8816,7 @@ if (typeof showToast === 'function') {
                             "Modalidade": aluno.tipoCurso,
                             "Curso Específico": aluno.curso || "Não Informado",
                             "Nome do Aluno": aluno.nome || "",
-                            "CPF do Aluno": aluno.cpf || "",
+                            
                             "Nome da Turma": aluno.turma || "",
                             "Região": aluno.regiao || "",
                             "Cidade": aluno.cidade || "",
@@ -13525,7 +13526,7 @@ async function submit40(scope='plan'){
  if(scope==='plan'&&(!ctx||(profile()&&!owns(ctx,profile()))))throw Error('Selecione um planejamento da sua região.');
  saveFeedback41('local');tell('Salvando neste dispositivo…');
  // Uma única cópia congela os dados do clique. Edições posteriores continuam rascunhos.
- const owner=uid(),before=submittedData40(),next=scope==='all'?clone(DB):planSnapshot40(ctx);
+ const owner=uid(),before=submittedData40(),next=scope==='all'?clone(submittedData40()):planSnapshot40(ctx);
  const job=Promise.resolve().then(async()=>{
   await paintBeforeSave41();if(owner!==uid())return false;
   if(same(before,next)){
@@ -13546,10 +13547,10 @@ async function submit40(scope='plan'){
  try{return await job}catch(e){saveFeedback41('error');throw e}finally{if(submitJob40===job)submitJob40=null;renderSave40();}
 }
 window.salvarPlanejamentoConcluido=()=>submit40('plan');
-window.salvarAlteracoesConcluidas=()=>submit40('all');
+window.salvarAlteracoesConcluidas=async()=>{await saveToStorage();return submit40('all')};
 function saveButtonLabel41(normal){
- if(savePhase41==='local')return 'Salvando no dispositivo…';
- if(savePhase41==='sending')return 'Enviando à nuvem…';
+ if(savePhase41==='local')return normal+' · salvando…';
+ if(savePhase41==='sending')return normal+' · enviando…';
  if(savePhase41==='pending')return normal+' · envio pendente';
  if(savePhase41==='review')return normal+' · enviado';
  if(savePhase41==='error')return normal+' · tentar novamente';
@@ -13558,13 +13559,13 @@ function saveButtonLabel41(normal){
 function renderSave40(){
  const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;
  let save=document.getElementById('v40-save-plan');
- if(actions&&!save){save=button('Salvar planejamento',()=>window.salvarPlanejamentoConcluido(),'wf-btn wf-btn-primary');save.id='v40-save-plan';save.style.cssText='background:#00579d;color:white;border:1px solid #004578;min-height:44px;font-weight:700;padding:10px 16px;border-radius:8px';actions.prepend(save);}
- if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;save.textContent=saveButtonLabel41('Salvar planejamento');save.setAttribute('aria-busy',String(!!submitJob40));}
+ if(actions&&!save){save=button('Concluir planejamento',()=>window.salvarPlanejamentoConcluido(),'wf-btn wf-btn-primary');save.id='v40-save-plan';save.style.cssText='background:#00579d;color:white;border:1px solid #004578;min-height:44px;font-weight:700;padding:10px 16px;border-radius:8px';actions.prepend(save);}
+ if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;save.textContent=saveButtonLabel41('Concluir planejamento');save.setAttribute('aria-busy',String(!!submitJob40));}
  document.querySelectorAll('button[onclick="enviarWorkflowAprovacao()"]').forEach(b=>{b.textContent=saveButtonLabel41('Concluir planejamento');b.disabled=!ready||!!submitJob40;});
  const all=document.getElementById('v40-save-all');if(all){all.hidden=!admin();all.disabled=!ready||!!submitJob40;all.textContent=saveButtonLabel41('Salvar alterações');all.setAttribute('aria-busy',String(!!submitJob40));}
  let hint=document.getElementById('v40-draft-state');const root=document.getElementById('planContent');
  if(root&&!hint){hint=document.createElement('div');hint.id='v40-draft-state';hint.style.cssText='padding:8px 12px;margin:8px 0;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:12px';root.prepend(hint);}
- if(hint)hint.textContent=admin()?'Rascunhos ficam neste dispositivo. Aprovar envia a decisão e os dados daquele planejamento; Salvar alterações conclui as demais edições administrativas.':'Salvar localmente confirma uma cópia neste aparelho. A proteção de emergência guarda os campos durante o preenchimento. Somente Concluir planejamento envia dados à nuvem e notifica o administrador. Realizada não exige aprovação.';
+ if(hint)hint.textContent=admin()?'Planejamento: Salvar localmente guarda neste aparelho; Concluir planejamento envia o roteiro. Cadastros de alunos, turmas e CC são enviados automaticamente.':'Salvar localmente confirma uma cópia neste aparelho. A proteção de emergência guarda os campos durante o preenchimento. Somente Concluir planejamento envia dados à nuvem e notifica o administrador. Realizada não exige aprovação.';
 }
 const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
 const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention'];
@@ -13712,7 +13713,7 @@ function applyData(data){
   const defaults={planning:{},planning_logistics:{},planning_lunch:{},planning_admin:{},regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],custom_passwords:{}};
   DB={...defaults,...clone(data)};window.DB=DB;
   ['quali','tec'].forEach(k=>DB[k]=(DB[k]||[]).map(a=>({...a,ini:a.ini?new Date(a.ini):null,fim:a.fim?new Date(a.fim):null,visits:(a.visits||[]).map(v=>({...v,date:v.date?new Date(v.date):null}))})));
- }else processDataLoad(data);bindStudents(DB);window.recoverEmergency54?.(DB);
+ }else processDataLoad(data);stripCpf57(DB);bindStudents(DB);window.recoverEmergency54?.(DB);
 }
 function quotaErrorV37(e){return e?.name==='QuotaExceededError'||e?.code===22||/quota/i.test(String(e?.message||e||''))}
 function packLocalV37(value){return LZString.compressToUTF16(JSON.stringify(value))}
@@ -13848,7 +13849,7 @@ async function readRegionalEnvelopeV291(meta){
  if(envelope.schema!=='senac-regional-envelope-v29.1'||String(envelope.userId)!==String(meta.userId))throw Error('Envelope regional inválido.');
  return envelope;
 }
-async function writeGlobal(data,expected){
+async function writeGlobal(data,expected){data=stripCpf57(clone(data));
  data=clone(data);data.regioes_map=preserveCities(baseline?.regioes_map,data.regioes_map);
  const priorPlans=Object.keys(baseline?.planning||{}),archives=Object.values(data.planejamentos_excluidos||{});
  const archivedLast=priorPlans.length>0&&!Object.keys(data.planning||{}).length&&priorPlans.every(ctx=>archives.some(a=>a.por===email()&&a.dados?.workflow_planejamento?.contexto===ctx));
@@ -13932,7 +13933,7 @@ async function flushOnce32(){
 }
 if(navigator.storage?.persist)navigator.storage.persist().catch(()=>false);
 window.saveToStorage=async function(){
- if(!ready)return false;
+ if(!ready)return false;if(!window.__PLANNING_EDIT57)stripCpf57(DB);const generalChanged57=stageGeneral57();
  if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
  if(lastRequested42&&same(DB,lastRequested42)&&localTask40)return localTask40;
  if(!window.__LOCAL_CACHE_FAILED__&&lastLocal&&same(DB,lastLocal))return true;
@@ -13941,7 +13942,7 @@ window.saveToStorage=async function(){
  if(quotaReported38||!navigator.onLine||recoveryMode42){recoveryMode42=true;/* Rascunho local até Concluir. */}
  revision++;const requested=clone(DB);lastRequested42=requested;updateDraftState40();
  try{
-  const saved=await localStore();if(!saved)return false;
+  const saved=await localStore();if(!saved)return false;if(generalChanged57)queueGeneral57();
   tell(recoveryMode42?'Salvo neste dispositivo. Apenas planejamentos já concluídos estão na fila da nuvem.':'Cópia de segurança local atualizada. A nuvem só recebe ao Concluir planejamento.');return true;
  }catch(e){window.__LOCAL_CACHE_FAILED__=true;localReceipt42(false);throw e}
  finally{if(lastRequested42===requested)lastRequested42=null;}
@@ -13976,12 +13977,12 @@ const syncManual31=()=>serial(async()=>{
 let manualSyncBusy=false,manualJob38=null;
 window.sincronizarAgoraNuvem=async()=>{
  const b=document.getElementById('v29-sync');
- if(manualJob38){tell(quotaReported38?QUOTA_MESSAGE38:'A sincronização anterior ainda aguarda confirmação. Os dados locais continuam preservados.',true);return false;}
+ if(manualJob38){firebase.firestore().enableNetwork().catch(fail);tell(quotaReported38?QUOTA_MESSAGE38:'A sincronização anterior ainda aguarda confirmação. Os dados locais continuam preservados.',true);return false;}
  manualSyncBusy=true;if(b){b.disabled=true;b.textContent='Verificando…'}tell('Verificando alterações e confirmação da nuvem…');
  const job=(async()=>{await saveToStorage();clearTimeout(writeTimer);return syncManual31()})();manualJob38=job;
  const settle=()=>{if(manualJob38===job)manualJob38=null;manualSyncBusy=false;if(b)b.disabled=false};
  const result=job.then(value=>{settle();if(b)b.textContent=value===false||quotaReported38||retryPending32||pending.length||collabQueue.length?'Envio / confirmação pendente':'Sincronização verificada ✓';return value;},e=>{settle();fail(e);if(b)b.textContent='Não confirmado · tentar novamente';return false;});
- let timer;const deadline=new Promise(resolve=>{timer=setTimeout(()=>{if(b){b.disabled=false;b.textContent=quotaReported38?'Limite da nuvem atingido':'Aguardando confirmação'}tell(quotaReported38?QUOTA_MESSAGE38:'A nuvem não confirmou em 15 segundos. A operação continua e os dados locais foram mantidos.',true);resolve(false)},15000)});
+ let timer;const deadline=new Promise(resolve=>{timer=setTimeout(()=>{manualSyncBusy=false;firebase.firestore().enableNetwork().catch(fail);if(b){b.disabled=false;b.textContent=quotaReported38?'Limite da nuvem atingido':'Sincronizar agora · envio pendente'}tell(quotaReported38?QUOTA_MESSAGE38:'Sem confirmação da nuvem ainda. A conexão está sendo retomada; sua cópia local e a fila permanecem seguras. Você pode continuar trabalhando.',true);resolve(false)},15000)});
  try{return await Promise.race([result,deadline]);}finally{clearTimeout(timer)}
 };
 window.sincronizarComNuvem=()=>window.sincronizarAgoraNuvem();
@@ -14295,6 +14296,26 @@ function installUI(){
  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.wf-modal.open').forEach(m=>m.classList.remove('open'))});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
+
+let observedGeneral57=null,generalTimer57=null;
+function stripCpf57(value,seen=new WeakSet()){
+ if(!value||typeof value!=='object'||seen.has(value))return value;seen.add(value);
+ for(const key of Object.keys(value)){if(/cpf/i.test(key))delete value[key];else stripCpf57(value[key],seen)}return value;
+}
+window.stripCpf57=stripCpf57;
+function generalSnapshot57(data){const result={};for(const k of ['quali','tec','cc_map','regioes_map','rede_cidades','controle_turmas','controle_logs','finance_logs','usuarios_planejamento'])if(data?.[k]!==undefined)result[k]=clone(data[k]);return result;}
+function stageGeneral57(){
+ if(!admin()||!ready)return false;if(window.__PLANNING_EDIT57){observedGeneral57=null;return false;}const before=observedGeneral57||lastLocal||baseline;if(!before)return false;observedGeneral57=generalSnapshot57(DB);
+ const after=generalSnapshot57(before),planningVisible=document.getElementById('viewPlanning')&&!document.getElementById('viewPlanning').classList.contains('hidden');
+ const allowStudents=!window.__PLANNING_EDIT57&&(window.__GENERAL_EDIT57||!planningVisible);
+ const keys=['cc_map','regioes_map','rede_cidades','controle_turmas','controle_logs','finance_logs','usuarios_planejamento'];if(allowStudents)keys.push('quali','tec');
+ let changed=false;for(const k of keys)if(!same(before[k],DB[k])){after[k]=clone(DB[k]);changed=true}
+ if(!changed)return false;
+ submitted40=reconcileGlobal(generalSnapshot57(before),after,submittedData40());stripCpf57(submitted40);revision++;updateDraftState40();return true;
+}
+function queueGeneral57(){clearTimeout(generalTimer57);generalTimer57=setTimeout(()=>scheduleFlush38().catch(fail),1200)}
+window.SenacGeneral57={stage:stageGeneral57,reset(){observedGeneral57=generalSnapshot57(DB)}};
+
 function visitDay54(value){if(value===null||value===undefined||value==='')return '';if(/^\d{4}-\d{2}-\d{2}/.test(String(value)))return String(value).slice(0,10);const date=new Date(value);return isNaN(date)?'':date.toISOString().slice(0,10);}
 
 function prepareConclusion54(ctx){
@@ -14698,7 +14719,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V56');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V57');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
@@ -14777,6 +14798,43 @@ window.SGTV54={version:'54',pendingRenders:()=>pending.size};
  window.SenacLocalRecovery56={records,recover,show};
 })();
 
+</script>
+<script id="senac-v57-ui">(function(){
+for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervisor','updatePlanItem','applyBulkStatus']){const fn=window[name];if(typeof fn!=='function')continue;window[name]=function(){window.__PLANNING_EDIT57=(window.__PLANNING_EDIT57||0)+1;try{const r=fn.apply(this,arguments);if(r?.finally)return r.finally(()=>window.__PLANNING_EDIT57--);window.__PLANNING_EDIT57--;return r}catch(e){window.__PLANNING_EDIT57--;throw e}}}
+const originalTab57=window.switchTab;window.switchTab=function(){window.SenacGeneral57.reset();return originalTab57.apply(this,arguments)};
+const originalSave=window.saveStudentData;
+window.saveStudentData=async function(){window.SenacGeneral57.reset();window.__GENERAL_EDIT57=true;try{return await originalSave.apply(this,arguments)}finally{window.__GENERAL_EDIT57=false}};
+// Discard CPF columns before existing importers identify or construct students.
+if(window.XLSX?.utils?.sheet_to_json){const original=XLSX.utils.sheet_to_json;XLSX.utils.sheet_to_json=function(){const rows=original.apply(this,arguments);if(!Array.isArray(rows))return rows;if(Array.isArray(rows[0])){const header=rows.slice(0,20).find(r=>Array.isArray(r)&&r.some(c=>/cpf/i.test(String(c))));if(!header)return rows;const blocked=new Set(header.map((c,i)=>/cpf/i.test(String(c))?i:-1).filter(i=>i>=0));return rows.map(r=>Array.isArray(r)?r.filter((_,i)=>!blocked.has(i)):r)}return rows.map(r=>window.stripCpf57(r))};}
+const bodies=new Map(),escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const originalBody=window.generateEmailBody;
+window.generateEmailBody=function(supervisor,items,mode){
+ if(mode==='feedback'||STATE.emailVisitMode!=='online')return originalBody.apply(this,arguments);
+ const responsible=window.SenacV29?.profile()?.nome||'Michel';
+ const names=items.map(x=>x.student.nome).join(', '),dates=[...new Set(items.map(x=>x.date).filter(Boolean))].map(x=>x.split('-').reverse().join('/')).join(' e ')||'[Data]';
+ const phone=items[0]?.student?.supervisor?.tel||items[0]?.student?.supervisor?.telefone||'[contato do supervisor]';
+ const p=s=>'<p>'+s+'</p>',b=s=>'<strong>'+escape(s)+'</strong>';
+ const html='<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">'+
+ p('Olá, '+b(supervisor)+'.<br>Tudo bem?')+
+ p('Meu nome é '+b(responsible)+' e sou responsável pela supervisão da prática profissional do(a) aprendiz '+b(names)+'.')+
+ p('Conforme estabelece a '+b('Portaria nº 3.872')+', os acompanhamentos da prática profissional devem ser realizados periodicamente. Desta vez, a entrevista será realizada de forma on-line, no dia '+b(dates)+'.<br>A conversa será breve e terá como objetivo acompanhar o desenvolvimento do(a) aprendiz, esclarecer possíveis dúvidas e registrar as informações relacionadas à prática profissional.')+
+ p(b('Aproveito para confirmar algumas informações, a fim de formalizar o nosso agendamento:')+'<br>3. Seu contato telefônico/WhatsApp ainda é: '+escape(phone)+'<br>4. Qual é o melhor horário, no dia '+b(dates)+', para realizarmos a nossa videochamada? A reunião será realizada pelo Teams, através do link: [INSERIR LINK DO TEAMS]')+
+ p('Após a entrevista, será enviado o documento preenchido para as devidas assinaturas que poderão ser realizadas de uma das seguintes formas:')+
+ p(b('1ª opção: Assinaturas físicas')+'<br>O documento será encaminhado já preenchido, para assinatura do supervisor e aprendiz nos devidos campos.<br>O supervisor da empresa deverá imprimir o documento, coletar a assinatura física do aprendiz, assinar no campo correspondente e, depois, digitalizar o documento completo para envio ao Senac, onde será impresso e assinado pelo responsável do Senac.')+
+ p(b('2ª opção: Assinaturas digitais pelo GOV.BR')+'<br>O documento será encaminhado após o preenchimento para que o supervisor da empresa e o aprendiz realizem as assinaturas digitais pelo GOV.BR, posteriormente assinado pelo responsável do Senac.')+
+ p('É necessário escolher apenas uma modalidade para todas as assinaturas do documento. '+b('Não será permitido combinar assinaturas físicas com assinaturas digitais pelo GOV.BR no mesmo documento.'))+
+ p('Para organizarmos o atendimento, peço a gentileza de confirmar:<br>O horário em que o(a) aprendiz realiza a atividade teórica:<br>O telefone ou WhatsApp atualizado do supervisor:<br>Qual é o melhor horário, na data informada, para realizarmos a videochamada:<br>'+b('Qual modalidade será utilizada para as assinaturas: física ou digital pelo GOV.BR? Caso seja escolhida a assinatura pelo GOV.BR, pedimos que confirme se o aprendiz possui cadastro e consegue realizar a assinatura digital.'))+
+ p('Agradeço a parceria e fico à disposição para esclarecimentos')+p(b('Qualquer dúvida, fico à disposição.'))+'</div>';
+ const el=document.createElement('div');el.innerHTML=html.replace(/<br>/g,'\n').replace(/<\/p>/g,'\n\n</p>');const plain=el.textContent.trim();bodies.set(plain,html);return plain;
+};
+const open=window.openEmailModal;
+window.openEmailModal=function(){const result=open.apply(this,arguments);document.querySelectorAll('#emailModal textarea').forEach(area=>{const html=bodies.get(area.value);if(!html)return;const preview=document.createElement('div');preview.dataset.emailPreview57=area.id;preview.contentEditable='true';preview.style.cssText='background:white;border:1px solid #cbd5e1;border-radius:8px;padding:14px;max-height:480px;overflow:auto';preview.innerHTML=html;area.style.display='none';area.after(preview);preview.addEventListener('input',()=>{area.value=preview.innerText})});return result;};
+const copy=window.copyFromId;
+window.copyFromId=async function(btn,id){const area=document.getElementById(id),preview=[...document.querySelectorAll('[data-email-preview57]')].find(e=>e.dataset.emailPreview57===id),html=preview?.innerHTML||bodies.get(area?.value);if(!html)return copy.apply(this,arguments);if(navigator.clipboard?.write&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([area.value],{type:'text/plain'})})]);showToast?.('Mensagem copiada com formatação. Cole no corpo do e-mail.')}else{await navigator.clipboard.writeText(area.value);alert('Texto copiado. Este navegador não permitiu copiar a formatação.')}};
+const send=window.sendMailTo;
+window.sendMailTo=async function(id,email){const area=document.getElementById(id),preview=[...document.querySelectorAll('[data-email-preview57]')].find(e=>e.dataset.emailPreview57===id);if(!preview&&!bodies.has(area?.value))return send.apply(this,arguments);const compose=window.open('about:blank','_blank');try{await window.copyFromId(null,id);const url='https://outlook.office.com/mail/deeplink/compose?to='+encodeURIComponent(email)+'&subject='+encodeURIComponent('Agendamento de Supervisão da Prática Profissional (Online)');if(compose)compose.location.href=url;else window.open(url,'_blank');alert('A mensagem com os destaques foi copiada. Cole com Ctrl+V no corpo do e-mail no Outlook.')}catch(e){compose?.close();alert('Não foi possível copiar a mensagem: '+e.message)}};
+window.SenacEmail57={bodies};
+})();
 </script>
 </body>
 </html>
