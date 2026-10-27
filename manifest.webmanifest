@@ -1,7 +1,7 @@
 {
   "name": "S.G.T - Gestão de Turmas",
   "short_name": "S.G.T",
-  "description": "Gestão de turmas com rascunho durável, envio segmentado e aprovação administrativa",
+  "description": "Gestão de turmas, visitas e planejamentos",
   "id": "./index.html",
   "start_url": "./index.html",
   "scope": "./",
@@ -9,5 +9,23 @@
   "background_color": "#ffffff",
   "theme_color": "#004587",
   "lang": "pt-BR",
-  "orientation": "any"
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "./app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "./app-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }

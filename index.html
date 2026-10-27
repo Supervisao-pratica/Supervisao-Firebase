@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V55-CORRIGIDA-2026-10-26"/>
+<meta name="sgt-build" content="V56-CONCLUSAO-LOCAL-2026-10-27"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Versão 55 Corrigida</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V56</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -7507,6 +7507,7 @@ window.atualizarAutocompleteGlobal = function() {
         // 🧠 MOTOR DE INTELIGÊNCIA: EXTRATOR PEDAGÓGICO (COM SENSOR DE RISCO E CHOQUE DE AGENDA)
         // =========================================================================
         window.processarFrequenciaPedagogica = async function(event) {
+            const ctxImportacaoV56 = STATE.planContext;
             try {
                 const file = event.target.files[0];
                 if(!file) return;
@@ -7577,7 +7578,7 @@ window.atualizarAutocompleteGlobal = function() {
                 const stateObj = typeof STATE !== 'undefined' ? STATE : (window.STATE || null);
                 const dbObj = typeof DB !== 'undefined' ? DB : (window.DB || null);
 
-                const ctx = stateObj ? stateObj.planContext : null;
+                const ctx = ctxImportacaoV56;
                 
                 if (!ctx || !dbObj || !dbObj.planning || !dbObj.planning[ctx]) {
                     throw new Error("Nenhum roteiro aberto para preencher. Por favor, selecione um roteiro na tela.");
@@ -7911,15 +7912,9 @@ window.atualizarAutocompleteGlobal = function() {
                     const buscarEAtualizar = (lista) => {
                         if (!lista) return false;
                         
-                        const aluno = lista.find(a => {
-                            const nomeSistema = norm(a.nome);
-                            if (nomeSistema === nomePlanilha) return true;
-                            // Se a planilha cortou o último sobrenome, o Includes salva!
-                            if (nomeSistema.length > 5 && nomePlanilha.length > 5) {
-                                if (nomeSistema.includes(nomePlanilha) || nomePlanilha.includes(nomeSistema)) return true;
-                            }
-                            return false;
-                        });
+                        const exatos = lista.filter(a => norm(a.nome) === nomePlanilha);
+                        const parciais = exatos.length ? exatos : lista.filter(a => {const n=norm(a.nome);return n.length>5 && nomePlanilha.length>5 && (n.includes(nomePlanilha)||nomePlanilha.includes(n));});
+                        const aluno = parciais.length === 1 ? parciais[0] : null;
 
                         if (aluno) {
                             if (!aluno.supervisor) aluno.supervisor = { display: "", tel: "", email: "" };
@@ -13010,7 +13005,7 @@ button[onclick*="openEmailModal"]:disabled,button[onclick*="openRateioModal"]:di
  const externas=['openEmailModal','openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'];
  externas.forEach(nome=>{const fn=window[nome];if(typeof fn==='function'&&!fn.__wf){const w=function(){if(window.SenacV29?!window.SenacV29.actionAllowed(nome,arguments[0]):!workflowPodeAcaoExterna())return;return fn.apply(this,arguments)};w.__wf=true;window[nome]=w}});
  document.addEventListener('change',e=>{if(operador()&&e.target.closest('#planTableBody')&&!String(e.target.getAttribute('onchange')||'').includes("'status'")){invalidarAprovacao();setTimeout(renderBar,0)}},true);
- document.addEventListener('click',e=>{if(!operador())return;const t=norm(e.target.closest('button')?.textContent);if(['LER PEDAGOGICO','ATUALIZAR SUPERVISORES','PROXIMA VISITA','FAXINA','TRACAR ROTA','IMPORTAR EXCEL','SHAREPOINT','APLICAR STATUS GERAL'].some(x=>t.includes(x))){e.preventDefault();e.stopImmediatePropagation()}},true);
+ document.addEventListener('click',e=>{if(window.SenacV29||!operador())return;const t=norm(e.target.closest('button')?.textContent);if(['LER PEDAGOGICO','ATUALIZAR SUPERVISORES','PROXIMA VISITA','FAXINA','TRACAR ROTA','IMPORTAR EXCEL','SHAREPOINT','APLICAR STATUS GERAL'].some(x=>t.includes(x))){e.preventDefault();e.stopImmediatePropagation()}},true);
  const rr=window.renderPlanningTable;if(typeof rr==='function')window.renderPlanningTable=function(){const r=rr.apply(this,arguments);setTimeout(renderBar,0);return r};
  function start(){initDB();aplicarPerfil();setTimeout(()=>{Object.keys(DB.planning||{}).forEach(k=>meta(k));renderBar()},800)}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
@@ -13422,6 +13417,8 @@ body.workflow-operador #abrangenciaControl{display:none!important}
 </style>
 <script id="senac-v29-script">
 
+
+
 /* Revisão V29. Transporte autorizado, fila durável e interface regional. */
 (function(){'use strict';
 const ADMIN='michel.farias@pr.senac.br';
@@ -13442,11 +13439,177 @@ const fresh=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random
 let shellSession='',lastRegionSnapshot='';
 let stops=[],session='',ready=false,baseline=null,generation=null,pending=[],revision=0,writeTimer=null,chain=Promise.resolve(),remoteBusy=false;
 let lastLocal=null,collabVersion=null,collabQueue=[],errorMessage='',inbox={},needsReplay=false,acknowledgedOps=new Set(),reviewedErrorIds=new Set(),reviewedErrorsDirty=false;
+// V40: a tela contém rascunhos; somente submitted40 pode entrar na fila de envio.
+let submitted40=null,dirty40=false,submitJob40=null;
+let savePhase41="",saveLocal41=false;
+let recoveryMode42=false,recovered42=false,lastRequested42=null,lastDurable42=0,activeFlush42=0;
+const regionalPublished40=new Map();
+// Durante uma interrupção, cada edição efetivamente salva entra também na fila durável.
+function stageRecovery42(data=DB){
+ if(!ready||(!admin()&&!profile())||!submitted40)return false;
+ const before=submittedData40(),next=clone(data);if(same(before,next))return false;
+ if(profile()){
+  const extra=changes(before,next);
+  if(activeFlush42)pending.push(...extra);
+  else for(const op of extra){
+   const matches=pending.filter(x=>x.field===op.field&&x.key===op.key);
+   const previous=matches[0];
+   if(previous){op.before=clone(previous.before);pending=pending.filter(x=>x.field!==op.field||x.key!==op.key);}
+   if(!same(op.before,op.after))pending.push(op);
+  }
+ }
+ submitted40=next;revision++;updateDraftState40();return true;
+}
+function localReceipt42(ok){
+ const status=document.getElementById('saveStatus');if(!status||typeof document.createElement!=='function')return;
+ let el=document.getElementById('v42-local-status');if(!el){el=document.createElement('div');el.id='v42-local-status';el.setAttribute('role','status');el.style.cssText='padding:6px 16px;font-size:12px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:8px;margin:4px 16px';status.after(el);}
+ el.textContent=ok?'Cópia neste dispositivo confirmada às '+new Date(lastDurable42).toLocaleTimeString('pt-BR')+'. '+(pending.length?'Alterações na fila: '+pending.length+'.':'Versão local preservada.'):'Cópia local não confirmada. Mantenha esta aba aberta e use Exportar cópia local.';
+ el.style.color=ok?'#166534':'#b45309';
+}
+window.addEventListener('beforeunload',e=>{if(ready&&(localTask40||window.__LOCAL_CACHE_FAILED__)){e.preventDefault();e.returnValue='';}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&ready&&!window.APP_READ_ONLY)window.saveToStorage().catch(fail);});
+function submittedData40(){return submitted40||baseline||DB;}
+function updateDraftState40(){dirty40=!!submitted40&&!same(DB,submitted40);renderSave40();}
+function applySubmitted40(next){
+ const previous=submitted40,visible=clone(DB);submitted40=clone(next);
+ applyData(previous?reconcileGlobal(previous,visible,next):next);updateDraftState40();
+}
+function enqueueDelta40(before,after){
+ const previous=clone(submittedData40()),next=reconcileGlobal(before,after,previous);
+ if(profile())pending.push(...changes(previous,next));
+ submitted40=next;updateDraftState40();
+}
+async function finishAction40(before,after=clone(DB),send=false){
+ if(!send){await saveToStorage();return true;}
+ if(same(before,after))return false;
+ enqueueDelta40(before,after);revision++;await localStore();
+ tell('Ação concluída; envio à nuvem em andamento.');scheduleFlush38().catch(fail);return true;
+}
+function planSnapshot40(ctx){window.commitEmergency54?.();
+ prepareConclusion54(ctx);
+ const next=clone(submittedData40());
+ for(const field of maps.concat('planning_processos')){next[field]??={};if(DB[field]?.[ctx]===undefined)delete next[field][ctx];else next[field][ctx]=clone(DB[field][ctx]);}
+ for(const field of lists){next[field]=(next[field]||[]).filter(x=>x.contexto!==ctx).concat(clone((DB[field]||[]).filter(x=>x.contexto===ctx)));}
+ next.solicitacoes_cidades=clone(DB.solicitacoes_cidades||[]);
+ if(admin()){
+  const ids=new Set([...(DB.planning?.[ctx]||[]),...(submittedData40().planning?.[ctx]||[])].map(x=>String(x.student?.id)));
+  for(const field of ['quali','tec']){const edited=new Map((DB[field]||[]).filter(x=>ids.has(String(x.id))).map(x=>[String(x.id),x]));next[field]=(next[field]||[]).map(x=>clone(edited.get(String(x.id))||x));}
+  bindStudents(next);
+ }
+ return next;
+}
+// V41: a confirmação local e a confirmação remota são estados diferentes.
+function saveFeedback41(phase){savePhase41=phase;renderSave40();}
+function paintBeforeSave41(){return typeof requestAnimationFrame==='function'?new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0))):Promise.resolve();}
+async function waitSaveCloud41(){
+ if(quotaUntil38>Date.now()){armQuota39();saveFeedback41('pending');tell(QUOTA_MESSAGE38,true);return false;}
+ if(!navigator.onLine){scheduleRetry32();saveFeedback41('pending');tell(saveLocal41?'Salvo neste dispositivo; envio pendente até a conexão voltar.':'Envio pendente; mantenha esta aba aberta.',true);return false;}
+ saveFeedback41('sending');tell('Enviando alterações; aguardando confirmação da nuvem…');
+ // Reutiliza a operação em andamento. O prazo libera a interface, não cancela o envio.
+ const task=scheduleFlush38();let timer;
+ const result=task.then(value=>{
+  const waiting=value===false||quotaReported38||hasWork39();
+  saveFeedback41(waiting?'pending':collabQueue.length?'review':'saved');
+  return !waiting;
+ },e=>{saveFeedback41('error');fail(e);return false;});
+ const deadline=new Promise(resolve=>{timer=setTimeout(()=>{
+  saveFeedback41('pending');tell(saveLocal41?'Salvo neste dispositivo; a nuvem ainda não confirmou. Você pode continuar trabalhando. O envio permanece na fila.':'A nuvem ainda não confirmou. Mantenha esta aba aberta e exporte uma cópia local.',true);resolve(false);
+ },15000)});
+ try{return await Promise.race([result,deadline]);}finally{clearTimeout(timer);}
+}
+async function submit40(scope='plan'){
+ if(submitJob40)return submitJob40;
+ const ctx=STATE.planContext;
+ if(!ready||window.APP_READ_ONLY)throw Error('Aguarde o carregamento dos seus dados.');
+ if(scope==='all'&&!admin())throw Error('Somente o administrador pode salvar o cadastro geral.');
+ if(scope==='plan'&&(!ctx||(profile()&&!owns(ctx,profile()))))throw Error('Selecione um planejamento da sua região.');
+ saveFeedback41('local');tell('Salvando neste dispositivo…');
+ // Uma única cópia congela os dados do clique. Edições posteriores continuam rascunhos.
+ const owner=uid(),before=submittedData40(),next=scope==='all'?clone(DB):planSnapshot40(ctx);
+ const job=Promise.resolve().then(async()=>{
+  await paintBeforeSave41();if(owner!==uid())return false;
+  if(same(before,next)){
+   if(window.__LOCAL_CACHE_FAILED__)saveLocal41=await localStore();
+   if(flushQueued38||hasWork39())return waitSaveCloud41();
+   saveFeedback41(collabQueue.length?'review':quotaReported38?'pending':'saved');
+   tell(collabQueue.length?'Enviado à nuvem; aguardando processamento administrativo.':'Nenhuma nova alteração para enviar; não há envio pendente nesta sessão.');
+   return !quotaReported38;
+  }
+  const current=submittedData40(),combined=current===before?next:reconcileGlobal(before,next,current);
+  submitted40=combined;if(profile())pending.push(...changes(current,combined));revision++;updateDraftState40();
+  saveLocal41=await localStore();
+  if(owner!==uid())return false;
+  tell(saveLocal41?'Versão concluída salva neste dispositivo; preparando envio.':'Não foi possível confirmar a cópia neste dispositivo; tentando envio à nuvem.',!saveLocal41);
+  return waitSaveCloud41();
+ });
+ submitJob40=job;renderSave40();
+ try{return await job}catch(e){saveFeedback41('error');throw e}finally{if(submitJob40===job)submitJob40=null;renderSave40();}
+}
+window.salvarPlanejamentoConcluido=()=>submit40('plan');
+window.salvarAlteracoesConcluidas=()=>submit40('all');
+function saveButtonLabel41(normal){
+ if(savePhase41==='local')return 'Salvando no dispositivo…';
+ if(savePhase41==='sending')return 'Enviando à nuvem…';
+ if(savePhase41==='pending')return normal+' · envio pendente';
+ if(savePhase41==='review')return normal+' · enviado';
+ if(savePhase41==='error')return normal+' · tentar novamente';
+ return normal;
+}
+function renderSave40(){
+ const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;
+ let save=document.getElementById('v40-save-plan');
+ if(actions&&!save){save=button('Salvar planejamento',()=>window.salvarPlanejamentoConcluido(),'wf-btn wf-btn-primary');save.id='v40-save-plan';save.style.cssText='background:#00579d;color:white;border:1px solid #004578;min-height:44px;font-weight:700;padding:10px 16px;border-radius:8px';actions.prepend(save);}
+ if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;save.textContent=saveButtonLabel41('Salvar planejamento');save.setAttribute('aria-busy',String(!!submitJob40));}
+ document.querySelectorAll('button[onclick="enviarWorkflowAprovacao()"]').forEach(b=>{b.textContent=saveButtonLabel41('Concluir planejamento');b.disabled=!ready||!!submitJob40;});
+ const all=document.getElementById('v40-save-all');if(all){all.hidden=!admin();all.disabled=!ready||!!submitJob40;all.textContent=saveButtonLabel41('Salvar alterações');all.setAttribute('aria-busy',String(!!submitJob40));}
+ let hint=document.getElementById('v40-draft-state');const root=document.getElementById('planContent');
+ if(root&&!hint){hint=document.createElement('div');hint.id='v40-draft-state';hint.style.cssText='padding:8px 12px;margin:8px 0;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:12px';root.prepend(hint);}
+ if(hint)hint.textContent=admin()?'Rascunhos ficam neste dispositivo. Aprovar envia a decisão e os dados daquele planejamento; Salvar alterações conclui as demais edições administrativas.':'Salvar localmente confirma uma cópia neste aparelho. A proteção de emergência guarda os campos durante o preenchimento. Somente Concluir planejamento envia dados à nuvem e notifica o administrador. Realizada não exige aprovação.';
+}
 const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
 const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention'];
-function tell(text,error=false){errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.style.color=error?'#b45309':'#036642'} }
-function fail(e){console.error('[V29]',e);window.__ULTIMO_ERRO_NUVEM__={codigo:e.code||'erro',mensagem:e.message};tell('Alterações locais preservadas; '+(e.code==='permission-denied'?'Firebase recusou a permissão. Verifique as regras publicadas.':e.message),true)}
-function serial(fn){const next=chain.catch(()=>{}).then(fn);chain=next;return next}
+// V38: cota remota é diferente de espaço no dispositivo. Nunca limpar filas por falha de rede.
+let quotaUntil38=0,quotaReported38=false,cloudConfirmed38=false,flushQueued38=null;
+const QUOTA_MESSAGE38='Limite de gravações da nuvem atingido. Alterações ficam neste dispositivo quando o armazenamento local está disponível. O reenvio será tentado automaticamente; mantenha o sistema aberto ou reabra depois.';
+function quota38(e){return /resource-exhausted|quota exceeded/i.test(String(e?.code||'')+' '+String(e?.message||e||''));}
+let quotaTimer39=null,resumeTimer39=null;
+function hasWork39(){return pending.length>0||retryPending32||(admin()&&(needsReplay||(baseline&&!same(submittedData40(),baseline))));}
+function armQuota39(){
+ clearTimeout(quotaTimer39);const token=session;if(!token)return;
+ quotaTimer39=setTimeout(()=>{quotaTimer39=null;if(token!==session)return;resumeCycle39();},Math.max(1000,quotaUntil38-Date.now()+100));
+}
+function scheduleResume39(){clearTimeout(resumeTimer39);const token=session;resumeTimer39=setTimeout(()=>{resumeTimer39=null;if(token===session)resumeCycle39();},500);}
+function resumeCycle39(){
+ if(!session||!firebase.auth().currentUser||!ready||!navigator.onLine)return;
+ if(quotaUntil38>Date.now()){if(!quotaTimer39)armQuota39();return;}
+ // Ao vencer a pausa, uma tentativa nova é permitida. O aviso só sai com confirmação real.
+ if(hasWork39())scheduleFlush38().catch(fail);
+ if(profile()&&quotaReported38)sendPresenceV297(true);
+}
+function reportQuota38(){
+ const first=!quotaReported38,expired=quotaUntil38<=Date.now();quotaReported38=true;recoveryMode42=true;if(ready)/* Rascunho local até Concluir. */
+ // Logs repetidos do SDK não empurram indefinidamente a próxima tentativa.
+ if(expired)quotaUntil38=Date.now()+15*60000;
+ clearTimeout(retryTimer32);retryPending32=true;armQuota39();
+ if(ready&&(first||expired))localStore().catch(e=>console.warn('Não foi possível guardar o estado da pausa',e));
+ tell(QUOTA_MESSAGE38,true);renderPresenceV297();
+}
+setInterval(resumeCycle39,60000);
+window.addEventListener('online',resumeCycle39);
+window.addEventListener('pageshow',resumeCycle39);
+window.addEventListener('focus',resumeCycle39);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')resumeCycle39();});
+function confirmedWrite38(){recoveryMode42=false;const wasBlocked=quotaReported38;quotaUntil38=0;quotaReported38=false;clearTimeout(quotaTimer39);quotaTimer39=null;if(wasBlocked)scheduleResume39();}
+if(typeof firebase.onLog==='function')firebase.onLog(entry=>{if(/firestore/i.test(String(entry.name))&&quota38(entry.message))reportQuota38();},{level:'error'});
+// O SDK 8 distribuído em scripts separados nem sempre encaminha Firestore ao onLog.
+// Observar só o erro explícito do serviço; manter integralmente o console original.
+const consoleError38=console.error.bind(console);
+console.error=function(...args){consoleError38(...args);const message=args.filter(x=>typeof x==='string').join(' ');if(message.toLowerCase().includes('@firebase/firestore')&&quota38(message))reportQuota38();};
+function scheduleFlush38(){if(flushQueued38)return flushQueued38;const task=serial(flush);flushQueued38=task;task.then(()=>{if(flushQueued38===task)flushQueued38=null},()=>{if(flushQueued38===task)flushQueued38=null});return task;}
+function observeWait38(promise,label,ms=15000){let timer=setTimeout(()=>{tell(quotaReported38?QUOTA_MESSAGE38:label+' ainda aguarda confirmação da nuvem. A operação continua; novas tentativas não serão duplicadas.',true)},ms);return Promise.resolve(promise).finally(()=>clearTimeout(timer));}
+function tell(text,error=false){if(quotaReported38){text=QUOTA_MESSAGE38;error=true;}if(window.__LOCAL_CACHE_FAILED__){const warning='Armazenamento local cheio: mantenha esta aba aberta até confirmar o envio à nuvem. ';text=/dispositivo|salvas neste/i.test(text)?warning:warning+text;error=true;}errorMessage=error?text:'';const el=document.getElementById('saveStatus');if(el){el.textContent=text;el.classList.remove('hidden');el.setAttribute('role','status');el.setAttribute('aria-live','polite');el.style.color=error?'#b45309':'#036642'} }
+function fail(e){if(quota38(e)){reportQuota38();return}console.error('[V29]',e);window.__ULTIMO_ERRO_NUVEM__={codigo:e.code||'erro',mensagem:e.message};tell('Alterações locais preservadas; '+(e.code==='permission-denied'?'Firebase recusou a permissão. Verifique as regras publicadas.':e.message),true)}
+function serial(fn){const next=chain.catch(()=>{}).then(()=>observeWait38(Promise.resolve().then(fn),'Sincronização'));chain=next;return next}
 function ref(name){return firebase.firestore().collection('banco_senac').doc(name)}
 function inRegion(student,p){const region=student?.regiao||student?.regional||getRegiaoDaCidade(student?.cidade||student?.empresa?.cidade||'');return norm(region)===norm(p.regiao)}
 function owns(ctx,p,data=DB){const m=data.workflow_planejamento?.[ctx];const rows=data.planning?.[ctx]||[];return (m?.responsavelId===p.id||rows.some(x=>inRegion(x.student,p)))&&rows.every(x=>inRegion(x.student,p))}
@@ -13462,10 +13625,10 @@ function projection(data,p){
  bindStudents(d);return d;
 }
 function bindStudents(data){const students=new Map([...(data.quali||[]),...(data.tec||[])].map(a=>[String(a.id),a]));Object.values(data.planning||{}).forEach(rows=>{if(Array.isArray(rows))rows.forEach(row=>{const current=students.get(String(row.student?.id));if(current)row.student=current})});}
-function officialPlanRows(rows,current,data){if(!Array.isArray(rows))return rows;const students=new Map([...(data.quali||[]),...(data.tec||[])].map(a=>[String(a.id),a]));return rows.map(row=>{const old=(current||[]).find(x=>String(x.student?.id)===String(row.student?.id));return {...clone(row),student:clone(students.get(String(row.student?.id))||row.student),etapas:clone(old?.etapas||{}),status:old?.status||'Realizar'}});}
+function officialPlanRows(rows,current,data){if(!Array.isArray(rows))return rows;const students=new Map([...(data.quali||[]),...(data.tec||[])].map(a=>[String(a.id),a]));return rows.map(row=>{const old=(current||[]).find(x=>String(x.student?.id)===String(row.student?.id));return {...clone(row),student:clone(students.get(String(row.student?.id))||row.student),etapas:clone(row.etapas||old?.etapas||{}),status:old?.status||'Realizar'}});}
 
 function entities(d){const out={};maps.forEach(k=>Object.entries(d?.[k]||{}).forEach(([id,v])=>out[k+'\n'+id]=v));lists.forEach(k=>(d?.[k]||[]).forEach(v=>{if(v.id)out[k+'\n'+v.id]=v}));return out}
-function changes(before,after){const a=entities(before),b=entities(after),ops=[];for(const key of new Set([...Object.keys(a),...Object.keys(b)])){if(!same(a[key],b[key])){const [field,...rest]=key.split('\n');ops.push({id:fresh(),field,key:rest.join('\n'),before:a[key]??null,after:b[key]??null})}}return ops}
+function baseChanges54(before,after){const a=entities(before),b=entities(after),ops=[];for(const key of new Set([...Object.keys(a),...Object.keys(b)])){if(!same(a[key],b[key])){const [field,...rest]=key.split('\n');ops.push({id:fresh(),field,key:rest.join('\n'),before:a[key]??null,after:b[key]??null})}}return ops}
 function valueAt(d,o){return maps.includes(o.field)?d[o.field]?.[o.key]:(d[o.field]||[]).find(x=>x.id===o.key)}
 function put(d,o,value){if(maps.includes(o.field)){d[o.field]??={};if(value===null)delete d[o.field][o.key];else d[o.field][o.key]=clone(value)}else{d[o.field]??=[];d[o.field]=d[o.field].filter(x=>x.id!==o.key);if(value!==null)d[o.field].push(clone(value))}}
 function merge(base,local,remote,path='base'){
@@ -13541,7 +13704,7 @@ function reconcileGlobal(base,local,remote){
  return result;
 }
 function pendingReviews(){const done=new Set(DB._syncReviewedIds||[]);return Object.values(DB._syncReviews||{}).filter(x=>!done.has(x.id));}
-function preserveStableUiStateV35(incoming,current=DB){const data=clone(incoming||{}),local=current||{};for(const [ctx,rows] of Object.entries(data.planning||{})){if(!Array.isArray(rows))continue;const oldRows=local.planning?.[ctx]||[];for(const row of rows){const old=oldRows.find(x=>String(x.student?.id)===String(row.student?.id));if(!old)continue;row.etapas={...(row.etapas||{})};for(const key of ['pedagogico','supervisor']){const a=old.etapas?.[key],b=row.etapas?.[key];if(a?.ok&&(!b?.ok||String(a.em||'')>String(b.em||'')))row.etapas[key]=clone(a)}if(old.status==='Realizada'&&row.status!=='Realizada')row.status='Realizada'}}return data;}
+function preserveStableUiStateV35(incoming,current=DB){const data=clone(incoming||{}),local=current||{};for(const [ctx,rows] of Object.entries(data.planning||{})){if(!Array.isArray(rows))continue;const oldRows=local.planning?.[ctx]||[];for(const row of rows){const old=oldRows.find(x=>String(x.student?.id)===String(row.student?.id));if(!old)continue;row.etapas={...(row.etapas||{})};for(const key of ['pedagogico','supervisor']){const a=old.etapas?.[key],b=row.etapas?.[key];if(a?.ok&&(!b?.ok||String(a.em||'')>String(b.em||'')))row.etapas[key]=clone(a)}/* O status recebido e aprovado é autoritativo, inclusive reversões. */}}return data;}
 function applyData(data){
  data=preserveStableUiStateV35(data);
  // V27 usa limites globais: um recorte regional precisa de limites próprios.
@@ -13549,27 +13712,56 @@ function applyData(data){
   const defaults={planning:{},planning_logistics:{},planning_lunch:{},planning_admin:{},regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],custom_passwords:{}};
   DB={...defaults,...clone(data)};window.DB=DB;
   ['quali','tec'].forEach(k=>DB[k]=(DB[k]||[]).map(a=>({...a,ini:a.ini?new Date(a.ini):null,fim:a.fim?new Date(a.fim):null,visits:(a.visits||[]).map(v=>({...v,date:v.date?new Date(v.date):null}))})));
- }else processDataLoad(data);bindStudents(DB);
+ }else processDataLoad(data);bindStudents(DB);window.recoverEmergency54?.(DB);
 }
 function quotaErrorV37(e){return e?.name==='QuotaExceededError'||e?.code===22||/quota/i.test(String(e?.message||e||''))}
 function packLocalV37(value){return LZString.compressToUTF16(JSON.stringify(value))}
 function unpackLocalV37(value){if(!value?.compressedV37)return value;try{return JSON.parse(LZString.decompressFromUTF16(value.payload)||'null')}catch(e){console.warn('Cache local compactado inválido:',e);return null}}
-async function localStore(){
- const db=await dbPromise,currentRevision=revision;
- const raw={data:clone(DB),baseline:clone(baseline),generation,pending:clone(pending),revision:currentRevision,collabVersion,collabQueue:clone(collabQueue)};
- const item={compressedV37:true,payload:packLocalV37(raw),revision:currentRevision,updatedAt:Date.now()};
+// Compactação do cache fora da interface; fila única consolida chamadas simultâneas.
+let cacheWorker40=null,localTask40=null,localAgain40=false,compressionId40=0;
+const compressionTasks40=new Map();
+async function compress40(raw,base64=false){
+ const fallback=()=>LZString[base64?'compressToBase64':'compressToUTF16'](JSON.stringify(raw));
+ if(typeof Worker!=='function')return fallback();
  try{
-  await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);st.delete('root');st.delete('last_known_good');st.put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
+  if(!cacheWorker40){const url=URL.createObjectURL(new Blob(["/* MIT License\n\nCopyright (c) 2013 pieroxy\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n */\nvar LZString=function(){var r=String.fromCharCode,o=\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\",n=\"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$\",e={};function t(r,o){if(!e[r]){e[r]={};for(var n=0;n<r.length;n++)e[r][r.charAt(n)]=n}return e[r][o]}var i={compressToBase64:function(r){if(null==r)return\"\";var n=i._compress(r,6,function(r){return o.charAt(r)});switch(n.length%4){default:case 0:return n;case 1:return n+\"===\";case 2:return n+\"==\";case 3:return n+\"=\"}},decompressFromBase64:function(r){return null==r?\"\":\"\"==r?null:i._decompress(r.length,32,function(n){return t(o,r.charAt(n))})},compressToUTF16:function(o){return null==o?\"\":i._compress(o,15,function(o){return r(o+32)})+\" \"},decompressFromUTF16:function(r){return null==r?\"\":\"\"==r?null:i._decompress(r.length,16384,function(o){return r.charCodeAt(o)-32})},compressToUint8Array:function(r){for(var o=i.compress(r),n=new Uint8Array(2*o.length),e=0,t=o.length;e<t;e++){var s=o.charCodeAt(e);n[2*e]=s>>>8,n[2*e+1]=s%256}return n},decompressFromUint8Array:function(o){if(null==o)return i.decompress(o);for(var n=new Array(o.length/2),e=0,t=n.length;e<t;e++)n[e]=256*o[2*e]+o[2*e+1];var s=[];return n.forEach(function(o){s.push(r(o))}),i.decompress(s.join(\"\"))},compressToEncodedURIComponent:function(r){return null==r?\"\":i._compress(r,6,function(r){return n.charAt(r)})},decompressFromEncodedURIComponent:function(r){return null==r?\"\":\"\"==r?null:(r=r.replace(/ /g,\"+\"),i._decompress(r.length,32,function(o){return t(n,r.charAt(o))}))},compress:function(o){return i._compress(o,16,function(o){return r(o)})},_compress:function(r,o,n){if(null==r)return\"\";var e,t,i,s={},u={},a=\"\",p=\"\",c=\"\",l=2,f=3,h=2,d=[],m=0,v=0;for(i=0;i<r.length;i+=1)if(a=r.charAt(i),Object.prototype.hasOwnProperty.call(s,a)||(s[a]=f++,u[a]=!0),p=c+a,Object.prototype.hasOwnProperty.call(s,p))c=p;else{if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++),s[p]=f++,c=String(a)}if(\"\"!==c){if(Object.prototype.hasOwnProperty.call(u,c)){if(c.charCodeAt(0)<256){for(e=0;e<h;e++)m<<=1,v==o-1?(v=0,d.push(n(m)),m=0):v++;for(t=c.charCodeAt(0),e=0;e<8;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}else{for(t=1,e=0;e<h;e++)m=m<<1|t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t=0;for(t=c.charCodeAt(0),e=0;e<16;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1}0==--l&&(l=Math.pow(2,h),h++),delete u[c]}else for(t=s[c],e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;0==--l&&(l=Math.pow(2,h),h++)}for(t=2,e=0;e<h;e++)m=m<<1|1&t,v==o-1?(v=0,d.push(n(m)),m=0):v++,t>>=1;for(;;){if(m<<=1,v==o-1){d.push(n(m));break}v++}return d.join(\"\")},decompress:function(r){return null==r?\"\":\"\"==r?null:i._decompress(r.length,32768,function(o){return r.charCodeAt(o)})},_decompress:function(o,n,e){var t,i,s,u,a,p,c,l=[],f=4,h=4,d=3,m=\"\",v=[],g={val:e(0),position:n,index:1};for(t=0;t<3;t+=1)l[t]=t;for(s=0,a=Math.pow(2,2),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;c=r(s);break;case 2:return\"\"}for(l[3]=c,i=c,v.push(c);;){if(g.index>o)return\"\";for(s=0,a=Math.pow(2,d),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;switch(c=s){case 0:for(s=0,a=Math.pow(2,8),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 1:for(s=0,a=Math.pow(2,16),p=1;p!=a;)u=g.val&g.position,g.position>>=1,0==g.position&&(g.position=n,g.val=e(g.index++)),s|=(u>0?1:0)*p,p<<=1;l[h++]=r(s),c=h-1,f--;break;case 2:return v.join(\"\")}if(0==f&&(f=Math.pow(2,d),d++),l[c])m=l[c];else{if(c!==h)return null;m=i+i.charAt(0)}v.push(m),l[h++]=i+m.charAt(0),i=m,0==--f&&(f=Math.pow(2,d),d++)}}};return i}();\"function\"==typeof define&&define.amd?define(function(){return LZString}):\"undefined\"!=typeof module&&null!=module?module.exports=LZString:\"undefined\"!=typeof angular&&null!=angular&&angular.module(\"LZString\",[]).factory(\"LZString\",function(){return LZString});\nself.onmessage=e=>{const {id,raw,base64}=e.data;try{self.postMessage({id,payload:LZString[base64?\"compressToBase64\":\"compressToUTF16\"](JSON.stringify(raw))})}catch(error){self.postMessage({id,error:String(error)})}};"],{type:'application/javascript'}));cacheWorker40=new Worker(url);URL.revokeObjectURL(url);
+   cacheWorker40.onmessage=e=>{const task=compressionTasks40.get(e.data.id);if(!task)return;compressionTasks40.delete(e.data.id);e.data.error?task.reject(Error(e.data.error)):task.resolve(e.data.payload);};
+   cacheWorker40.onerror=e=>{cacheWorker40?.terminate();cacheWorker40=null;for(const task of compressionTasks40.values())task.reject(e);compressionTasks40.clear();};
+  }
+  return await new Promise((resolve,reject)=>{const id=++compressionId40;compressionTasks40.set(id,{resolve,reject});try{cacheWorker40.postMessage({id,raw,base64})}catch(e){compressionTasks40.delete(id);reject(e)}});
+ }catch(e){return fallback();}
+}
+const packLocalAsync40=raw=>compress40(raw);
+function localStore(){
+ localAgain40=true;
+ if(!localTask40)localTask40=(async()=>{let result;do{localAgain40=false;result=await localStoreOnce40();}while(localAgain40);return result;})().catch(e=>{window.__LOCAL_CACHE_FAILED__=true;localReceipt42(false);throw e}).finally(()=>{localTask40=null;});
+ return localTask40;
+}
+async function localStoreOnce40(){
+ const cacheOwner40=uid();const db=await dbPromise,currentRevision=revision;if(cacheOwner40!==uid())return false;
+ const raw={data:clone(DB),baseline,generation,pending,revision:currentRevision,collabVersion,collabQueue,submitted40,quotaPause:{until:quotaUntil38,reported:quotaReported38},recovered42,recoveryMode42};
+ const item={compressedV37:true,payload:await packLocalAsync40(raw),revision:currentRevision,updatedAt:Date.now()};
+ try{
+  await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);if(typeof st.get==='function'){const previous=st.get('v29:'+cacheOwner40);previous.onsuccess=()=>{if(previous.result&&previous.result.payload!==item.payload)st.put(previous.result,'v42:previous:'+cacheOwner40);st.put(item,'v29:'+cacheOwner40);};}else st.put(item,'v29:'+cacheOwner40);tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
  }catch(e){
   if(!quotaErrorV37(e))throw e;
   console.warn('Armazenamento local cheio; sincronização com a nuvem continuará.',e);
-  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME),req=st.openCursor();req.onsuccess=()=>{const c=req.result;if(!c)return;const k=String(c.key);if(k==='root'||k==='last_known_good'||(k.startsWith('v29:')&&k!=='v29:'+uid()))c.delete();c.continue()};req.onerror=()=>no(req.error);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(cleanError){console.warn('Limpeza local parcial:',cleanError)}
-  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+uid());tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(finalError){console.warn('Sem espaço para cache local; dados seguem na fila e serão enviados ao Firebase.',finalError)}
+  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME),req=st.openCursor();req.onsuccess=()=>{const c=req.result;if(!c)return;const k=String(c.key);/* Preservar caches existentes, inclusive de outras versões. */c.continue()};req.onerror=()=>no(req.error);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(cleanError){console.warn('Limpeza local parcial:',cleanError)}
+  try{await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite');tx.objectStore(STORE_NAME).put(item,'v29:'+cacheOwner40);tx.oncomplete=ok;tx.onerror=()=>no(tx.error)})}catch(finalError){window.__LOCAL_CACHE_FAILED__=true;localReceipt42(false);console.warn('Sem espaço para cache local; mantenha a aba aberta até confirmação na nuvem.',finalError);return false}
  }
- if(revision===currentRevision)lastLocal=clone(raw.data);
+ window.__LOCAL_CACHE_FAILED__=false;if(cacheOwner40===uid()){window.emergencyCommitted54?.(raw.data,cacheOwner40);lastDurable42=Date.now();if(revision===currentRevision)lastLocal=raw.data;localReceipt42(true);}
  return true;
 }
-async function localRead(){const db=await dbPromise;return new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readonly'),r=tx.objectStore(STORE_NAME).get('v29:'+uid());r.onsuccess=()=>ok(unpackLocalV37(r.result));r.onerror=()=>no(r.error)})}
+async function localRead(){
+ const owner=uid(),db=await dbPromise;
+ const read=key=>new Promise((ok,no)=>{const r=db.transaction(STORE_NAME,'readonly').objectStore(STORE_NAME).get(key);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+ const current=await read('v29:'+owner),value=unpackLocalV37(current);
+ if(value?.data)return value;
+ const previous=unpackLocalV37(await read('v42:previous:'+owner));
+ if(previous?.data){tell('Cópia anterior deste dispositivo recuperada. Conferindo as pendências.',true);return previous;}
+ if(current)throw Error('A cópia local não pôde ser lida. Não limpe os dados do navegador; preserve este dispositivo para recuperação.');
+ return null;
+}
 function refreshImmediateV35(){if(!ready)return;if(editingPlan()){refreshDeferred=true;refreshActions();return;}try{setupFilters();setupPlanningFilters();initPlanSelector();if(profile()&&STATE.planContext&&!owns(STATE.planContext,profile()))STATE.planContext=Object.keys(DB.planning||{}).find(c=>owns(c,profile()))||null;renderPlanningTable();if(admin()&&!document.getElementById('viewDashboard')?.classList.contains('hidden'))runFilter();window.atualizarCidadesUsuarioV24?.();refreshActions();if(document.getElementById('workflowNotificationsModal')?.classList.contains('open'))showNotifications(false)}catch(e){console.warn('Atualização visual',e)}}
 let refreshTimerV35=null;function refresh(){clearTimeout(refreshTimerV35);refreshTimerV35=setTimeout(refreshImmediateV35,180)}
 function openShell(){const first=shellSession!==uid();if(first){shellSession=uid();startApp(profile()?'planning_user':email()==='visitante@senac.br'?'visitor':'admin',profile()?.regiao||'Todas');}window.APP_READ_ONLY=!ready||email()==='visitante@senac.br';document.body.classList.toggle('v29-loading',!ready);if(profile()){STATE.userType='planning_user';STATE.userRegion=profile().regiao;document.getElementById('roleDisplay').textContent='Planejamento · '+profile().nome;if(first)switchTab('planejamento')}refreshActions()}
@@ -13580,13 +13772,12 @@ const REGIONAL_CHUNK_SIZE_V291=240000;
 function regionalChunkRefV291(userId,generation,index){
  return ref('resposta_'+userId+'__'+generation+'__'+String(index).padStart(5,'0'));
 }
-async function publishRegions(data){
+async function publishRegions(data, expectedGeneration=generation){
  if(!admin())return;
  const f=firebase.firestore();
  for(const [e,p] of Object.entries(USERS)){
   const main=ref('resposta_'+p.id);
-  const previous=await main.get();
-  const previousMeta=previous.exists?previous.data():null;
+  let previousMeta=null;
   const generation=Date.now()+'_'+fresh();
   const envelope={
    schema:'senac-regional-envelope-v29.1',
@@ -13597,8 +13788,12 @@ async function publishRegions(data){
    ack:data._collabAck?.[p.id]||[],
    errors:data._collabErrors?.[p.id]||[]
   };
-  const packed=LZString.compressToBase64(JSON.stringify(envelope));
-  const checksum=hashV9637(packed);if(previousMeta?.checksum===checksum)continue;
+  const packed=await compress40(envelope,true);
+  const checksum=hashV9637(packed);
+  // A comparação em memória evita até a leitura do manifesto em publicações idênticas.
+  if(regionalPublished40.get(p.id)===packed)continue;
+  const previous=await main.get();previousMeta=previous.exists?previous.data():null;
+  if(previousMeta?.checksum===checksum){regionalPublished40.set(p.id,packed);continue;}
   if(!packed)throw Error('Não foi possível compactar o recorte de '+p.nome+'.');
   const parts=[];
   for(let i=0;i<packed.length;i+=REGIONAL_CHUNK_SIZE_V291)parts.push(packed.slice(i,i+REGIONAL_CHUNK_SIZE_V291));
@@ -13613,12 +13808,19 @@ async function publishRegions(data){
    });
    await batch.commit();
   }
-  await main.set({
+  // A resposta só pode apontar para a geração global ainda vigente.
+  const published=await f.runTransaction(async tx=>{
+   const root=await tx.get(ref('dados_principais'));
+   const meta=root.exists?root.data():{};
+   if(String(meta.generation||meta.updatedAt||'')!==String(expectedGeneration||''))return;
+   tx.set(main,{
    schema:'senac-regional-v29.1',chunked:true,userId:p.id,email:e,
    storageGeneration:generation,dataGeneration:String(data.updatedAt),
    chunkCount:parts.length,totalLength:packed.length,checksum,
    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  });return true;
   });
+  if(published)regionalPublished40.set(p.id,packed);
   // Partes antigas são preservadas para leitores concorrentes.
 
  }
@@ -13653,56 +13855,96 @@ async function writeGlobal(data,expected){
  if(archivedLast)PROTECAO_ANTIPERDA_V27.autorizar('substituicao',0);
  try{PROTECAO_ANTIPERDA_V27.validar(data,'gravação')}finally{if(archivedLast)PROTECAO_ANTIPERDA_V27.encerrar()}
  const f=firebase.firestore(),root=ref('dados_principais');const gen=Date.now()+'_'+fresh();data.updatedAt=Date.now();
- const payload=LZString.compressToBase64(JSON.stringify(data)),parts=[];for(let i=0;i<payload.length;i+=300000)parts.push(payload.slice(i,i+300000));
+ const payload=await compress40(data,true),parts=[];for(let i=0;i<payload.length;i+=300000)parts.push(payload.slice(i,i+300000));
  for(let i=0;i<parts.length;i+=400){const batch=f.batch();parts.slice(i,i+400).forEach((conteudo,j)=>batch.set(root.collection('partes').doc(gen+'_'+String(i+j).padStart(5,'0')),{generation:gen,indice:i+j,conteudo}));await batch.commit()}
  await f.runTransaction(async tx=>{const doc=await tx.get(root),actual=doc.exists?String(doc.data().generation||doc.data().updatedAt||''):null;if(actual!==expected)throw Object.assign(Error('A base mudou em outro computador. A gravação foi interrompida para preservar as duas versões.'),{code:'senac/stale-generation'});tx.set(root,{chunked:true,generation:gen,chunkCount:parts.length,totalLength:payload.length,checksum:hashV9637(payload),updatedAt:data.updatedAt,schema:'senac-cloud-v29',updatedBy:email()})});
  // Gerações anteriores não são apagadas durante leituras concorrentes.
- return {data,generation:gen};
+ confirmedWrite38();return {data,generation:gen};
 }
-async function flush(){
+let retryTimer32=null,retryDelay32=1000,retryPending32=false;
+function scheduleRetry32(){
+ retryPending32=true;clearTimeout(retryTimer32);const token=session;
+ retryTimer32=setTimeout(()=>{if(token!==session||!ready)return;scheduleFlush38().catch(fail)},retryDelay32+Math.floor(Math.random()*500));
+ retryDelay32=Math.min(30000,retryDelay32*2);
+}
+addEventListener('online',()=>{if(ready)scheduleFlush38().catch(fail)});
+async function rebase32(){
+ const doc=await ref('dados_principais').get({source:'server'});
+ if(!doc.exists)throw Error('Base remota ausente; alterações locais preservadas.');
+ const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');
+ if(gen===generation)return;
+ const remote=await decode(meta),next=reconcileGlobal(baseline,clone(submittedData40()),remote);
+ baseline=clone(remote);generation=gen;applySubmitted40(next);await localStore();
+}
+async function flush(){activeFlush42++;try{return await flushGuarded42()}finally{activeFlush42--;}}
+async function flushGuarded42(){
+ if(quotaUntil38>Date.now()){armQuota39();tell(QUOTA_MESSAGE38,true);return false;}
+ try{return await flushOnce32()}catch(e){
+  if(quota38(e)){reportQuota38();await localStore();return false;}
+  if(['unavailable','deadline-exceeded','aborted'].includes(e.code)){
+   recoveryMode42=true;/* Rascunho local até Concluir. */await localStore();scheduleRetry32();tell('Alterações salvas neste dispositivo; conexão ocupada. Nova tentativa automática.');return false;
+  }
+  throw e;
+ }
+}
+async function flushOnce32(){
  if(!ready||!firebase.auth().currentUser||email()==='visitante@senac.br')return;
- if(!navigator.onLine){tell('Salvo neste dispositivo; aguardando conexão.');return}
+ if(!navigator.onLine){await localStore();scheduleRetry32();tell('Salvo neste dispositivo; aguardando conexão.');return false}
  if(profile()){
-  if(!pending.length&&!collabQueue.length&&!reviewedErrorsDirty){tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();
+  if(!pending.length&&!collabQueue.length&&!reviewedErrorsDirty){retryPending32=false;tell('Nenhuma alteração pendente para enviar.');return}const p=profile(),doc=ref('colaboracao_'+p.id),sent=clone(pending),version=fresh();let uploaded=[],didWrite38=false;
   await firebase.firestore().runTransaction(async tx=>{
-   const snap=await tx.get(doc),current=snap.exists?snap.data():null;
+   didWrite38=false;const snap=await tx.get(doc),current=snap.exists?snap.data():null;
    // V29.3: mescla as operações existentes no servidor com as deste dispositivo.
    // Assim celular, computador e outras sessões do mesmo usuário não se sobrescrevem.
    const remoteOps=current?.schema==='senac-collaboration-v29'&&Array.isArray(current.ops)?current.ops:[];
    const ops=[...remoteOps,...collabQueue,...sent]
     .filter(o=>o&&typeof o.id==='string'&&!acknowledgedOps.has(o.id))
     .filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);
-   const payload=JSON.stringify(ops);
-   if(new TextEncoder().encode(payload).length>800000||ops.length>2000)throw Error('Fila de colaboração muito grande. Aguarde a confirmação do administrador.');
-   tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops,reviewedErrors:[...reviewedErrorIds].slice(-1000),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+   uploaded=[];let bytes=2;const encoder=new TextEncoder();
+   for(const op of ops){const size=encoder.encode(JSON.stringify(op)).length+1;
+    if(size>600000){if(!uploaded.length)throw Error('Uma alteração individual excede o limite de envio. A cópia local foi preservada; exporte-a para recuperação assistida.');break;}
+    if(bytes+size>600000||uploaded.length>=1000)break;
+    uploaded.push(op);bytes+=size;
+   }
+   // Nunca excede o documento de colaboração; a fila completa continua no IndexedDB.
+
+   const reviewed=[...reviewedErrorIds].slice(-1000);
+   // Uma fila já entregue não é regravada só porque alguém clicou em Sincronizar.
+   if(current?.schema==='senac-collaboration-v29'&&same(remoteOps,uploaded)&&same(current.reviewedErrors||[],reviewed))return;
+   didWrite38=true;tx.set(doc,{schema:'senac-collaboration-v29',userId:p.id,email:email(),version,ops:uploaded,reviewedErrors:reviewed,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
   });
-  collabVersion=version;reviewedErrorsDirty=false;collabQueue.push(...sent.filter(o=>!collabQueue.some(x=>x.id===o.id)));pending=pending.filter(o=>!sent.some(s=>s.id===o.id));await localStore();tell('Enviado à nuvem; aguardando processamento do painel administrativo.');return;
+  if(didWrite38)confirmedWrite38();collabVersion=version;reviewedErrorsDirty=false;collabQueue.push(...uploaded.filter(o=>!collabQueue.some(x=>x.id===o.id)));const uploadedIds=new Set(uploaded.map(o=>o.id));pending=pending.filter(o=>!uploadedIds.has(o.id));retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);await localStore();tell(pending.length?'Parte enviada; '+pending.length+' alteração(ões) preservada(s) neste dispositivo, aguardando confirmação para continuar.':'Enviado à nuvem; aguardando processamento do painel administrativo.');return;
  }
  if(!admin())return;
- if(same(DB,baseline)){await publishRegions(DB);tell('Base atualizada pela nuvem.');return}
+ if(!needsReplay&&!retryPending32&&same(submittedData40(),baseline)){tell('Nenhum envio pendente. Rascunhos não são enviados por Sincronizar.');return true;}
+ needsReplay=false;await rebase32();
+ if(same(submittedData40(),baseline)){await publishRegions(submittedData40());retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);tell('Base atualizada pela nuvem.');return true}
  for(let attempt=0;attempt<3;attempt++){
-  const sent=clone(DB);let result;
+  const sent=clone(submittedData40());let result;
   try{result=await writeGlobal(sent,generation)}catch(e){
-   if(e.code!=='senac/stale-generation'||attempt===2)throw e;
-   // Releitura do servidor; a cópia local permanece intacta se houver conflito real.
-   const doc=await ref('dados_principais').get({source:'server'});
-   if(!doc.exists)throw Error('Base remota ausente; alterações locais preservadas.');
-   const meta=doc.data(),remote=await decode(meta),next=reconcileGlobal(baseline,clone(DB),remote);
-   baseline=clone(remote);generation=String(meta.generation||meta.updatedAt||'');applyData(next);await localStore();
+   if(e.code!=='senac/stale-generation')throw e;
+   await rebase32();
+   if(attempt===2){scheduleRetry32();tell('Atualizações simultâneas recebidas; alterações locais salvas. Reenvio automático em andamento.');return false;}
    continue;
   }
-  const next=reconcileGlobal(sent,clone(DB),result.data);baseline=clone(result.data);generation=result.generation;applyData(next);await localStore();await publishRegions(result.data);tell(pendingReviews().length?'Salvo na nuvem; há divergências preservadas em Notificações.':'Salvo e confirmado na nuvem.');refresh();return;
+  retryPending32=false;retryDelay32=1000;clearTimeout(retryTimer32);const next=reconcileGlobal(sent,clone(submittedData40()),result.data);baseline=clone(result.data);generation=result.generation;applySubmitted40(next);await localStore();await publishRegions(result.data,result.generation);if(!same(submittedData40(),baseline))scheduleRetry32();tell(pendingReviews().length?'Salvo na nuvem; há divergências preservadas em Notificações.':'Salvo e confirmado na nuvem.');refresh();return;
  }
 }
 if(navigator.storage?.persist)navigator.storage.persist().catch(()=>false);
 window.saveToStorage=async function(){
- if(!ready)return false;if(lastLocal&&same(DB,lastLocal))return true;if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
- if(profile()){
-  // Configuração global nunca faz parte da colaboração regional.
-  DB.regioes_map=clone(baseline.regioes_map||{});DB.rede_cidades=clone(baseline.rede_cidades||{});
-  const ops=changes(lastLocal||baseline,DB);pending.push(...ops);
- }
- revision++;lastLocal=clone(DB);await localStore();tell('Salvo neste dispositivo; sincronização pendente.');clearTimeout(writeTimer);writeTimer=setTimeout(()=>serial(flush).catch(fail),450);return true;
+ if(!ready)return false;
+ if(window.APP_READ_ONLY||email()==='visitante@senac.br')throw Error('Modo somente leitura.');
+ if(lastRequested42&&same(DB,lastRequested42)&&localTask40)return localTask40;
+ if(!window.__LOCAL_CACHE_FAILED__&&lastLocal&&same(DB,lastLocal))return true;
+ if(!submitted40)submitted40=clone(baseline||lastLocal||DB);
+ if(profile()){DB.regioes_map=clone(baseline.regioes_map||{});DB.rede_cidades=clone(baseline.rede_cidades||{});}
+ if(quotaReported38||!navigator.onLine||recoveryMode42){recoveryMode42=true;/* Rascunho local até Concluir. */}
+ revision++;const requested=clone(DB);lastRequested42=requested;updateDraftState40();
+ try{
+  const saved=await localStore();if(!saved)return false;
+  tell(recoveryMode42?'Salvo neste dispositivo. Apenas planejamentos já concluídos estão na fila da nuvem.':'Cópia de segurança local atualizada. A nuvem só recebe ao Concluir planejamento.');return true;
+ }catch(e){window.__LOCAL_CACHE_FAILED__=true;localReceipt42(false);throw e}
+ finally{if(lastRequested42===requested)lastRequested42=null;}
 };
 // V29.3: sincronização manual completa e multidispositivo.
 const syncManual31=()=>serial(async()=>{
@@ -13712,26 +13954,36 @@ const syncManual31=()=>serial(async()=>{
  tell('Conectando ao Firebase e verificando alterações de todos os dispositivos…');
  await firebase.firestore().enableNetwork();
  if(profile()){
-  await flush();
+  const sent=await flush();
   const c=await ref('colaboracao_'+profile().id).get({source:'server'});
   if(c.exists)await receiveOwnCollaboration(c,session);
   const resposta=await ref('resposta_'+profile().id).get({source:'server'});
   if(resposta.exists)await receiveRegion(resposta,session);
   if(pending.length||collabQueue.length)tell('Alterações sincronizadas entre dispositivos; aguardando processamento administrativo.');
-  else tell('Sua região está atualizada com a resposta confirmada pelo administrador.');
-  return true;
+  else tell('Sua região está atualizada. Para enviar rascunhos, use Concluir planejamento.');
+  return sent!==false&&!pending.length&&!collabQueue.length;
  }
  if(admin()){
+  await rebase32();
   for(const p of Object.values(USERS)){
    const c=await ref('colaboracao_'+p.id).get({source:'server'});
    if(c.exists){inbox[p.id]=c.data();await ingest(p,c.data())}
   }
-  await flush();refresh();tell('Sincronização administrativa concluída.');return true;
+  const saved=await flush();refresh();if(saved===false)return false;tell('Sincronização administrativa concluída. Para enviar rascunhos, use Salvar planejamento ou Salvar alterações.');return true;
  }
  await flush();return true;
 }).catch(e=>{fail(e);throw e});
-let manualSyncBusy=false;
-window.sincronizarAgoraNuvem=async()=>{if(manualSyncBusy)return;manualSyncBusy=true;const b=document.getElementById('v29-sync');if(b){b.disabled=true;b.textContent='Sincronizando…'}tell('Iniciando sincronização…');try{await saveToStorage();await syncManual31();if(b)b.textContent='Sincronização verificada ✓';}catch(e){if(b)b.textContent='Falha: tentar novamente';throw e}finally{manualSyncBusy=false;if(b)b.disabled=false}};
+let manualSyncBusy=false,manualJob38=null;
+window.sincronizarAgoraNuvem=async()=>{
+ const b=document.getElementById('v29-sync');
+ if(manualJob38){tell(quotaReported38?QUOTA_MESSAGE38:'A sincronização anterior ainda aguarda confirmação. Os dados locais continuam preservados.',true);return false;}
+ manualSyncBusy=true;if(b){b.disabled=true;b.textContent='Verificando…'}tell('Verificando alterações e confirmação da nuvem…');
+ const job=(async()=>{await saveToStorage();clearTimeout(writeTimer);return syncManual31()})();manualJob38=job;
+ const settle=()=>{if(manualJob38===job)manualJob38=null;manualSyncBusy=false;if(b)b.disabled=false};
+ const result=job.then(value=>{settle();if(b)b.textContent=value===false||quotaReported38||retryPending32||pending.length||collabQueue.length?'Envio / confirmação pendente':'Sincronização verificada ✓';return value;},e=>{settle();fail(e);if(b)b.textContent='Não confirmado · tentar novamente';return false;});
+ let timer;const deadline=new Promise(resolve=>{timer=setTimeout(()=>{if(b){b.disabled=false;b.textContent=quotaReported38?'Limite da nuvem atingido':'Aguardando confirmação'}tell(quotaReported38?QUOTA_MESSAGE38:'A nuvem não confirmou em 15 segundos. A operação continua e os dados locais foram mantidos.',true);resolve(false)},15000)});
+ try{return await Promise.race([result,deadline]);}finally{clearTimeout(timer)}
+};
 window.sincronizarComNuvem=()=>window.sincronizarAgoraNuvem();
 window.salvarNuvemIntegralV9637=async()=>{if(!admin())throw Error('Gravação global permitida somente ao administrador.');return serial(flush)};
 function validateOp(o,p,data){
@@ -13743,15 +13995,16 @@ function validateOp(o,p,data){
   if(!existing&&o.field!=='planning'&&!(o.field==='workflow_planejamento'&&v.responsavelId===p.id)&&data.workflow_planejamento?.[o.key]?.responsavelId!==p.id)throw Error('Planejamento ainda não cadastrado.');
   if(o.field==='planning'){
    if(!Array.isArray(v)||!v.every(x=>{const a=[...(data.quali||[]),...(data.tec||[])].find(a=>String(a.id)===String(x.student?.id));return a&&inRegion(a,p)&&inRegion(x.student,p)}))throw Error('Aluno fora da região ou ausente na base oficial.');
-   const old=data.planning?.[o.key]||[];if(v.some(x=>{const a=old.find(y=>String(y.student?.id)===String(x.student?.id));return (a?a.status||'Realizar':'Realizar')!==(x.status||'Realizar')}))throw Error('Mudança de status deve ser solicitada.');
+   const old=data.planning?.[o.key]||[];if(v.some(x=>!['Realizada','Realizar','Não realizada'].includes(x.status||'Realizar')))throw Error('Status inválido.');
   }
+  if(o.field==='cadastro_planejamento')validateStudentPatch54(v,p,data);
   if(o.field==='workflow_planejamento'&&(v.responsavelId!==p.id||!['rascunho','pendente','devolvido'].includes(v.status)||v.aprovadoPor||v.aprovadoEm))throw Error('Aprovação é exclusiva do administrador.');
  }else{
   if(v===null)throw Error('Solicitações e notificações não podem ser apagadas pelo usuário.');
   if(o.field==='planning_attention'){
    const prev=valueAt(data,o);if(!prev||prev.status!=='pendente'||!owns(prev.contexto,p,data)||v.status!=='ajustado'||v.ajustadoPor!==e||!v.ajustadoEm||!same({...v,status:prev.status,ajustadoPor:prev.ajustadoPor,ajustadoEm:prev.ajustadoEm},prev))throw Error('Somente a confirmação de ajuste da própria região é permitida.');
   }
-  if(o.field==='solicitacoes_status_visita'&&(v.solicitadoPor!==e||v.statusSolicitacao!=='pendente'||!owns(v.contexto,p,data)))throw Error('Solicitação de status inválida.');
+  if(o.field==='solicitacoes_status_visita'&&(v.solicitadoPor!==e||!['pendente','concluido_usuario'].includes(v.statusSolicitacao)||!owns(v.contexto,p,data)))throw Error('Solicitação de status inválida.');
   if(o.field==='solicitacoes_exclusao'&&(v.solicitante!==e||v.status!=='pendente'||!owns(v.contexto,p,data)))throw Error('Solicitação de exclusão inválida.');
   if(o.field==='solicitacoes_cidades'&&(v.solicitante!==e||v.status!=='pendente'||norm(v.regiao)!==norm(p.regiao)||!String(v.cidade||'').trim()))throw Error('Solicitação de cidade inválida.');
   if(o.field==='notificacoes_planejamento'){
@@ -13761,7 +14014,7 @@ function validateOp(o,p,data){
 }
 async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
- let candidate=clone(DB),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
+ let candidate=clone(submittedData40()),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
  const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
  for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=o.field==='planning'?merge(officialPlanRows(o.before,current,candidate),officialPlanRows(o.after,current,candidate),officialPlanRows(current,current,candidate),o.field+'.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
  // V29.7: recupera pedido de aprovação que chegou apenas como notificação.
@@ -13776,17 +14029,18 @@ async function ingest(p,message){
   candidate.workflow_planejamento[ctx]={...(current||{}),contexto:ctx,status:'pendente',responsavelId:p.id,responsavelNome:p.nome,enviadoPor:requesterEmail,enviadoEm:n.criadaEm||new Date().toISOString(),atualizadoEm:new Date().toISOString(),revisao:Number(current?.revisao||0)+1,historico:[...(current?.historico||[]),{acao:'enviado_aprovacao_recuperado',por:requesterEmail,em:new Date().toISOString()}]};
   count++;
  }
- if(!count){if(reviewedChanged){applyData(candidate);await localStore();await flush()}return}
+ const doneBefore54=Object.keys(candidate._conclusions54||{}).length;candidate=finalizeConclusions54(candidate,p);if(Object.keys(candidate._conclusions54||{}).length!==doneBefore54)count++;
+ if(!count){if(reviewedChanged){applySubmitted40(candidate);await localStore();await flush()}return}
  // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
- applyData(candidate);await localStore();await flush();
+ applySubmitted40(candidate);await localStore();await flush();
 }
 async function receiveGlobal(doc,token){
  if(token!==session||!doc.exists||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
  if(ready&&editingPlan()){deferredGlobal=[doc,token];releaseDeferredPlanningSync();return;}
- const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(gen===generation&&ready){if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
- const remote=await decode(meta);if(token!==session)return;const current=clone(DB);
+ const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(gen===generation&&ready){cloudConfirmed38=true;tell('Base conferida com a nuvem.');if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
+ const remote=await decode(meta);if(token!==session)return;cloudConfirmed38=true;const current=clone(submittedData40());
  const combined=baseline?reconcileGlobal(baseline,current,remote):remote;
- baseline=clone(remote);generation=gen;applyData(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(DB,baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
+ baseline=clone(remote);generation=gen;applySubmitted40(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(submittedData40(),baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
 }
 async function receiveOwnCollaboration(doc,token){
  if(token!==session||!profile()||doc.metadata?.hasPendingWrites||doc.metadata?.fromCache||!doc.exists)return;
@@ -13801,7 +14055,7 @@ async function receiveOwnCollaboration(doc,token){
  if(collabQueue.length!==before){await localStore();tell('Alterações de outro dispositivo localizadas; aguardando consolidação administrativa.');}
 }
 let deferredRegion=null,deferredGlobal=null,refreshDeferred=false,planningEditUntil=0,deferredEditTimer=null;
-function editingPlan(){return document.activeElement?.matches?.('#planContent input,#planContent textarea,#planContent select,#planContent [contenteditable=true]')||Date.now()<planningEditUntil;}
+function editingPlan(){return document.activeElement?.matches?.('#planContent input,#planContent textarea,#planContent select,#planContent [contenteditable=true],#v30-attention-text')||Date.now()<planningEditUntil;}
 document.addEventListener('input',e=>{if(e.target.closest?.('#planContent'))planningEditUntil=Date.now()+900},{capture:true,passive:true});
 document.addEventListener('change',e=>{if(e.target.closest?.('#planContent'))planningEditUntil=Date.now()+900},{capture:true,passive:true});
 function releaseDeferredPlanningSync(){clearTimeout(deferredEditTimer);deferredEditTimer=setTimeout(()=>{if(editingPlan())return releaseDeferredPlanningSync();if(deferredGlobal){const d=deferredGlobal;deferredGlobal=null;serial(()=>receiveGlobal(...d)).catch(fail);return}if(deferredRegion){const d=deferredRegion;deferredRegion=null;serial(()=>receiveRegion(...d)).catch(fail);return}if(refreshDeferred){refreshDeferred=false;refresh()}},950)}
@@ -13812,53 +14066,52 @@ async function receiveRegion(doc,token){
  if(ready&&editingPlan()){deferredRegion=[doc,token];return;}
  const data=doc.data();
  const signature=data.chunked?String(data.storageGeneration||''):JSON.stringify([data.payload,data.ack||[],data.errors||[]]);
- if(signature===lastRegionSnapshot)return;
+ if(signature===lastRegionSnapshot){cloudConfirmed38=true;tell(collabQueue.length||pending.length?'Envio recebido; aguardando confirmação administrativa.':'Região conferida com a nuvem.');return;}
  const envelope=await readRegionalEnvelopeV291(data);
  if(token!==session)return;
- const remote=envelope.remote;
+ const remote=envelope.remote;cloudConfirmed38=true;
  const ack=new Set(envelope.ack||[]);acknowledgedOps=ack;collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
  let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.field==='planning'?officialPlanRows(o.after,next.planning?.[o.key],next):o.after);
- baseline=clone(remote);applyData(next);ready=true;await localStore();openShell();refresh();
+ baseline=clone(remote);applySubmitted40(next);ready=true;await localStore();openShell();refresh();
  const unseenErrors=(envelope.errors||[]).filter(e=>e?.id&&!reviewedErrorIds.has(e.id));
  if(unseenErrors.length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
- window.__V29_COLLAB_ERRORS=unseenErrors;lastRegionSnapshot=signature;
+ window.__V29_COLLAB_ERRORS=unseenErrors;lastRegionSnapshot=signature;if(pending.length){clearTimeout(writeTimer);writeTimer=setTimeout(()=>scheduleFlush38().catch(fail),450);}
 }
 window.iniciarEscutaDaNuvem=function(){return false}; // substitui a escuta antiga de sistema/banco_principal
 window.loadFromStorage=async()=>ready?clone(DB):null;
 window.carregarBaseAposAutenticacao=async function(){
  const user=firebase.auth().currentUser;if(!user)return;const token=user.uid;if(session===token)return;session=token;
  if(!admin()&&!profile()&&email()!=='visitante@senac.br'){await firebase.auth().signOut();throw Error('Conta sem perfil autorizado no sistema.');}
- ready=false;window.APP_READ_ONLY=true;openShell();tell('Autenticado; carregando dados autorizados…');
+ ready=false;cloudConfirmed38=false;window.APP_READ_ONLY=true;openShell();startPresenceV297();tell('Autenticado; carregando dados autorizados…');
+ setTimeout(()=>{if(token===session&&!cloudConfirmed38)tell('Aguardando confirmação da nuvem. A base local, quando disponível, permanece preservada.',true)},15000);
  const cached=await localRead();if(token!==session)return;
- if(cached){baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];needsReplay=!same(cached.data,cached.baseline);applyData(cached.data);ready=true;openShell();lastLocal=clone(DB);refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
+ if(cached){recovered42=cached.recovered42===true;recoveryMode42=cached.recoveryMode42===true;baseline=cached.baseline;generation=cached.generation;pending=cached.pending||[];collabVersion=cached.collabVersion;collabQueue=cached.collabQueue||[];submitted40=clone(cached.submitted40||cached.data);needsReplay=admin()&&!same(submitted40,cached.baseline);applyData(cached.data);updateDraftState40();quotaUntil38=Math.max(quotaUntil38,Number(cached.quotaPause?.until)||0);quotaReported38=quotaReported38||cached.quotaPause?.reported===true;retryPending32=retryPending32||quotaReported38;ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';if(!recovered42){/* Sem envio implícito de rascunho. */recovered42=true;}if(recoveryMode42||quotaReported38||!navigator.onLine){recoveryMode42=true;/* Sem envio implícito de rascunho. */}await localStore();openShell();refresh();tell('Cache deste usuário carregado; verificando a nuvem…')}
  const enqueue=fn=>serial(fn).catch(fail);
  if(profile()){
   // Recupera e acompanha a fila compartilhada em todos os dispositivos do usuário.
-  try{const c=await ref('colaboracao_'+profile().id).get({source:'server'});if(token!==session)return;
-  if(c.exists)await receiveOwnCollaboration(c,token)}catch(e){fail(e)}
   stops.push(ref('colaboracao_'+profile().id).onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveOwnCollaboration(d,token)),fail));
   stops.push(ref('resposta_'+profile().id).onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveRegion(d,token)),fail));
  }else{
   stops.push(ref('dados_principais').onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveGlobal(d,token)),fail));
-  if(admin())for(const p of Object.values(USERS))stops.push(ref('colaboracao_'+p.id).onSnapshot(d=>{if(d.exists){inbox[p.id]=d.data();enqueue(()=>ingest(p,d.data()))}},fail));
+  if(admin())for(const p of Object.values(USERS))stops.push(ref('colaboracao_'+p.id).onSnapshot(d=>{if(d.exists&&!d.metadata?.hasPendingWrites&&!d.metadata?.fromCache){inbox[p.id]=d.data();enqueue(()=>ingest(p,d.data()))}},fail));
  }
- document.getElementById('globalLoader')?.classList.add('hidden');startPresenceV297();
+ document.getElementById('globalLoader')?.classList.add('hidden');scheduleResume39();
 };
-firebase.auth().onAuthStateChanged(u=>{if(!u){stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer)}else window.carregarBaseAposAutenticacao().catch(fail)});
-window.addEventListener('online',()=>serial(flush).catch(fail));
+firebase.auth().onAuthStateChanged(u=>{if(!u){clearTimeout(quotaTimer39);clearTimeout(resumeTimer39);quotaTimer39=null;resumeTimer39=null;clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];quotaUntil38=0;quotaReported38=false;stops.forEach(f=>f());stops=[];session='';shellSession='';lastRegionSnapshot='';ready=false;baseline=null;submitted40=null;dirty40=false;savePhase41='';saveLocal41=false;recoveryMode42=false;recovered42=false;lastRequested42=null;lastDurable42=0;regionalPublished40.clear();generation=null;pending=[];collabQueue=[];acknowledgedOps=new Set();reviewedErrorIds=new Set();reviewedErrorsDirty=false;lastLocal=null;clearTimeout(writeTimer);clearTimeout(retryTimer32);retryPending32=false;retryDelay32=1000}else window.carregarBaseAposAutenticacao().catch(fail)});
+window.addEventListener('online',()=>scheduleFlush38().catch(fail));
 function attentionRecipient(ctx){const id=DB.workflow_planejamento?.[ctx]?.responsavelId;return Object.entries(USERS).find(([,p])=>p.id===id)?.[0];}
-window.addPlanningAttention=async function(text){
+window.addPlanningAttention=async function(text){const actionBefore40=clone(DB);
  if(!admin()||!ready||!STATE.planContext)throw Error('Aguarde os dados e selecione um planejamento.');
  text=String(text||'').trim();if(!text)return alert('Descreva o ponto de atenção.');
  const ctx=STATE.planContext;DB.planning_attention??=[];DB.planning_attention.push({id:'attention_'+fresh(),contexto:ctx,texto:text.slice(0,3000),status:'pendente',criadoPor:email(),criadoEm:new Date().toISOString()});
  const dest=attentionRecipient(ctx);if(dest)note(dest,'ponto_de_atencao',text,ctx);
- await saveToStorage();renderAttention();return true;
+ await finishAction40(actionBefore40);renderAttention();return true;
 };
-window.markPlanningAttention=async function(id,reopen=false){
+window.markPlanningAttention=async function(id,reopen=false){const actionBefore40=clone(DB);
  if(!ready)throw Error('Aguarde a sincronização.');const item=DB.planning_attention?.find(x=>x.id===id);if(!item||(!admin()&&(!profile()||!owns(item.contexto,profile()))))return;
  if(reopen){if(!admin())return;item.status='pendente';delete item.ajustadoPor;delete item.ajustadoEm;const dest=attentionRecipient(item.contexto);if(dest)note(dest,'ponto_reaberto','Ponto de atenção reaberto: '+item.texto,item.contexto)}
  else {if(item.status==='ajustado')return;item.status='ajustado';item.ajustadoPor=email();item.ajustadoEm=new Date().toISOString();note('admin','ponto_ajustado',(profile()?.nome||'Administrador')+' marcou como ajustado: '+item.texto,item.contexto)}
- await saveToStorage();renderAttention();refreshActions();
+ await finishAction40(actionBefore40);renderAttention();refreshActions();
 };
 function renderAttention(){
  const anchor=document.getElementById('logisticsSection');if(!anchor)return;let box=document.getElementById('v30-attention');
@@ -13871,12 +14124,7 @@ function renderAttention(){
 }
 
 // Interface e relatórios são instalados abaixo.
-function realizedApproved(item,ctx=STATE.planContext,data=DB){
- if(item?.status!=='Realizada')return false;
- const requests=(data.solicitacoes_status_visita||[]).filter(r=>r.contexto===ctx&&String(r.alunoId)===String(item.student?.id)&&(!r.visitaData||r.visitaData===item.date));
- if(requests.some(r=>r.statusSolicitacao==='pendente'))return false;
- return requests.some(r=>r.statusSolicitacao==='aprovado'&&r.statusSolicitado==='Realizada'&&r.aprovadoPor===ADMIN);
-}
+function realizedApproved(item){return item?.status==='Realizada';}
 function actionAllowed(name,mode){
  const rateio=['openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'].includes(name),finalAction=rateio||(name==='openEmailModal'&&mode==='feedback');
  if(admin())return true;
@@ -13893,40 +14141,42 @@ function requester(n){
  const m=DB.workflow_planejamento?.[n.contexto],sender=m?.enviadoPor||m?.historico?.findLast?.(h=>['enviado_aprovacao','criado'].includes(h.acao))?.por;
  return USERS[sender]?.nome||Object.values(USERS).find(p=>p.id===m?.responsavelId)?.nome||n.solicitanteNome||m?.responsavelNome||explicit||'Não informado';
 }
-function refreshActions(){renderAttention();
+function refreshActions(){window.installPlanningActions54?.();renderAttention();renderSave40();
  window.renderControleProcessosV26?.();
- document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{const code=b.getAttribute('onclick')||'',rateio=code.includes('openRateioModal'),feedback=code.includes('feedback'),allowed=actionAllowed(rateio?'openRateioModal':'openEmailModal',feedback?'feedback':'agendamento');b.disabled=!allowed;b.title=allowed?'Ação disponível':(rateio||feedback?'Disponível após aprovação administrativa do status Realizada':'Disponível após aprovação administrativa do planejamento');b.setAttribute('aria-disabled',String(!allowed))});
+ document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{const code=b.getAttribute('onclick')||'',rateio=code.includes('openRateioModal'),feedback=code.includes('feedback'),allowed=actionAllowed(rateio?'openRateioModal':'openEmailModal',feedback?'feedback':'agendamento');b.disabled=!allowed;b.title=allowed?'Ação disponível':(rateio||feedback?'Disponível para visitas marcadas como Realizada':'Disponível após aprovação administrativa do planejamento');b.setAttribute('aria-disabled',String(!allowed))});
  const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
  document.querySelectorAll('button[onclick*="sendFullPlanEmail"]').forEach(b=>{b.disabled=false;b.style.pointerEvents='auto'});
  const cityButton=document.getElementById('v29-city-request');if(cityButton)cityButton.hidden=!profile();
  const notificationButton=document.getElementById('v29-notifications');if(notificationButton){const notices=(DB.notificacoes_planejamento||[]).filter(n=>!n.lida&&n.destinatario===(admin()?'admin':email())).length;const requests=admin()?pendingReviews().length+Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').length+(DB.solicitacoes_status_visita||[]).filter(s=>s.statusSolicitacao==='pendente').length+['solicitacoes_exclusao','solicitacoes_cidades'].reduce((n,k)=>n+(DB[k]||[]).filter(s=>s.status==='pendente').length,0):0;notificationButton.textContent='Notificações ('+Math.max(notices,requests)+')'}
 }
-window.SenacV29={statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
+window.SenacV29={finishAction:finishAction40,showNotifications,get syncState(){return {localConfirmedAt:lastDurable42,localSaving:!!localTask40,recoveryPrepared:recovered42,recoveryMode:recoveryMode42,cloudConfirmed:cloudConfirmed38,quotaBlocked:quotaReported38,draftLocal:dirty40,submittedPending:admin()?!same(submittedData40(),baseline):pending.length>0,nextRetryAt:quotaUntil38||null,pending:pending.length,awaitingAdmin:collabQueue.length,manualRunning:!!manualJob38}},statusGroups31,applyStatusDecision31,requestStatus31,bindStudents,officialPlanRows,profile,admin,projection,realizedApproved,actionAllowed,requester,reportData:data=>profile()?projection(data,profile()):data,merge,reconcileGlobal,changes,validateOp,preserveCities,refreshActions,get ready(){return ready}};
 function button(text,fn,className='wf-btn'){const b=document.createElement('button');b.type='button';b.textContent=text;b.className=className;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){fail(e);alert(e.message)}finally{b.disabled=false}};return b}
 function exportLocal(){const data=clone(DB);data._v29_recuperacao={usuario:email(),em:new Date().toISOString(),pendentes:clone(pending),enviadas:clone(collabQueue),devolvidas:clone(window.__V29_COLLAB_ERRORS||[])};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='supervisao_copia_local_'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function card(title,fields){const el=document.createElement('article');el.className='wf-card';const h=document.createElement('h4');h.textContent=title;el.append(h);for(const [label,value] of fields){const p=document.createElement('p'),b=document.createElement('b');b.textContent=label+': ';p.append(b,document.createTextNode(String(value||'Não informado')));el.append(p)}return el}
 function regionFor(ctx){const m=DB.workflow_planejamento?.[ctx];return Object.values(USERS).find(p=>p.id===m?.responsavelId)?.regiao||(DB.planning?.[ctx]||[])[0]?.student?.regiao||'Administração'}
 function openPlan(ctx){if(profile()&&!owns(ctx,profile()))return;fecharWorkflowModal('workflowNotificationsModal');switchTab('planejamento');switchPlan(ctx)}
 function note(dest,tipo,mensagem,contexto){DB.notificacoes_planejamento??=[];DB.notificacoes_planejamento.unshift({id:'v29_'+fresh(),destinatario:dest,tipo,mensagem,contexto,solicitante:email(),criadaEm:new Date().toISOString(),lida:false})}
-async function requestCity(){const p=profile();if(!p)return;const city=prompt('Cidade a incluir ou corrigir na região '+p.regiao+':')?.trim();if(!city)return;const reason=prompt('Descreva a inclusão ou correção necessária:')?.trim();if(!reason)return alert('Informe a descrição.');DB.solicitacoes_cidades??=[];DB.solicitacoes_cidades.push({id:'cidade_'+fresh(),cidade:city,regiao:p.regiao,motivo:reason,solicitante:email(),solicitanteNome:p.nome,status:'pendente',criadaEm:new Date().toISOString()});await saveToStorage();alert('Solicitação registrada. Acompanhe a confirmação no indicador de sincronização.');}
-async function cityDecision(s,approve){if(!admin()||s.status!=='pendente')return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return}if(approve){const conflict=Object.entries(DB.regioes_map||{}).find(([r,c])=>norm(r)!==norm(s.regiao)&&Array.isArray(c)&&c.some(v=>norm(v)===norm(s.cidade)));if(conflict)return alert('Esta cidade já está vinculada a '+conflict[0]+'. A transferência exige revisão do cadastro e dos alunos.');const key=Object.keys(DB.regioes_map||{}).find(r=>norm(r)===norm(s.regiao))||s.regiao;DB.regioes_map??={};DB.regioes_map[key]??=[];if(!DB.regioes_map[key].some(c=>norm(c)===norm(s.cidade)))DB.regioes_map[key].push(s.cidade);DB.cidades_auditoria??=[];DB.cidades_auditoria.push({regiao:key,cidade:s.cidade,por:email(),em:new Date().toISOString(),solicitacao:s.id})}s.status=approve?'aprovado':'devolvido';s.motivoDevolucao=reason;s.decididoPor=email();s.decididoEm=new Date().toISOString();note(s.solicitante,approve?'cidade_aprovada':'cidade_devolvida',approve?'Cidade incluída: '+s.cidade:'Solicitação de cidade devolvida: '+reason,'');await saveToStorage();showNotifications(false);refresh();}
-async function deleteDecision(req,approve){
+async function requestCity(){const actionBefore40=clone(DB);const p=profile();if(!p)return;const city=prompt('Cidade a incluir ou corrigir na região '+p.regiao+':')?.trim();if(!city)return;const reason=prompt('Descreva a inclusão ou correção necessária:')?.trim();if(!reason)return alert('Informe a descrição.');DB.solicitacoes_cidades??=[];DB.solicitacoes_cidades.push({id:'cidade_'+fresh(),cidade:city,regiao:p.regiao,motivo:reason,solicitante:email(),solicitanteNome:p.nome,status:'pendente',criadaEm:new Date().toISOString()});await finishAction40(actionBefore40);alert('Solicitação registrada. Acompanhe a confirmação no indicador de sincronização.');}
+async function cityDecision(s,approve){const actionBefore40=clone(DB);if(!admin()||s.status!=='pendente')return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return}if(approve){const conflict=Object.entries(DB.regioes_map||{}).find(([r,c])=>norm(r)!==norm(s.regiao)&&Array.isArray(c)&&c.some(v=>norm(v)===norm(s.cidade)));if(conflict)return alert('Esta cidade já está vinculada a '+conflict[0]+'. A transferência exige revisão do cadastro e dos alunos.');const key=Object.keys(DB.regioes_map||{}).find(r=>norm(r)===norm(s.regiao))||s.regiao;DB.regioes_map??={};DB.regioes_map[key]??=[];if(!DB.regioes_map[key].some(c=>norm(c)===norm(s.cidade)))DB.regioes_map[key].push(s.cidade);DB.cidades_auditoria??=[];DB.cidades_auditoria.push({regiao:key,cidade:s.cidade,por:email(),em:new Date().toISOString(),solicitacao:s.id})}s.status=approve?'aprovado':'devolvido';s.motivoDevolucao=reason;s.decididoPor=email();s.decididoEm=new Date().toISOString();note(s.solicitante,approve?'cidade_aprovada':'cidade_devolvida',approve?'Cidade incluída: '+s.cidade:'Solicitação de cidade devolvida: '+reason,'');await finishAction40(actionBefore40,clone(DB),true);showNotifications(false);refresh();}
+async function deleteDecision(req,approve){const actionBefore40=clone(DB);
  if(!admin()||req.status!=='pendente')return;
  let reason='';if(!approve){reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return alert('Informe o motivo para devolver.')}else if(!confirm('Aprovar exclusão de '+req.contexto+'? Uma cópia será preservada no histórico interno.'))return;
  if(approve){DB.planejamentos_excluidos??={};const archive={por:email(),em:new Date().toISOString(),dados:{}};maps.concat('planning_processos').forEach(k=>{if(DB[k]?.[req.contexto]!==undefined){archive.dados[k]=clone(DB[k][req.contexto]);delete DB[k][req.contexto]}});DB.planejamentos_excluidos[req.id]=archive;if(STATE.planContext===req.contexto)STATE.planContext=null}
  req.status=approve?'aprovado':'devolvido';req.decididoPor=email();req.decididoEm=new Date().toISOString();req.motivoDevolucao=reason;
- note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await saveToStorage();refresh();showNotifications(false);
+ note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await finishAction40(actionBefore40,clone(DB),true);refresh();showNotifications(false);
 }
 function statusGroups31(data=DB){const groups=new Map();for(const r of data.solicitacoes_status_visita||[]){if(r.statusSolicitacao!=='pendente')continue;const key=JSON.stringify([r.contexto,r.solicitadoPor]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}return [...groups.values()]}
 function requestStatus31(indexes,status){
- const p=profile(),ctx=STATE.planContext;if(!ready||!p||!owns(ctx,p))throw Error('Aguarde os dados do seu planejamento.');if(!['Realizada','Realizar','Não realizada'].includes(status))return;
- DB.solicitacoes_status_visita??=[];const created=[];const batchId=fresh();
- for(const idx of indexes){const item=DB.planning?.[ctx]?.[idx];if(!item||(item.status||'Realizar')===status)continue;if(DB.solicitacoes_status_visita.some(r=>r.contexto===ctx&&String(r.alunoId)===String(item.student?.id)&&r.statusSolicitacao==='pendente'))continue;
- if(status==='Realizada'&&!/^\d{4}-\d{2}-\d{2}$/.test(item.date||''))throw Error('Informe a data da visita antes de solicitar Realizada.');
- created.push({id:'sts_'+fresh(),batchId,contexto:ctx,indice:idx,alunoId:String(item.student.id),alunoNome:item.student.nome,visitaData:item.date||null,visitaTipo:item.visitaTipo,observacaoVisita:item.obs||'',statusAtual:item.status||'Realizar',statusSolicitado:status,solicitadoPor:email(),solicitanteNome:p.nome,solicitadoEm:new Date().toISOString(),statusSolicitacao:'pendente'});
+ const p=profile(),ctx=STATE.planContext;if(!ready||!p||!owns(ctx,p))throw Error('Selecione um planejamento da sua região.');
+ if(!['Realizada','Realizar','Não realizada'].includes(status))throw Error('Status inválido.');
+ DB.solicitacoes_status_visita??=[];
+ for(const idx of indexes){const row=DB.planning?.[ctx]?.[idx];if(!row)continue;
+  if(status==='Realizada'&&!/^\d{4}-\d{2}-\d{2}$/.test(row.date||''))throw Error('Informe a data da visita antes de marcar Realizada.');
+  let req=DB.solicitacoes_status_visita.find(r=>r.contexto===ctx&&String(r.alunoId)===String(row.student?.id)&&r.statusSolicitacao==='rascunho_usuario');
+  if(!req){req={id:'conclusao_'+fresh(),contexto:ctx,alunoId:String(row.student.id),alunoNome:row.student.nome,statusAtual:row.status||'Realizar',solicitadoPor:email(),solicitanteNome:p.nome,statusSolicitacao:'rascunho_usuario'};DB.solicitacoes_status_visita.push(req)}
+  req.statusSolicitado=status;req.visitaData=row.date;req.visitaTipo=row.visitaTipo;req.observacaoVisita=row.obs||'';req.solicitadoEm=new Date().toISOString();row.status=status;
  }
- if(!created.length){tell('Nenhuma nova mudança de status: os itens já estão nesse estado ou aguardam aprovação.');return;}
- DB.solicitacoes_status_visita.push(...created);note('admin','status_lote',p.nome+' solicitou '+created.length+' alteração(ões) de status em '+ctx,ctx);saveToStorage().catch(fail);renderPlanningTable();refreshActions();tell(created.length+' alteração(ões) registrada(s); aguardando envio e aprovação administrativa.');
+ saveToStorage().catch(fail);renderPlanningTable();refreshActions();tell('Status alterado no rascunho. Conclua o planejamento para salvar na nuvem e notificar o administrador.');
 }
 const previousUpdate31=window.updatePlanItem;
 window.updatePlanItem=function(idx,field,value){if(profile()&&field==='status'){try{return requestStatus31([idx],value)}catch(e){fail(e);alert(e.message);return}}return previousUpdate31.apply(this,arguments)};
@@ -13939,16 +14189,16 @@ function applyStatusDecision31(data,ids,approve,reason=''){
  const visitType=r.visitaTipo||item.visitaTipo;const match=String(visitType||'').match(/^(\d+)/);const idx=match?Number(match[1])-1:-1;if(idx<0||idx>5)throw Error('Selecione a visita correta de '+r.alunoNome+'.');
  if(r.statusSolicitado==='Realizada'){
  const date=r.visitaData||item.date;if(!/^\d{4}-\d{2}-\d{2}$/.test(date||''))throw Error('Data ausente: '+r.alunoNome);const parsed=new Date(date+'T12:00:00');if(isNaN(parsed)||parsed.getFullYear()<2020||parsed.getFullYear()>2035||[parsed.getFullYear(),String(parsed.getMonth()+1).padStart(2,'0'),String(parsed.getDate()).padStart(2,'0')].join('-')!==date)throw Error('Data inválida: '+r.alunoNome);
- student.visits??=[];const existing=student.visits[idx];if(existing?.ok&&String(existing.date||'').slice(0,10)!==date)throw Error('A visita de '+r.alunoNome+' já possui outra data confirmada. Revise antes de aprovar.');
- if(student.visits.some((v,i)=>i!==idx&&v?.ok&&String(v.date||'').slice(0,10)===date))throw Error('A data de '+r.alunoNome+' já está registrada em outra visita.');
+ student.visits??=[];const existing=student.visits[idx];if(existing?.ok&&visitDay54(existing.date)!==date&&!(r.conclusaoAutomatica54&&existing.contexto===r.contexto&&visitDay54(existing.date)===r.visitaDataAnterior))throw Error('A visita de '+r.alunoNome+' já possui outra data confirmada. Revise antes de aprovar.');
+ if(student.visits.some((v,i)=>i!==idx&&v?.ok&&visitDay54(v.date)===date))throw Error('A data de '+r.alunoNome+' já está registrada em outra visita.');
  while(student.visits.length<=idx)student.visits.push({ok:false,date:null});const obs=r.observacaoVisita??item.obs??'';student.visits[idx]={...student.visits[idx],ok:true,date:parsed.toISOString(),obs,protected:true,source:'planejamento_aprovado',updatedAt:Date.now(),aprovadoPor:ADMIN};student.obs_origem=obs;item.obs=obs;
- }else {const v=student.visits?.[idx];if(v?.ok&&String(v.date||'').slice(0,10)===(r.visitaData||item.date)){v.ok=false;v.protected=false;v.updatedAt=Date.now();}}
+ }else {const v=student.visits?.[idx];if(v?.ok&&visitDay54(v.date)===(r.visitaData||item.date)){v.ok=false;v.protected=false;v.updatedAt=Date.now();}}
  item.status=r.statusSolicitado;item.student=student;r.statusSolicitacao='aprovado';r.aprovadoPor=ADMIN;r.aprovadoEm=now;
  for(const rows of Object.values(candidate.planning||{}))for(const row of rows||[])if(String(row.student?.id)===String(r.alunoId)&&row.date===item.date&&String(row.visitaTipo||'').match(/^(\d+)/)?.[1]===String(idx+1)){row.status=item.status;row.student=student;row.obs=item.obs;}
  }else{r.statusSolicitacao='devolvido';r.observacao=reason;r.decididoPor=ADMIN;r.decididoEm=now;}}
  bindStudents(candidate);return candidate;
 }
-async function decideStatusGroup31(ids,approve){if(!admin())return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução do lote:')?.trim();if(!reason)return;}const requests=(DB.solicitacoes_status_visita||[]).filter(r=>ids.includes(r.id)&&r.statusSolicitacao==='pendente');const next=applyStatusDecision31(DB,ids,approve,reason);applyData(next);for(const dest of new Set(requests.map(r=>r.solicitadoPor)))note(dest,approve?'status_lote_aprovado':'status_lote_devolvido',approve?'Lote aprovado: '+requests.length+' alteração(ões). Visitas e cadastro atualizados.':'Lote devolvido: '+reason,requests[0]?.contexto);await saveToStorage();await window.sincronizarAgoraNuvem();refresh();showNotifications(false);}
+async function decideStatusGroup31(ids,approve){const actionBefore40=clone(DB);if(!admin())return;let reason='';if(!approve){reason=prompt('Informe o motivo da devolução do lote:')?.trim();if(!reason)return;}const requests=(DB.solicitacoes_status_visita||[]).filter(r=>ids.includes(r.id)&&r.statusSolicitacao==='pendente');const next=applyStatusDecision31(DB,ids,approve,reason);applyData(next);for(const dest of new Set(requests.map(r=>r.solicitadoPor)))note(dest,approve?'status_lote_aprovado':'status_lote_devolvido',approve?'Lote aprovado: '+requests.length+' alteração(ões). Visitas e cadastro atualizados.':'Lote devolvido: '+reason,requests[0]?.contexto);await finishAction40(actionBefore40,clone(DB),true);await scheduleFlush38();refresh();showNotifications(false);}
 window.aprovarStatusVisitaV23=id=>decideStatusGroup31([id],true);
 window.recusarStatusVisitaV23=id=>decideStatusGroup31([id],false);
 
@@ -13960,7 +14210,7 @@ function showNotifications(mark=true){
    const v=review.versions,c=card('Divergência preservada para revisão',[['Registro',v.local?.contexto||v.remote?.contexto||v.key||'Cadastro compartilhado'],['Área',v.field],['Descrição','A versão já confirmada na nuvem permanece ativa. Sua alteração local foi preservada abaixo; os demais roteiros continuam sincronizando.']]);
    for(const [label,value] of [['Sua alteração local',v.local],['Versão da nuvem ao detectar a divergência',v.remote],['Versão anterior comum',v.base]]){const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent=label;pre.textContent=JSON.stringify(value,null,2);pre.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto';details.append(summary,pre);c.append(details);}
    if(DB.planning?.[v.key])c.append(button('Abrir planejamento',()=>openPlan(v.key)));
-   c.append(button('Concluir revisão',async()=>{if(!confirm('Confirma que revisou as versões e fez os ajustes necessários no planejamento? As cópias serão mantidas no histórico.'))return;DB._syncReviewedIds=[...new Set([...(DB._syncReviewedIds||[]),review.id])];await saveToStorage();refreshActions();showNotifications(false)}));list.append(c);
+   c.append(button('Concluir revisão',async()=>{const actionBefore40=clone(DB);if(!confirm('Confirma que revisou as versões e fez os ajustes necessários no planejamento? As cópias serão mantidas no histórico.'))return;DB._syncReviewedIds=[...new Set([...(DB._syncReviewedIds||[]),review.id])];await finishAction40(actionBefore40);refreshActions();showNotifications(false)}));list.append(c);
   });
   Object.values(DB.workflow_planejamento||{}).filter(m=>m.status==='pendente').forEach(m=>add('Aprovação de planejamento', [['Solicitante',requester(m)],['Região',regionFor(m.contexto)],['Planejamento',m.contexto],['Alteração solicitada','Aprovação do roteiro'],['Data',new Date(m.enviadoEm||m.atualizadoEm||m.criadoEm).toLocaleString('pt-BR')]],m.contexto,async()=>{await aprovarWorkflow(m.contexto);showNotifications(false)},async()=>{await devolverWorkflow(m.contexto);showNotifications(false)}));
   statusGroups31().forEach(group=>{const first=group[0],ids=group.map(r=>r.id);add('Alterações de status — lote do planejamento',[['Solicitante',requester(first)],['Planejamento',first.contexto],['Quantidade',group.length+' aluno(s)'],['Pedidos',group.map(r=>r.alunoNome+': '+r.statusAtual+' → '+r.statusSolicitado+' ('+(r.visitaData||'data a conferir')+')').join('; ')]],first.contexto,()=>decideStatusGroup31(ids,true),()=>decideStatusGroup31(ids,false))});
@@ -13974,7 +14224,7 @@ function showNotifications(mark=true){
  if(mark&&profile()&&(window.__V29_COLLAB_ERRORS||[]).length){
   (window.__V29_COLLAB_ERRORS||[]).forEach(e=>{if(e?.id)reviewedErrorIds.add(e.id)});reviewedErrorsDirty=true;
   window.__V29_COLLAB_ERRORS=[];
-  setTimeout(()=>serial(flush).catch(fail),300);
+  localStore().catch(fail); // recibos de leitura seguem junto do próximo envio explícito
  }
 }
 window.abrirWorkflowNotificacoes=()=>showNotifications();window.abrirWorkflowAdmin=()=>showNotifications();
@@ -13984,25 +14234,48 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installProm
 window.addEventListener('appinstalled',()=>{installed=true;document.getElementById('v29-install')?.remove()});
 async function install(){if(installPrompt){const event=installPrompt;installPrompt=null;await event.prompt();await event.userChoice;return}const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);alert(ios?'No Safari, toque em Compartilhar → Adicionar à Tela de Início.':'No Chrome ou Edge, abra o menu do navegador → Instalar aplicativo ou Adicionar à tela inicial. Se a opção não aparecer, confirme que está usando o endereço HTTPS publicado e atualizado.');}
 function mobileTable(){const body=document.getElementById('planTableBody');if(!body)return;const table=body.closest('table');const headers=[...table.querySelectorAll('thead th')].map(x=>x.textContent.trim());[...body.rows].forEach(row=>[...row.cells].forEach((cell,i)=>{cell.dataset.label=headers[i]||'Informação'}));table.classList.add('v29-plan-table')}
-const presenceStateV297={};let presenceTimerV297=null,presenceStopsV297=[];
+const presenceStateV297={};let presenceTimerV297=null,presenceStopsV297=[],presenceInFlight38=false;const presenceConfirmed38={};
 function presenceRefV297(id){return ref('presenca_'+id)}
 function renderPresenceV297(){
  const box=document.getElementById('v297-presence');if(!box)return;box.hidden=!admin();if(!admin())return;box.innerHTML='';
  for(const p of Object.values(USERS)){
-  const d=presenceStateV297[p.id]||{},last=d.lastSeen?.toMillis?.()||0,online=d.online===true&&(Date.now()-last)<120000;
-  const item=document.createElement('span');item.className='v297-person';item.dataset.online=String(online);item.title=online?'Sinal recebido nos últimos 2 minutos':(last?'Último sinal: '+new Date(last).toLocaleString('pt-BR'):'Sem sinal recente');
-  const dot=document.createElement('span');dot.className='v297-dot';dot.setAttribute('aria-hidden','true');dot.textContent=p.nome[0];item.append(dot,document.createTextNode(p.nome));box.append(item);
+  const d=presenceStateV297[p.id]||{},last=d.lastSeen?.toMillis?.()||0,online=!quotaReported38&&presenceConfirmed38[p.id]&&d.online===true&&(Date.now()-last)<390000;
+  const item=document.createElement('span');item.className='v297-person';item.dataset.online=String(online);item.title=quotaReported38?'Presença sem confirmação: cota da nuvem atingida':online?'Conexão confirmada nos últimos 6 minutos e meio':(last?'Sem sinal recente. Última confirmação: '+new Date(last).toLocaleString('pt-BR'):'Presença ainda não confirmada');
+  const dot=document.createElement('span');dot.className='v297-dot';dot.setAttribute('aria-hidden','true');dot.textContent=p.nome[0];item.append(dot,document.createTextNode(p.nome+(online?' · online':' · não confirmado')));box.append(item);
  }
 }
-async function sendPresenceV297(online=true){const p=profile();if(!p||!firebase.auth().currentUser)return;await presenceRefV297(p.id).set({userId:p.id,email:email(),online,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:false})}
+async function sendPresenceV297(online=true){
+ const p=profile();if(!p||!firebase.auth().currentUser||presenceInFlight38||quotaUntil38>Date.now()||!navigator.onLine)return;
+ presenceInFlight38=true;const token=session;
+ try{await presenceRefV297(p.id).set({userId:p.id,email:email(),online,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:false});if(token===session){confirmedWrite38();if(ready)scheduleResume39();}} 
+ catch(e){if(quota38(e))reportQuota38();else console.warn('Presença não confirmada',e);}
+ finally{presenceInFlight38=false;}
+}
 function startPresenceV297(){
  clearInterval(presenceTimerV297);presenceStopsV297.forEach(fn=>fn());presenceStopsV297=[];
- if(profile()){sendPresenceV297(true).catch(e=>console.warn('Presença indisponível',e));presenceTimerV297=setInterval(()=>sendPresenceV297(true).catch(()=>{}),45000)}
- else if(admin())for(const p of Object.values(USERS))presenceStopsV297.push(presenceRefV297(p.id).onSnapshot(d=>{presenceStateV297[p.id]=d.exists?d.data():{};renderPresenceV297()},fail));
+ if(profile()){sendPresenceV297(true);presenceTimerV297=setInterval(()=>{if(document.visibilityState!=='hidden')sendPresenceV297(true)},180000)}
+ else if(admin())for(const p of Object.values(USERS))presenceStopsV297.push(presenceRefV297(p.id).onSnapshot({includeMetadataChanges:true},d=>{presenceConfirmed38[p.id]=!d.metadata?.fromCache&&!d.metadata?.hasPendingWrites;presenceStateV297[p.id]=d.exists?d.data():{};renderPresenceV297()},e=>{presenceConfirmed38[p.id]=false;if(quota38(e))reportQuota38();renderPresenceV297();}));
  renderPresenceV297();
 }
-window.addEventListener('pagehide',()=>{if(profile())sendPresenceV297(false).catch(()=>{})});
+// O vencimento do último sinal trata fechamento abrupto; não enfileirar escrita no fechamento.
+window.addEventListener('online',()=>sendPresenceV297(true));
 setInterval(renderPresenceV297,30000);
+const sendWorkflow40=window.enviarWorkflowAprovacao;
+window.enviarWorkflowAprovacao=async function(){
+ if(!profile()||!ready||!STATE.planContext||!owns(STATE.planContext,profile()))return;
+ if(submitJob40)return submitJob40;
+ const ctx=STATE.planContext,m=DB.workflow_planejamento?.[ctx];
+ if(!m)throw Error('Selecione um planejamento válido.');
+ const changed=!same(DB,submittedData40());
+ if(!changed&&m.status==='pendente')return submit40('plan');
+ m.status='pendente';m.aprovadoPor=null;m.aprovadoEm=null;m.enviadoPor=email();m.enviadoEm=new Date().toISOString();m.atualizadoEm=m.enviadoEm;m.revisao=(m.revisao||0)+1;m.historico??=[];m.historico.push({acao:'enviado_aprovacao',por:email(),em:m.enviadoEm});
+ note('admin','planejamento_concluido',profile().nome+' concluiu '+ctx+'. Dados e status das visitas enviados; Realizada não exige aprovação.',ctx);
+ return submit40('plan');
+};
+for(const name of ['aprovarWorkflow','devolverWorkflow','solicitarExclusaoWorkflow']){
+ const fn=window[name];if(typeof fn!=='function')continue;
+ window[name]=async function(...args){const before=clone(name==="aprovarWorkflow"?submittedData40():DB);const promise=fn.apply(this,args),after=name==="aprovarWorkflow"?planSnapshot40(args[0]||STATE.planContext):clone(DB);const result=await promise;await finishAction40(before,after,admin());return result;};
+}
 function installUI(){
  const plan=document.getElementById('btnPlan');let monthly=document.getElementById('v29-monthly-tab');if(plan&&!monthly){monthly=button('Relatório Mensal',openMonthly,'tab-btn');monthly.id='v29-monthly-tab';plan.after(monthly)}
  // O menu antigo pode mover seu botão; a aba permanece disponível independentemente dele.
@@ -14012,7 +14285,9 @@ function installUI(){
  if(header&&!document.getElementById('v297-presence')){const box=document.createElement('div');box.id='v297-presence';box.className='v297-presence';box.setAttribute('aria-label','Usuários conectados');header.append(box)}
  if(header&&!document.getElementById('v29-notifications')){const b=button('Notificações (0)',()=>showNotifications());b.id='v29-notifications';header.append(b)}
  if(header&&!document.getElementById('v29-local-backup')){const b=button('Exportar cópia local',exportLocal);b.id='v29-local-backup';header.append(b)}
+ if(header&&!document.getElementById('v40-save-all')){const b=button('Salvar alterações',()=>window.salvarAlteracoesConcluidas(),'wf-btn wf-btn-primary');b.id='v40-save-all';b.title='Concluir e enviar todos os rascunhos do administrador, incluindo cadastros';header.append(b);}
  if(header&&!document.getElementById('v29-sync')){const b=button('Sincronizar agora',()=>window.sincronizarAgoraNuvem());b.id='v29-sync';header.append(b)}
+ renderSave40();
  if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(e=>console.warn('Instalação: service worker indisponível',e));
  const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;actions?.classList.add('v29-plan-actions');
  const filters=document.getElementById('planRegiao')?.closest('.grid');if(filters&&!filters.closest('details')){const details=document.createElement('details');details.className='v29-filter-drawer';details.open=innerWidth>700;const summary=document.createElement('summary');summary.textContent='Filtros do planejamento';filters.before(details);details.append(summary,filters)}
@@ -14020,11 +14295,144 @@ function installUI(){
  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.wf-modal.open').forEach(m=>m.classList.remove('open'))});
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installUI,{once:true});else installUI();
+function visitDay54(value){if(value===null||value===undefined||value==='')return '';if(/^\d{4}-\d{2}-\d{2}/.test(String(value)))return String(value).slice(0,10);const date=new Date(value);return isNaN(date)?'':date.toISOString().slice(0,10);}
+
+function prepareConclusion54(ctx){
+ const now=new Date().toISOString();
+ if(profile()){
+  DB.solicitacoes_status_visita??=[];const prior=submittedData40().planning?.[ctx]||[];
+  for(const row of DB.planning?.[ctx]||[]){const old=prior.find(x=>String(x.student?.id)===String(row.student?.id));
+   const changed=(row.status||'Realizar')!==(old?.status||'Realizar')||(row.status==='Realizada'&&['date','visitaTipo','obs'].some(k=>!same(row[k],old?.[k])));
+   if(changed&&!DB.solicitacoes_status_visita.some(x=>x.contexto===ctx&&String(x.alunoId)===String(row.student?.id)&&x.statusSolicitacao==='rascunho_usuario'))DB.solicitacoes_status_visita.push({id:'conclusao_'+fresh(),contexto:ctx,alunoId:String(row.student.id),alunoNome:row.student.nome,statusAtual:old?.status||'Realizar',solicitadoPor:email(),solicitanteNome:profile().nome,statusSolicitacao:'rascunho_usuario',solicitadoEm:now});
+  }
+ }
+
+ for(const r of DB.solicitacoes_status_visita||[])if(r.contexto===ctx&&r.solicitadoPor===email()&&r.statusSolicitacao==='rascunho_usuario'){
+  const row=DB.planning?.[ctx]?.find(x=>String(x.student?.id)===String(r.alunoId));if(!row)throw Error('Aluno do rascunho não encontrado.');
+  r.visitaDataAnterior=submittedData40().planning?.[ctx]?.find(x=>String(x.student?.id)===String(r.alunoId))?.date||null;r.visitaData=row.date;r.visitaTipo=row.visitaTipo;r.observacaoVisita=row.obs||'';r.statusSolicitado=row.status;r.statusSolicitacao='concluido_usuario';r.concluidoEm=now;
+ }
+ if(!profile())return;
+ const previous=submittedData40(),patches=[];
+ for(const row of DB.planning?.[ctx]||[]){
+  const student=row.student,old=[...(previous.quali||[]),...(previous.tec||[])].find(x=>String(x.id)===String(student?.id));if(!old)continue;
+  const fields={};for(const key of ['supervisor','obs','obs_origem','contraturno','contraTurno'])if(!same(student[key],old[key]))fields[key]={before:clone(old[key]??null),after:clone(student[key]??null)};
+  if(Object.keys(fields).length)patches.push({id:String(student.id),fields});
+ }
+ if(patches.length){DB.cadastro_planejamento??={};DB.cadastro_planejamento[ctx]={id:fresh(),contexto:ctx,por:email(),em:now,patches};}
+ const notice=(DB.notificacoes_planejamento||[]).find(n=>n.contexto===ctx&&n.tipo==='planejamento_concluido'&&n.solicitante===email());
+ if(notice)notice.conclusao54={status:clone((DB.solicitacoes_status_visita||[]).filter(r=>r.contexto===ctx&&r.solicitadoPor===email()&&r.statusSolicitacao==='concluido_usuario')),cadastro:clone(DB.cadastro_planejamento?.[ctx]||null)};
+}
+function validateStudentPatch54(value,p,data){
+ if(!value||value.por!==Object.keys(USERS).find(e=>USERS[e].id===p.id)||!Array.isArray(value.patches))throw Error('Atualização cadastral inválida.');
+ for(const patch of value.patches){
+  const student=[...(data.quali||[]),...(data.tec||[])].find(x=>String(x.id)===String(patch.id));
+  if(!student||!inRegion(student,p))throw Error('Cadastro fora da região.');
+  if(Object.keys(patch.fields||{}).some(k=>!['supervisor','obs','obs_origem','contraturno','contraTurno'].includes(k)))throw Error('Campo cadastral não permitido.');
+ }
+}
+function finalizeConclusions54(data,p){
+ let next=data;const sender=Object.keys(USERS).find(e=>USERS[e].id===p.id);next._conclusions54??={};
+ 
+ for(const n of next.notificacoes_planejamento||[]){
+  if(n.tipo!=='planejamento_concluido'||n.solicitante!==sender||!n.conclusao54||!owns(n.contexto,p,next))continue;
+  next.solicitacoes_status_visita??=[];
+  for(const r of n.conclusao54.status||[]){
+   if(!r.id||next.solicitacoes_status_visita.some(x=>x.id===r.id))continue;
+   const row=next.planning?.[n.contexto]?.find(x=>String(x.student?.id)===String(r.alunoId));
+   if(!row||!inRegion(row.student,p)||!['Realizada','Realizar','Não realizada'].includes(r.statusSolicitado))continue;
+   next.solicitacoes_status_visita.push({...clone(r),contexto:n.contexto,solicitadoPor:sender,statusSolicitacao:'concluido_usuario'});
+  }
+  const patch=n.conclusao54.cadastro;
+  if(patch?.id){next.cadastro_planejamento??={};next.cadastro_planejamento[n.contexto]={...clone(patch),contexto:n.contexto,por:sender};}
+ }
+
+ for(const patch of Object.values(next.cadastro_planejamento||{})){
+  if(patch.por!==sender||next._conclusions54[patch.id])continue;
+  validateStudentPatch54(patch,p,next);
+  for(const change of patch.patches){const student=[...(next.quali||[]),...(next.tec||[])].find(x=>String(x.id)===String(change.id));
+   for(const [key,v] of Object.entries(change.fields)){try{student[key]=merge(v.before,v.after,student[key]??null,'cadastro.'+change.id+'.'+key)}catch(e){next._collabErrors[p.id].push({id:patch.id+'_'+change.id+'_'+key,motivo:e.message,operacao:clone(change),em:new Date().toISOString()})}}
+  }next._conclusions54[patch.id]=true;
+ }
+ for(const req of [...(next.solicitacoes_status_visita||[])]){
+  if(req.statusSolicitacao!=='concluido_usuario'||req.solicitadoPor!==sender||next._conclusions54[req.id])continue;
+  try{
+   const temp=clone(next);const target=temp.solicitacoes_status_visita.find(x=>x.id===req.id);target.statusSolicitacao='pendente';target.conclusaoAutomatica54=true;
+   next=applyStatusDecision31(temp,[req.id],true);
+   const r=next.solicitacoes_status_visita.find(x=>x.id===req.id);r.statusSolicitacao='concluido_usuario';delete r.conclusaoAutomatica54;delete r.aprovadoPor;delete r.aprovadoEm;r.concluidoPor=sender;
+   const st=[...(next.quali||[]),...(next.tec||[])].find(x=>String(x.id)===String(req.alunoId)),n=Number(String(req.visitaTipo||'').match(/^(\d+)/)?.[1])-1;
+   if(st?.visits?.[n]){delete st.visits[n].aprovadoPor;st.visits[n].concluidoPor=sender;st.visits[n].source='planejamento_concluido';st.visits[n].contexto=req.contexto;}
+   next._conclusions54[req.id]=true;
+  }catch(e){const r=next.solicitacoes_status_visita.find(x=>x.id===req.id);r.statusSolicitacao='devolvido';r.observacao=e.message;next._collabErrors[p.id].push({id:req.id,motivo:'Conclusão não aplicada: '+e.message,operacao:clone(req),em:new Date().toISOString()});}
+ }
+ bindStudents(next);return next;
+}
+
+function changes(before,after){
+ return baseChanges54(before,after).filter(o=>!(o.field==='solicitacoes_status_visita'&&['rascunho_usuario','concluido_usuario'].includes(o.after?.statusSolicitacao))).map(o=>{
+  if(o.field==='planning'&&profile()){o.before=officialPlanRows(o.before,baseline?.planning?.[o.key],baseline||before);o.after=officialPlanRows(o.after,baseline?.planning?.[o.key],baseline||after);}
+  return o;
+ });
+}
+
+
+// Compatibilidade com envios V48/V55, sem remover os documentos originais.
+async function readLegacyParts56(doc,meta,kind){
+ const count=Number(meta[kind+'Count']),expected=Number(meta[kind+'Bytes']);
+ if(!Number.isInteger(count)||count<1||count>200||!Number.isFinite(expected)||expected<1||expected>20*1024*1024||!String(meta.generation||'').match(/^[\w-]+$/))throw Error('Metadados de envio inválidos; original preservado.');
+ let text='';
+ for(let i=0;i<count;i+=20){const values=await Promise.all(Array.from({length:Math.min(20,count-i)},(_,j)=>doc.collection('partes').doc(meta.generation+'_'+kind+'_'+String(i+j).padStart(5,'0')).get({source:'server'})));
+  for(let j=0;j<values.length;j++){const d=values[j].exists?values[j].data():null;if(!d||d.generation!==meta.generation||d.kind!==kind||d.index!==i+j||d.ownerEmail!==meta.ownerEmail||typeof d.content!=='string'||d.content.length>450000)throw Error('Parte do envio inválida ou ausente; original preservado.');text+=d.content;if(text.length>20*1024*1024)throw Error('Envio excede o limite de leitura.');}
+ }
+ let hash=2166136261;for(let i=0;i<text.length;i++)hash=Math.imul(hash^text.charCodeAt(i),16777619);
+ if((hash>>>0).toString(36)!==meta[kind+'Checksum']||new TextEncoder().encode(text).length!==expected)throw Error('Integridade do envio divergente; nada foi aplicado.');return JSON.parse(text);
+}
+async function readLegacy56(id){
+ const doc=ref(id),s=await doc.get({source:'server'});if(!s.exists)throw Error('Envio não encontrado.');const d=s.data();
+ if(d.schema==='senac-fluxo-v55'){
+  const [base,payload]=await Promise.all([readLegacyParts56(doc,d,'base'),readLegacyParts56(doc,d,'payload')]);
+  const again=await doc.get({source:'server'});if(!again.exists||again.data().generation!==d.generation||again.data().revision!==d.revision||again.data().status!==d.status)throw Error('O envio mudou durante a leitura. Consulte novamente.');return {...d,base,payload};
+ }
+ if(d.schema!=='senac-fluxo-v48')throw Error('Formato de envio desconhecido.');return d;
+}
+window.SenacV54Legacy={
+ async list(){if(!admin())throw Error('Somente o administrador.');const queries=await Promise.all(['senac-fluxo-v48','senac-fluxo-v55'].map(schema=>firebase.firestore().collection('banco_senac').where('schema','==',schema).get({source:'server'})));return queries.flatMap(q=>q.docs.map(d=>({id:d.id,...d.data()}))).filter(d=>d.status==='pendente');},
+ async read(id){if(!admin())throw Error('Somente o administrador.');return readLegacy56(id);},
+ async import(id){
+  if(!admin()||!ready)throw Error('Aguarde o painel administrativo.');
+  const d=await readLegacy56(id),p=USERS[String(d.ownerEmail||'').toLowerCase()],ctx=String(d.contexto||'');
+  if(d.status!=='pendente')throw Error('Este envio já foi decidido.');
+  if(!p||d.ownerId!==p.id||!id.startsWith('fluxo_'+p.id+'_')||!ctx||['__proto__','constructor','prototype'].includes(ctx))throw Error('Identificação do envio inválida.');
+  const payload=d.payload;if(!payload||!Array.isArray(payload.planning))throw Error('Pacote incompleto; original preservado.');
+  const data=submittedData40(),stamp=new Date().toISOString(),prefix='v54_import_'+id+'_'+d.revision+'_',ops=[];
+  const add=(field,key,before,after)=>ops.push({id:prefix+ops.length,field,key,before:clone(before??null),after:clone(after),em:stamp});
+  const meta=data.workflow_planejamento?.[ctx];
+  if(!meta)add('workflow_planejamento',ctx,null,{contexto:ctx,responsavelId:p.id,responsavelNome:p.nome,status:'pendente',enviadoPor:d.ownerEmail,enviadoEm:stamp,revisao:1});
+  const requests=[];
+  const rows=payload.planning.map((row,i)=>{
+   const official=[...(data.quali||[]),...(data.tec||[])].find(s=>String(s.id)===String(row.student?.id));
+   if(!official||!inRegion(official,p))throw Error('Aluno fora da região; envio original preservado.');
+   const current=data.planning?.[ctx]?.find(r=>String(r.student?.id)===String(official.id)),oldStatus=current?.status||'Realizar';
+   if(row.status&&row.status!==oldStatus)requests.push({id:prefix+'status_'+i,contexto:ctx,alunoId:String(official.id),alunoNome:official.nome,visitaData:row.date,visitaTipo:row.visitaTipo,observacaoVisita:row.obs||'',statusAtual:oldStatus,statusSolicitado:row.status,solicitadoPor:d.ownerEmail,solicitanteNome:p.nome,solicitadoEm:stamp,statusSolicitacao:'concluido_usuario'});
+   return {...clone(row),student:clone(official),status:oldStatus};
+  });
+  for(const [field,key,after] of [['planning','planning',rows],['planning_logistics','logistics',payload.logistics],['planning_lunch','lunch',payload.lunch],['planning_admin','admin',payload.admin]]){
+   if(!Array.isArray(after))continue;
+   // A primeira V48 usava o próprio envio como base: ausência de referência comum exige revisão.
+   const base=same(d.base?.[key],payload[key])?null:d.base?.[key];
+   add(field,ctx,base,after);
+  }
+  for(const r of payload.statusRequests||[]){if(r.contexto!==ctx||!['pendente','concluido_usuario'].includes(r.statusSolicitacao))continue;const row=payload.planning.find(x=>String(x.student?.id)===String(r.alunoId||r.studentId));if(!row)continue;requests.push({...clone(r),id:prefix+'status_old_'+requests.length,alunoId:String(row.student.id),solicitadoPor:d.ownerEmail,statusSolicitacao:'concluido_usuario',visitaData:row.date,visitaTipo:row.visitaTipo,observacaoVisita:row.obs||''});}
+  for(const [field,key] of [['solicitacoes_exclusao','deleteRequests'],['planning_attention','attention']]){
+   for(const x of payload[key]||[]){if(x.contexto!==ctx||!x.id)continue;const previous=(data[field]||[]).find(y=>y.id===x.id);if(same(previous,x))continue;add(field,x.id,previous||null,x)}
+  }
+  add('notificacoes_planejamento',prefix+'note',null,{id:prefix+'note',contexto:ctx,destinatario:'admin',tipo:'planejamento_concluido',conclusao54:{status:requests,cadastro:null},solicitante:d.ownerEmail,solicitanteNome:p.nome,mensagem:'Envio anterior recuperado. Status das visitas concluídas aplicado sem aprovação; divergências ficam para conferência.',criadaEm:stamp,lida:false});
+  await ingest(p,{schema:'senac-collaboration-v29',ops});
+  showNotifications(false);
+  return {received:ops.length,cloudPending:hasWork39()||quotaReported38};
+ }
+};
+
 })();
-
-
-
-
 </script>
 <script>
 // V35: digitação progressiva de data e Excel completo unificado.
@@ -14201,107 +14609,7 @@ window.__testarCorrecaoRateioV9666={completarDeslocamentos,minutos,H};
 })();
 </script>
 <style id="sgt-v48-style">body.v48-busy{cursor:progress}.v48-btn{white-space:nowrap}.v48-pulse{animation:v48p 1s ease-in-out infinite alternate}@keyframes v48p{to{opacity:.55}}#planTableBody tr,#logisticsTableBody>div,#lunchTableBody>div,#adminTableBody>div{content-visibility:auto;contain-intrinsic-size:auto 42px}</style>
-<script id="sgt-v48-integracao-desempenho">
-/* V48 - fluxo consolidado sobre banco_senac, mesclagem idempotente e interação fluida. */
-(function(){'use strict';
-const ADMIN='michel.farias@pr.senac.br', USERS={
- 'kleber.sato@docente.pr.senac.br':{id:'kleber',nome:'Kleber'},
- 'michelly.gronkoski@docente.pr.senac.br':{id:'michelly',nome:'Michelly'},
- 'fernando.scaraveli@docente.pr.senac.br':{id:'fernando',nome:'Fernando'}
-};
-const email=()=>String(firebase.auth().currentUser?.email||'').toLowerCase(), profile=()=>USERS[email()]||null, admin=()=>email()===ADMIN;
-const clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x)), same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
-const norm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
-const store=()=>firebase.firestore().collection('banco_senac');
-let originalSave=null,saveTimer=0,saveWaiters=[],saving=null,lastInputAt=0,renderTimer=0;
-function status(t,kind='local'){const e=document.getElementById('saveStatus');if(!e)return;e.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border '+(kind==='ok'?'text-emerald-700':kind==='err'?'text-red-700':'text-amber-700');e.textContent=t}
-function scheduleSave(){if(!originalSave)return Promise.resolve(false);return new Promise((ok,no)=>{saveWaiters.push({ok,no});clearTimeout(saveTimer);status('Alterações locais pendentes');saveTimer=setTimeout(()=>flushSave().catch(()=>{}),220)})}
-async function flushSave(){clearTimeout(saveTimer);if(saving){await saving.catch(()=>{});return saveWaiters.length?flushSave():true}const waiters=saveWaiters.splice(0);if(!waiters.length)return true;saving=Promise.resolve().then(()=>originalSave()).then(v=>{waiters.forEach(x=>x.ok(v));status('Salvo localmente','ok');return v}).catch(e=>{waiters.forEach(x=>x.no(e));status('Falha ao salvar','err');throw e}).finally(()=>{saving=null;if(saveWaiters.length)setTimeout(()=>flushSave().catch(()=>{}),0)});return saving}
-function installSave(){if(originalSave||typeof window.saveToStorage!=='function')return;originalSave=window.saveToStorage;window.saveToStorage=scheduleSave;window.forcarSalvamentoV48=flushSave}
-function lightRender(){clearTimeout(renderTimer);renderTimer=setTimeout(()=>{if(Date.now()-lastInputAt<120)return lightRender();if(!document.getElementById('viewPlanejamento')?.classList.contains('hidden'))window.renderPlanningTable?.()},100)}
-function installFluidity(){document.addEventListener('input',e=>{if(e.target.matches('input[type=date],input[type=time],.plan-input'))lastInputAt=Date.now()},{passive:true});
- for(const name of ['updateLogistics','updateLunch','updateAdmin']){const old=window[name];if(typeof old==='function'&&!old.__v48){const f=function(){const r=old.apply(this,arguments);status('Alteração salva na fila local');return r};f.__v48=true;window[name]=f}}
- const oldPlan=window.renderPlanningTable;if(typeof oldPlan==='function'&&!oldPlan.__v48){const f=function(){if(Date.now()-lastInputAt<120){lightRender();return}return oldPlan.apply(this,arguments)};f.__v48=true;window.renderPlanningTable=f}}
-function keyPlan(x){return String(x?._rowId||[x?.student?.id||'',x?.visitaTipo||''].join('|'))}
-function keyLog(x){return String(x?._rowId||[x?.date||'',norm(x?.origin),norm(x?.dest)].join('|'))}
-function keyLunch(x){return String(x?._rowId||x?.date||'SEM_DATA')}
-function keyAdmin(x){return String(x?._rowId||[x?.date||'',norm(x?.turma),norm(x?.activity)].join('|'))}
-function mergeObject(base,local,remote,path,conflicts){const out={},keys=new Set([...Object.keys(base||{}),...Object.keys(local||{}),...Object.keys(remote||{})]);for(const k of keys){const b=base?.[k],l=local?.[k],r=remote?.[k];if(same(l,r))out[k]=clone(l);else if(same(l,b))out[k]=clone(r);else if(same(r,b)||r===undefined)out[k]=clone(l);else if(l===undefined)out[k]=clone(r);else{out[k]=clone(l);conflicts.push({campo:path+'.'+k,administrador:l,usuario:r})}}return out}
-function mergeArray(base,local,remote,keyFn,path,conflicts){const bm=new Map((base||[]).map(x=>[keyFn(x),x])),lm=new Map((local||[]).map(x=>[keyFn(x),x])),rm=new Map((remote||[]).map(x=>[keyFn(x),x])),out=[];for(const k of new Set([...bm.keys(),...lm.keys(),...rm.keys()])){const b=bm.get(k),l=lm.get(k),r=rm.get(k);if(!l&&!r)continue;if(same(l,r))out.push(clone(l));else if(same(l,b))out.push(clone(r));else if(same(r,b)||!r)out.push(clone(l));else if(!l)out.push(clone(r));else out.push(mergeObject(b,l,r,path+'['+k+']',conflicts))}return out.filter(Boolean)}
-function contextPackage(ctx,data=DB){const ids=new Set((data.planning?.[ctx]||[]).map(x=>String(x.student?.id||'')));return {planning:clone(data.planning?.[ctx]||[]),logistics:clone(data.planning_logistics?.[ctx]||[]),lunch:clone(data.planning_lunch?.[ctx]||[]),admin:clone(data.planning_admin?.[ctx]||[]),attention:clone((data.planning_attention||[]).filter(x=>x.contexto===ctx)),statusRequests:clone((data.solicitacoes_status_visita||[]).filter(x=>x.contexto===ctx)),notifications:clone((data.notificacoes_planejamento||[]).filter(x=>x.contexto===ctx)),deleteRequests:clone((data.solicitacoes_exclusao||[]).filter(x=>x.contexto===ctx)),students:clone([...(data.quali||[]),...(data.tec||[])].filter(x=>ids.has(String(x.id))))}}
-function applyPackage(ctx,p){DB.planning??={};DB.planning_logistics??={};DB.planning_lunch??={};DB.planning_admin??={};DB.planning[ctx]=clone(p.planning||[]);DB.planning_logistics[ctx]=clone(p.logistics||[]);DB.planning_lunch[ctx]=clone(p.lunch||[]);DB.planning_admin[ctx]=clone(p.admin||[]);for(const [field,prop] of [['planning_attention','attention'],['solicitacoes_status_visita','statusRequests'],['notificacoes_planejamento','notifications'],['solicitacoes_exclusao','deleteRequests']]){DB[field]=Array.isArray(DB[field])?DB[field]:[];DB[field]=DB[field].filter(x=>x.contexto!==ctx).concat(clone(p[prop]||[]))}for(const s of p.students||[]){for(const arr of [DB.quali||[],DB.tec||[]]){const i=arr.findIndex(x=>String(x.id)===String(s.id));if(i>=0)arr[i]=clone(s)}}}
-function mergePackage(base,local,remote){const conflicts=[];return {merged:{planning:mergeArray(base?.planning,local?.planning,remote?.planning,keyPlan,'planning',conflicts),logistics:mergeArray(base?.logistics,local?.logistics,remote?.logistics,keyLog,'logistics',conflicts),lunch:mergeArray(base?.lunch,local?.lunch,remote?.lunch,keyLunch,'lunch',conflicts),admin:mergeArray(base?.admin,local?.admin,remote?.admin,keyAdmin,'admin',conflicts),attention:mergeArray(base?.attention,local?.attention,remote?.attention,x=>x.id||JSON.stringify(x),'attention',conflicts),statusRequests:mergeArray(base?.statusRequests,local?.statusRequests,remote?.statusRequests,x=>x.id||JSON.stringify(x),'statusRequests',conflicts),notifications:mergeArray(base?.notifications,local?.notifications,remote?.notifications,x=>x.id||JSON.stringify(x),'notifications',conflicts),deleteRequests:mergeArray(base?.deleteRequests,local?.deleteRequests,remote?.deleteRequests,x=>x.id||JSON.stringify(x),'deleteRequests',conflicts),students:mergeArray(base?.students,local?.students,remote?.students,x=>String(x.id),'students',conflicts)},conflicts}}
-function docId(p,ctx){let h=2166136261;for(const c of ctx)h=Math.imul(h^c.charCodeAt(0),16777619);return 'fluxo_'+p.id+'_'+(h>>>0).toString(36)}
-async function conclude(mode='concluido'){const p=profile();const ctx=STATE.planContext;if(!p||!ctx)return alert('Selecione um planejamento.');await flushSave();const ref=store().doc(docId(p,ctx)),remote=contextPackage(ctx);await firebase.firestore().runTransaction(async tx=>{const snap=await tx.get(ref),old=snap.exists?snap.data():null;tx.set(ref,{schema:'senac-fluxo-v48',ownerId:p.id,ownerEmail:email(),ownerName:p.nome,contexto:ctx,status:mode,base:old?.base||remote,payload:remote,revision:Number(old?.revision||0)+1,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),submittedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})});await originalSave();await window.sincronizarAgoraNuvem?.();alert(mode==='aguardando_aprovacao'?'Planejamento enviado para aprovação.':'Planejamento concluído e enviado. Alterações iguais serão deduplicadas e alterações diferentes serão mescladas por campo.')}
-async function approveDoc(id){const ref=store().doc(id),snap=await ref.get();if(!snap.exists)return;const d=snap.data(),ctx=d.contexto,local=contextPackage(ctx),r=mergePackage(d.base||{},local,d.payload||{}),preview=window.__V48_PREVIEW?.id===id?(window.__V48_PREVIEW.conflicts||[]):[];applyPackage(ctx,r.merged);await originalSave();await window.sincronizarAgoraNuvem?.();const conflicts=[...preview,...r.conflicts].filter((x,i,a)=>a.findIndex(y=>y.campo===x.campo&&same(y.administrador,x.administrador)&&same(y.usuario,x.usuario))===i);await ref.set({status:conflicts.length?'aprovado_com_conflitos_preservados':'aprovado',approvedBy:email(),approvedAt:firebase.firestore.FieldValue.serverTimestamp(),conflicts,adminPayload:contextPackage(ctx),revision:Number(d.revision||0)+1},{merge:true});window.__V48_PREVIEW=null;alert(conflicts.length?`Planejamento mesclado. ${conflicts.length} conflito(s) real(is) foram preservados para conferência.`:'Planejamento aprovado e mesclado sem duplicidades.')}
-async function inbox(){const q=await store().where('schema','==','senac-fluxo-v48').get(),rows=q.docs.map(x=>({id:x.id,...x.data()}));let m=document.getElementById('v48-modal');if(!m){m=document.createElement('div');m.id='v48-modal';m.className='modal-overlay';document.body.append(m)}m.innerHTML='<div class="bg-white rounded-xl max-w-3xl w-[95%] max-h-[85vh] overflow-auto p-5"><div class="flex justify-between"><h3 class="font-black text-senac-blue">Planejamentos recebidos</h3><button id="v48x">Fechar</button></div><div id="v48list" class="space-y-2 mt-4"></div></div>';m.querySelector('#v48x').onclick=()=>m.remove();const list=m.querySelector('#v48list');for(const d of rows.sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))){const c=document.createElement('div');c.className='border rounded p-3 flex justify-between gap-3';c.innerHTML=`<div><b>${d.ownerName||d.ownerEmail}</b><div class="text-xs">${d.contexto}</div><div class="text-xs font-bold">${d.status}</div></div>`;const b=document.createElement('button');b.className='px-3 py-2 bg-senac-blue text-white rounded text-xs font-bold';b.textContent='Abrir e mesclar';b.onclick=()=>{const local=contextPackage(d.contexto),preview=mergePackage(d.base||{},local,d.payload||{});applyPackage(d.contexto,preview.merged);STATE.planContext=d.contexto;window.switchTab?.('planejamento');window.renderPlanningTable?.();window.__V48_DOC=d.id;window.__V48_PREVIEW={id:d.id,conflicts:preview.conflicts};const a=document.getElementById('v48-approve');if(a)a.hidden=false;m.remove()};c.append(b);list.append(c)}}
-async function migrate(){
- if(!admin())return;
- const found=[];
- status('Localizando pendências na nuvem...');
- for(const p of Object.values(USERS)){
-  for(const col of ['banco_senac','sistema']){
-   try{
-    const snap=await firebase.firestore().collection(col).doc('colaboracao_'+p.id).get({source:'server'});
-    const data=snap.exists?snap.data():null,ops=Array.isArray(data?.ops)?data.ops:[];
-    if(ops.length){
-     const campos={};ops.forEach(o=>campos[o.field]=(campos[o.field]||0)+1);
-     found.push({perfil:p,colecao:col,documento:'colaboracao_'+p.id,quantidade:ops.length,campos,versao:data.version||''});
-     break;
-    }
-   }catch(e){console.warn('Falha ao consultar pendência',col,p.id,e)}
-  }
- }
- status(found.length?`${found.reduce((n,x)=>n+x.quantidade,0)} pendência(s) pronta(s) para importar`:'Nenhuma pendência na nuvem',found.length?'local':'ok');
- showLegacyPendingModal(found);
-}
-function showLegacyPendingModal(found){
- let modal=document.getElementById('v48-pending-modal');
- if(!modal){modal=document.createElement('div');modal.id='v48-pending-modal';modal.className='modal-overlay';document.body.append(modal)}
- const total=found.reduce((n,x)=>n+x.quantidade,0);
- modal.innerHTML='<div class="bg-white rounded-xl max-w-3xl w-[95%] max-h-[88vh] overflow-auto p-5 shadow-2xl"><div class="flex items-start justify-between gap-3"><div><h3 class="text-lg font-black text-senac-blue">Pendências anteriores localizadas</h3><p class="text-xs text-slate-500 mt-1">Revise o resumo e importe as filas para a base administrativa. O processamento usa o mecanismo de validação e deduplicação já existente.</p></div><button id="v48-pending-close" type="button" class="px-3 py-2 bg-slate-100 rounded text-xs font-bold">Fechar</button></div><div id="v48-pending-list" class="space-y-3 mt-4"></div><div class="mt-5 border-t pt-4 flex flex-wrap justify-end gap-2"><button id="v48-pending-refresh" type="button" class="px-3 py-2 bg-slate-200 rounded text-xs font-bold">Verificar novamente</button><button id="v48-pending-import" type="button" class="px-4 py-2 bg-emerald-700 text-white rounded text-xs font-bold">Puxar e processar '+total+' pendência(s)</button></div><p id="v48-pending-status" class="mt-3 text-xs font-bold text-slate-600" aria-live="polite"></p></div>';
- modal.querySelector('#v48-pending-close').onclick=()=>modal.remove();
- modal.querySelector('#v48-pending-refresh').onclick=()=>{modal.remove();migrate()};
- const list=modal.querySelector('#v48-pending-list');
- if(!found.length){list.innerHTML='<div class="p-4 bg-emerald-50 border border-emerald-200 rounded text-sm text-emerald-800">Nenhuma operação pendente foi encontrada em <b>banco_senac</b> nem no caminho legado <b>sistema</b>.</div>';modal.querySelector('#v48-pending-import').hidden=true;return}
- found.forEach(item=>{
-  const card=document.createElement('article');card.className='border rounded-lg p-4 bg-slate-50';
-  const detalhes=Object.entries(item.campos).map(([k,v])=>k+': '+v).join(' | ');
-  card.innerHTML='<div class="flex justify-between gap-3"><div><b>'+item.perfil.nome+'</b><div class="text-xs text-slate-500">'+item.colecao+'/'+item.documento+'</div></div><span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-black">'+item.quantidade+' operação(ões)</span></div><div class="text-xs mt-3 text-slate-600"><b>Conteúdo:</b> '+detalhes+'</div>';
-  list.append(card);
- });
- modal.querySelector('#v48-pending-import').onclick=()=>importLegacyPendings(found,modal);
-}
-async function importLegacyPendings(found,modal){
- if(!admin()||!found.length)return;
- const button=modal.querySelector('#v48-pending-import'),message=modal.querySelector('#v48-pending-status');
- if(!confirm('Puxar e processar as pendências agora?\n\nSerá criado um backup administrativo quando o recurso estiver disponível. Alterações iguais não serão duplicadas e conflitos reais permanecerão para análise.'))return;
- button.disabled=true;button.textContent='Processando pendências...';button.classList.add('opacity-60');message.textContent='Criando proteção e processando as filas dos usuários...';
- try{
-  if(typeof window.criarVersaoBackup==='function')await window.criarVersaoBackup('pre_importacao_pendencias','Antes de importar filas antigas dos usuários',{silent:true});
-  if(typeof window.sincronizarAgoraNuvem!=='function')throw new Error('O sincronizador administrativo não foi localizado.');
-  await window.sincronizarAgoraNuvem();
-  const resumo={
-   planejamentos:Object.values(DB.workflow_planejamento||{}).filter(x=>x?.status==='pendente').length,
-   status:(DB.solicitacoes_status_visita||[]).filter(x=>x?.statusSolicitacao==='pendente').length,
-   exclusoes:(DB.solicitacoes_exclusao||[]).filter(x=>x?.status==='pendente').length,
-   cidades:(DB.solicitacoes_cidades||[]).filter(x=>x?.status==='pendente').length,
-   atencoes:(DB.planning_attention||[]).filter(x=>x?.status!=='ajustado').length,
-   notificacoes:(DB.notificacoes_planejamento||[]).filter(x=>!x?.lida&&(x?.destinatario==='admin'||x?.destinatario===email())).length
-  };
-  message.className='mt-3 text-xs font-bold text-emerald-700';
-  message.textContent=`Importação concluída. Para análise: ${resumo.planejamentos} planejamento(s), ${resumo.status} mudança(s) de status, ${resumo.exclusoes} exclusão(ões), ${resumo.cidades} cidade(s), ${resumo.atencoes} ponto(s) de atenção e ${resumo.notificacoes} notificação(ões).`;
-  button.textContent='Pendências processadas';status('Pendências importadas e prontas para análise','ok');
-  const actions=document.createElement('div');actions.className='mt-3 flex justify-end gap-2';
-  const open=document.createElement('button');open.type='button';open.className='px-4 py-2 bg-senac-blue text-white rounded text-xs font-bold';open.textContent='Abrir notificações e analisar';open.onclick=()=>{modal.remove();if(typeof window.abrirWorkflowNotificacoes==='function')window.abrirWorkflowNotificacoes();else document.getElementById('v29-notifications')?.click()};actions.append(open);message.after(actions);
- }catch(e){console.error(e);message.className='mt-3 text-xs font-bold text-red-700';message.textContent='Não foi possível processar: '+e.message;button.disabled=false;button.textContent='Tentar novamente';button.classList.remove('opacity-60');status('Falha ao importar pendências','err')}
-}
-function directStatus(){const old=window.updatePlanItem;if(typeof old!=='function'||old.__v48status)return;const f=function(idx,field,value){if(profile()&&field==='status'){const ctx=STATE.planContext,item=DB.planning?.[ctx]?.[idx];if(!item)return;item.status=value;const student=[...(DB.quali||[]),...(DB.tec||[])].find(x=>String(x.id)===String(item.student?.id));if(student){student.visits=Array.isArray(student.visits)?student.visits:[];const vi=Math.max(0,(parseInt(String(item.visitaTipo||'1'))||1)-1);student.visits[vi]={...(student.visits[vi]||{}),ok:norm(value)==='REALIZADA',date:item.date||student.visits[vi]?.date||null,updatedAt:Date.now()};item.student=student}scheduleSave();lightRender();return}return old.apply(this,arguments)};f.__v48status=true;window.updatePlanItem=f}
-function buttons(){const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;if(actions&&profile()){for(const [id,text,color,fn] of [['v48-send','Enviar para aprovação','bg-blue-700',()=>conclude('aguardando_aprovacao')],['v48-complete','Concluir planejamento','bg-emerald-700',()=>conclude('concluido')]])if(!document.getElementById(id)){const b=document.createElement('button');b.id=id;b.className=`v48-btn px-3 py-1.5 ${color} text-white rounded text-xs font-bold`;b.textContent=text;b.onclick=fn;actions.prepend(b)}}const header=document.querySelector('#appContainer header .flex.items-center.gap-3');if(header&&admin()){for(const [id,text,fn] of [['v48-inbox','Recebidos',inbox],['v48-migrate','Verificar pendências',migrate]])if(!document.getElementById(id)){const b=document.createElement('button');b.id=id;b.className='v48-btn px-3 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold';b.textContent=text;b.onclick=fn;header.prepend(b)}if(actions&&!document.getElementById('v48-approve')){const b=document.createElement('button');b.id='v48-approve';b.hidden=true;b.className='px-3 py-1.5 bg-emerald-700 text-white rounded text-xs font-bold';b.textContent='Aprovar e mesclar';b.onclick=()=>window.__V48_DOC&&approveDoc(window.__V48_DOC);actions.prepend(b)}}}
-function init(){installSave();installFluidity();directStatus();buttons();console.info('[S.G.T V48] integração, mesclagem e desempenho ativos')}
-firebase.auth().onAuthStateChanged(()=>setTimeout(init,1400));setInterval(()=>{installSave();directStatus();buttons()},1800);window.SGTV48={flushSave,mergePackage,contextPackage,conclude,migrate};
-})();
-</script>
+
 
 <style id="sgt-v49-performance-style">
 #viewPlanejamento input,#viewPlanejamento select,#viewPlanejamento textarea{touch-action:manipulation;transition:border-color .12s,box-shadow .12s;background-clip:padding-box}
@@ -14309,118 +14617,166 @@ firebase.auth().onAuthStateChanged(()=>setTimeout(init,1400));setInterval(()=>{i
 #planningTableWrapper,#logisticsTable,#lunchTable,#adminTable{contain:layout style paint}
 body.v49-editing #saveStatus{color:#b45309!important}
 </style>
-<script id="sgt-v49-performance-interacao">
-/* V49 - edição instantânea: não bloqueia data, horário, colagem nem troca de campo. */
-(function(){'use strict';
-let installed=false,editing=false,editDepth=0,saveTimer=0,saveIdle=0,pendingSave=false,savePromise=null,deferred=new Set(),lastEdit=0;
-const editor=el=>!!el?.closest?.('#viewPlanejamento')&&el.matches?.('input,select,textarea');
-const activeEditor=()=>editor(document.activeElement);
-const idle=(fn,timeout=1400)=>window.requestIdleCallback?requestIdleCallback(fn,{timeout}):setTimeout(fn,50);
-const cancelIdle=id=>{if(!id)return;if(window.cancelIdleCallback)cancelIdleCallback(id);else clearTimeout(id)};
-function badge(text,color='text-amber-700'){const e=document.getElementById('saveStatus');if(!e)return;e.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border '+color;e.textContent=text}
-function installSaveBuffer(){
- const current=window.saveToStorage;if(typeof current!=='function'||current.__v49)return;
- async function commit(){clearTimeout(saveTimer);cancelIdle(saveIdle);saveTimer=saveIdle=0;if(!pendingSave)return true;if(savePromise)return savePromise;pendingSave=false;badge('Salvando alterações...','text-blue-700');savePromise=Promise.resolve(current()).then(v=>{badge('Salvo localmente','text-emerald-700');return v}).catch(e=>{pendingSave=true;badge('Falha ao salvar','text-red-700');throw e}).finally(()=>{savePromise=null;if(pendingSave)schedule(300)});return savePromise}
- function schedule(delay=900){pendingSave=true;clearTimeout(saveTimer);cancelIdle(saveIdle);badge('Alterações locais pendentes');saveTimer=setTimeout(()=>{saveTimer=0;saveIdle=idle(()=>commit().catch(console.error),1200)},delay);return Promise.resolve(true)}
- const buffered=function(){return schedule(activeEditor()?950:500)};buffered.__v49=true;buffered.flush=commit;buffered.original=current;window.saveToStorage=buffered;window.forcarSalvamentoV49=commit;
- window.addEventListener('pagehide',()=>{if(pendingSave)commit().catch(()=>{})});window.addEventListener('beforeunload',()=>{if(pendingSave)commit().catch(()=>{})});
-}
-function installRenderGate(name){const current=window[name];if(typeof current!=='function'||current.__v49)return;const wrapped=function(){if(editing||activeEditor()||Date.now()-lastEdit<180){deferred.add(name);return}return current.apply(this,arguments)};wrapped.__v49=true;wrapped.original=current;window[name]=wrapped}
-function flushRenders(){if(editing||activeEditor())return;const names=[...deferred];deferred.clear();requestAnimationFrame(()=>names.forEach(n=>{try{window[n]?.original?window[n].original():window[n]?.()}catch(e){console.warn('Atualização visual adiada',n,e)}}))}
-function installEvents(){
- document.addEventListener('focusin',e=>{if(!editor(e.target))return;editDepth++;editing=true;document.body.classList.add('v49-editing')},true);
- document.addEventListener('input',e=>{if(!editor(e.target))return;lastEdit=Date.now();editing=true;document.body.classList.add('v49-editing');badge('Editando...');},true);
- document.addEventListener('paste',e=>{if(!editor(e.target))return;lastEdit=Date.now();editing=true;badge('Conteúdo colado; salvamento pendente')},true);
- document.addEventListener('focusout',e=>{if(!editor(e.target))return;editDepth=Math.max(0,editDepth-1);setTimeout(()=>{if(!activeEditor()&&editDepth===0){editing=false;document.body.classList.remove('v49-editing');window.saveToStorage?.();setTimeout(flushRenders,60)}},0)},true);
- document.addEventListener('keydown',e=>{if(!editor(e.target)||e.key!=='Enter'||e.target.tagName==='TEXTAREA')return;e.preventDefault();const items=[...document.querySelectorAll('#viewPlanejamento input:not([disabled]),#viewPlanejamento select:not([disabled]),#viewPlanejamento textarea:not([disabled])')].filter(x=>x.offsetParent!==null);const i=items.indexOf(e.target);if(i>=0)items[(i+1)%items.length]?.focus()},true);
-}
-function install(){if(installed)return;installed=true;installSaveBuffer();['renderPlanningTable','renderLogisticsTable','renderLunchTable','renderAdminTable','renderControleRateio'].forEach(installRenderGate);installEvents();console.info('[S.G.T V49] edição fluida ativa')}
-firebase.auth().onAuthStateChanged(()=>setTimeout(install,1700));setTimeout(install,2600);setInterval(()=>{installSaveBuffer();['renderPlanningTable','renderLogisticsTable','renderLunchTable','renderAdminTable'].forEach(installRenderGate)},2500);
-window.SGTV49={flush:()=>window.forcarSalvamentoV49?.(),state:()=>({editing,pendingSave,deferred:[...deferred]})};
-})();
-</script>
+
 
 <style id="sgt-v50-performance-style">
 #planContent.v50-loading{opacity:.72;pointer-events:none}#planContent.v50-loading::before{content:'Abrindo planejamento...';position:sticky;top:0;display:block;z-index:30;padding:7px 12px;background:#eff6ff;color:#075985;font-size:11px;font-weight:800;border-bottom:1px solid #bae6fd}
 .v50-field-saved{border-color:#10b981!important}.v50-field-pending{border-color:#f59e0b!important}
 </style>
-<script id="sgt-v50-performance-profunda">
-/* V50 - caminho rapido real: mutacao O(1), sem render e sem serializacao no evento do campo. */
-(function(){'use strict';
-let installed=false,dirty=false,flushTimer=0,opening=false,lastContext='',openTimer=0;const metrics=[];
-const now=()=>performance.now();
-const mark=(name,t)=>{metrics.push({name,ms:+(now()-t).toFixed(3),at:Date.now()});if(metrics.length>500)metrics.shift()};
-function queueSave(){dirty=true;clearTimeout(flushTimer);flushTimer=setTimeout(async()=>{if(!dirty)return;dirty=false;try{await (window.forcarSalvamentoV49?.()||window.forcarSalvamentoV48?.()||window.saveToStorage?.())}catch(e){dirty=true;console.error(e)}},1300)}
-function validDate(item,val){if(!val)return true;if(!/^\d{4}-\d{2}-\d{2}$/.test(val))return false;const y=+val.slice(0,4);if(y<2020||y>2035)return false;const d=new Date(val+'T12:00:00'),map={1:'seg',2:'ter',3:'qua',4:'qui',5:'sex'};return !(map[d.getDay()]&&item?.student?.contraTurno?.[map[d.getDay()]])}
-function syncObs(item,val){const id=String(item?.student?.id||'');for(const arr of [DB.quali||[],DB.tec||[]]){const s=arr.find(x=>String(x.id)===id);if(s){s.obs=val;s.obs_origem=val}}if(item?.student){item.student.obs=val;item.student.obs_origem=val}}
-function fastPlan(idx,field,val){const t=now(),ctx=STATE.planContext,item=DB.planning?.[ctx]?.[idx];if(!item)return false;if(field==='date'&&!validDate(item,val)){setTimeout(()=>alert('Data inválida ou incompatível com o contra-turno deste aluno.'),0);return false}item[field]=val;if(field==='obs')syncObs(item,val);queueSave();mark('editar_planejamento_'+field,t);return true}
-function fastMap(map,idx,field,val){const t=now(),row=DB[map]?.[STATE.planContext]?.[idx];if(!row)return false;row[field]=val;queueSave();mark('editar_'+map+'_'+field,t);return true}
-function wrapEditors(){
- const old=window.updatePlanItem;if(typeof old==='function'&&!old.__v50){const f=function(idx,field,val){if(field==='status'||field==='visitaTipo')return old.apply(this,arguments);return fastPlan(idx,field,val)};f.__v50=true;f.original=old;window.updatePlanItem=f}
- for(const [name,map] of [['updateLogistics','planning_logistics'],['updateLunch','planning_lunch'],['updateAdmin','planning_admin']]){const prior=window[name];if(typeof prior==='function'&&!prior.__v50){const f=function(idx,field,val){return fastMap(map,idx,field,val)};f.__v50=true;f.original=prior;window[name]=f}}
-}
-function wrapOpen(){const old=window.selectPlan;if(typeof old==='function'&&!old.__v50){const f=function(plan){const t=now(),content=document.getElementById('planContent');if(opening&&plan===lastContext)return;opening=true;lastContext=plan;if(content)content.classList.add('v50-loading');clearTimeout(openTimer);requestAnimationFrame(()=>{try{old.apply(this,arguments)}finally{openTimer=setTimeout(()=>{opening=false;content?.classList.remove('v50-loading');mark('abrir_planejamento',t)},0)}})};f.__v50=true;window.selectPlan=f}
- const render=window.renderPlanningTable;if(typeof render==='function'&&!render.__v50open){let queued=false,lastSig='';const f=function(){const ctx=STATE.planContext,rows=DB.planning?.[ctx]||[],sig=ctx+'|'+rows.length+'|'+(rows[0]?.student?.id||'')+'|'+(rows[rows.length-1]?.student?.id||'');if(queued)return;if(sig===lastSig&&document.getElementById('planTableBody')?.children.length===rows.length)return;queued=true;requestAnimationFrame(()=>{queued=false;lastSig=sig;render.apply(this,arguments)})};f.__v50open=true;f.original=render;window.renderPlanningTable=f}}
-function fieldFeedback(){document.addEventListener('change',e=>{if(!e.target.closest?.('#viewPlanejamento'))return;e.target.classList.add('v50-field-pending');setTimeout(()=>{e.target.classList.remove('v50-field-pending');e.target.classList.add('v50-field-saved');setTimeout(()=>e.target.classList.remove('v50-field-saved'),500)},20)},true)}
-function install(){wrapEditors();wrapOpen();if(installed)return;installed=true;fieldFeedback();console.info('[S.G.T V50] caminho rápido de edição e abertura ativo')}
-firebase.auth().onAuthStateChanged(()=>setTimeout(install,1800));setTimeout(install,2800);setInterval(install,2200);window.SGTV50={fastPlan,fastMap,metrics:()=>[...metrics],benchmark(n=5000){const ctx=STATE.planContext,item=DB.planning?.[ctx]?.[0];if(!item)return null;const old=item.hrAtend,t=now();for(let i=0;i<n;i++)item.hrAtend=String(i%24).padStart(2,'0')+':00';item.hrAtend=old;return {operations:n,totalMs:+(now()-t).toFixed(3),averageMicroseconds:+((now()-t)*1000/n).toFixed(3)}}};
-})();
-</script>
+
 <style id="sgt-v55-style">
 #v55InboxModal{position:fixed;inset:0;background:#0f172acc;z-index:100000;display:none;align-items:center;justify-content:center;padding:18px}#v55InboxModal.open{display:flex}.v55-panel{width:min(980px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:16px;padding:20px}.v55-card{border:1px solid #cbd5e1;border-radius:12px;padding:14px;margin:10px 0}.v55-actions{display:flex;gap:8px;flex-wrap:wrap}.v55-btn{padding:8px 12px;border-radius:8px;font-weight:800;font-size:12px;color:white}.v55-ok{background:#047857}.v55-no{background:#b91c1c}.v55-info{background:#075985}
 </style>
-<script id="sgt-v55-correcao-integral">
-/* V55 - persistencia duravel, fluxo publico, aprovacao administrativa e renderizacao por revisao. */
-(function(){'use strict';
-if(window.__SGT_V55_INSTALLED)return;window.__SGT_V55_INSTALLED=true;
-const ADMIN='michel.farias@pr.senac.br';
-const USERS={
- 'kleber.sato@docente.pr.senac.br':{id:'kleber',nome:'Kleber'},
- 'michelly.gronkoski@docente.pr.senac.br':{id:'michelly',nome:'Michelly'},
- 'fernando.scaraveli@docente.pr.senac.br':{id:'fernando',nome:'Fernando'}
-};
-const clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x));
-const mail=()=>String(firebase.auth().currentUser?.email||'').toLowerCase();
-const getProfile=()=>USERS[mail()]||null;
-const isAdmin=()=>mail()===ADMIN;
-const store=()=>firebase.firestore().collection('banco_senac');
-const now=()=>new Date().toISOString();
-const uid=()=>crypto.randomUUID?.()||('op_'+Date.now()+'_'+Math.random().toString(36).slice(2));
-const bytes=x=>new TextEncoder().encode(typeof x==='string'?x:JSON.stringify(x)).length;
-const hash=s=>{let h=2166136261;for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return (h>>>0).toString(36)};
-const contextId=(p,ctx)=>'fluxo_'+p.id+'_'+hash(ctx);
-const setStatus=(text,kind='local')=>{const e=document.getElementById('saveStatus');if(!e)return;e.textContent=text;e.dataset.v55=kind;e.className='hidden md:flex items-center gap-2 text-[10px] font-bold bg-white px-3 py-1.5 rounded-full border '+(kind==='ok'?'text-emerald-700':kind==='err'?'text-red-700':'text-amber-700')};
-let dbp,writeTimer=0,writeChain=Promise.resolve(),revision=0,lastPersistedRevision=0,currentBaseline={};
-function idb(){if(dbp)return dbp;dbp=new Promise((resolve,reject)=>{const r=indexedDB.open('SGT_V55_DURABLE',1);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('snapshots'))d.createObjectStore('snapshots',{keyPath:'key'});if(!d.objectStoreNames.contains('queue'))d.createObjectStore('queue',{keyPath:'id'});if(!d.objectStoreNames.contains('baseline'))d.createObjectStore('baseline',{keyPath:'key'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});return dbp}
-async function put(storeName,value){const d=await idb();return new Promise((resolve,reject)=>{const tx=d.transaction(storeName,'readwrite');tx.objectStore(storeName).put(value);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)})}
-async function get(storeName,key){const d=await idb();return new Promise((resolve,reject)=>{const tx=d.transaction(storeName,'readonly'),r=tx.objectStore(storeName).get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
-async function all(storeName){const d=await idb();return new Promise((resolve,reject)=>{const tx=d.transaction(storeName,'readonly'),r=tx.objectStore(storeName).getAll();r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error)})}
-async function del(storeName,key){const d=await idb();return new Promise((resolve,reject)=>{const tx=d.transaction(storeName,'readwrite');tx.objectStore(storeName).delete(key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}
-function pack(ctx){return {contexto:ctx,planning:clone(DB.planning?.[ctx]||[]),logistics:clone(DB.planning_logistics?.[ctx]||[]),lunch:clone(DB.planning_lunch?.[ctx]||[]),admin:clone(DB.planning_admin?.[ctx]||[]),attention:clone((DB.planning_attention||[]).filter(x=>x.contexto===ctx)),statusRequests:clone((DB.solicitacoes_status_visita||[]).filter(x=>x.contexto===ctx)),notifications:clone((DB.notificacoes_planejamento||[]).filter(x=>x.contexto===ctx)),deleteRequests:clone((DB.solicitacoes_exclusao_planejamento||[]).filter(x=>x.contexto===ctx)),students:clone([...(DB.quali||[]),...(DB.tec||[])])};}
-async function ensureBaseline(ctx){if(currentBaseline[ctx])return currentBaseline[ctx];const key=mail()+'|'+ctx,stored=await get('baseline',key);if(stored?.data)return currentBaseline[ctx]=stored.data;const data=pack(ctx);await put('baseline',{key,data,createdAt:now()});return currentBaseline[ctx]=data}
-async function persistNow(reason='edicao'){const ctx=STATE?.planContext;if(!ctx)return false;const data=pack(ctx),rev=revision;setStatus('Salvando no dispositivo…');writeChain=writeChain.then(async()=>{await put('snapshots',{key:mail()+'|'+ctx,data,revision:rev,reason,confirmedAt:now()});lastPersistedRevision=Math.max(lastPersistedRevision,rev);setStatus('Confirmado no dispositivo','ok');return true}).catch(e=>{setStatus('Falha ao salvar no dispositivo','err');throw e});return writeChain}
-function queuePersist(reason='edicao'){revision++;clearTimeout(writeTimer);setStatus('Alteração na memória');writeTimer=setTimeout(()=>persistNow(reason).catch(console.error),180);window.dispatchEvent(new CustomEvent('sgt:v55-revision',{detail:{revision,reason}}));return revision}
-async function flushLocal(reason='manual'){clearTimeout(writeTimer);if(lastPersistedRevision<revision)await persistNow(reason);await writeChain;return lastPersistedRevision>=revision}
-function chunks(text,size=430000){const out=[];for(let i=0;i<text.length;i+=size)out.push(text.slice(i,i+size));return out}
-async function writeParts(ref,generation,kind,obj){const text=JSON.stringify(obj),parts=chunks(text);if(bytes(text)>20*1024*1024)throw Error('Pacote excede o limite seguro de 20 MiB. Divida o planejamento.');for(let i=0;i<parts.length;i+=350){const b=firebase.firestore().batch();parts.slice(i,i+350).forEach((content,j)=>b.set(ref.collection('partes').doc(`${generation}_${kind}_${String(i+j).padStart(5,'0')}`),{generation,kind,index:i+j,content,ownerEmail:mail()}));await b.commit()}return {count:parts.length,bytes:bytes(text),checksum:hash(text)}}
-async function readParts(ref,generation,kind,count){let text='';for(let i=0;i<count;i+=20){const snaps=await Promise.all(Array.from({length:Math.min(20,count-i)},(_,j)=>ref.collection('partes').doc(`${generation}_${kind}_${String(i+j).padStart(5,'0')}`).get()));for(const s of snaps){if(!s.exists)throw Error('Parte ausente: '+s.ref.id);text+=s.data().content||''}}return JSON.parse(text)}
-async function submit(mode='aguardando_aprovacao'){const p=getProfile(),ctx=STATE?.planContext;if(!p||!ctx)throw Error('Selecione um planejamento com usuário regional autenticado.');await flushLocal('antes_do_envio');const payload=pack(ctx),base=await ensureBaseline(ctx),ref=store().doc(contextId(p,ctx)),generation=Date.now().toString(36)+'_'+hash(uid());setStatus('Enviando pacote…');const baseMeta=await writeParts(ref,generation,'base',base),payloadMeta=await writeParts(ref,generation,'payload',payload);const meta={schema:'senac-fluxo-v55',ownerId:p.id,ownerEmail:mail(),ownerName:p.nome,contexto:ctx,status:'pendente',requestedMode:mode,generation,baseCount:baseMeta.count,baseBytes:baseMeta.bytes,baseChecksum:baseMeta.checksum,payloadCount:payloadMeta.count,payloadBytes:payloadMeta.bytes,payloadChecksum:payloadMeta.checksum,revision:firebase.firestore.FieldValue.increment(1),submittedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),approvedBy:firebase.firestore.FieldValue.delete(),approvedAt:firebase.firestore.FieldValue.delete(),decidedBy:firebase.firestore.FieldValue.delete(),decidedAt:firebase.firestore.FieldValue.delete(),decisionReason:firebase.firestore.FieldValue.delete(),conflictCount:firebase.firestore.FieldValue.delete()};await ref.set(meta,{merge:true});await put('queue',{id:generation,docId:ref.id,contexto:ctx,state:'received-by-server',createdAt:now(),payloadChecksum:payloadMeta.checksum});setStatus('Recebido pelo servidor; aguardando administrador','ok');alert('Planejamento enviado e confirmado pelo servidor. Aguarde aprovação administrativa.');return true}
-function makeStatusRequest(idx,val){const ctx=STATE.planContext,item=DB.planning?.[ctx]?.[idx];if(!item)return false;DB.solicitacoes_status_visita??=[];DB.notificacoes_planejamento??=[];const existing=DB.solicitacoes_status_visita.find(x=>x.contexto===ctx&&String(x.studentId||x.alunoId)===String(item.student?.id||'')&&x.statusSolicitacao==='pendente');if(existing){existing.statusSolicitado=val;existing.atualizadoEm=now()}else{const id=uid();DB.solicitacoes_status_visita.push({id,contexto:ctx,studentId:item.student?.id||'',alunoId:item.student?.id||'',alunoNome:item.student?.nome||'',statusAnterior:item.status||'',statusSolicitado:val,statusSolicitacao:'pendente',solicitadoPor:mail(),solicitadoEm:now()});DB.notificacoes_planejamento.push({id:'notif_'+id,tipo:'solicitacao_status',contexto:ctx,destinatario:ADMIN,solicitante:mail(),mensagem:`Solicitação de alteração para ${val}: ${item.student?.nome||'aluno'}`,criadaEm:now(),lida:false})}queuePersist('pedido_status');setStatus('Pedido registrado no dispositivo');return true}
-let publicUpdate=null;
-function bindUpdate(){const old=window.updatePlanItem;if(typeof old!=='function'||old.__v55)return;if(!publicUpdate)publicUpdate=old;const f=function(idx,field,val){if(getProfile()&&field==='status'){makeStatusRequest(idx,val);return true}const r=publicUpdate.apply(this,arguments);queuePersist('campo_'+field);return r};f.__v55=f.__v50=f.__v48status=true;window.updatePlanItem=f}
-function merge(base,local,remote){if(window.SGTV48?.mergePackage)return window.SGTV48.mergePackage(base,local,remote);return {merged:remote,conflicts:[]}}
-function applyPackage(ctx,p){DB.planning[ctx]=clone(p.planning||[]);DB.planning_logistics[ctx]=clone(p.logistics||[]);DB.planning_lunch[ctx]=clone(p.lunch||[]);DB.planning_admin[ctx]=clone(p.admin||[]);for(const [k,v] of [['planning_attention',p.attention],['solicitacoes_status_visita',p.statusRequests],['notificacoes_planejamento',p.notifications],['solicitacoes_exclusao_planejamento',p.deleteRequests]])if(Array.isArray(v))DB[k]=clone(v);if(Array.isArray(p.students)){const q=new Map((DB.quali||[]).map(x=>[String(x.id),x])),t=new Map((DB.tec||[]).map(x=>[String(x.id),x]));for(const s of p.students){const id=String(s.id);if(q.has(id))Object.assign(q.get(id),s);else if(t.has(id))Object.assign(t.get(id),s)}}revision++;window.renderPlanningTable?.()}
-async function listFlows(){const snap=await store().where('status','==','pendente').get();return snap.docs.filter(d=>String(d.id).startsWith('fluxo_')).map(d=>({id:d.id,...d.data()}))}
-async function decide(id,approve){if(!isAdmin())throw Error('Somente o administrador pode decidir.');const ref=store().doc(id),snap=await ref.get();if(!snap.exists)throw Error('Pedido não encontrado.');const m=snap.data();if(m.status!=='pendente')throw Error('Pedido já decidido.');if(!approve){const reason=prompt('Informe o motivo da devolução:')?.trim();if(!reason)return;await ref.update({status:'devolvido',decisionReason:reason,decidedBy:mail(),decidedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});return openInbox()}
-const base=await readParts(ref,m.generation,'base',Number(m.baseCount||0)),remote=await readParts(ref,m.generation,'payload',Number(m.payloadCount||0)),local=pack(m.contexto),result=merge(base,local,remote);if(result.conflicts?.length&&!confirm(`${result.conflicts.length} conflito(s) detectado(s). Aplicar a mesclagem mantendo os valores administrativos nos conflitos?`))return;applyPackage(m.contexto,result.merged);await persistNow('aprovacao_admin');if(typeof window.salvarNuvemIntegralV9637==='function')await window.salvarNuvemIntegralV9637(DB);else if(typeof window.saveToStorage==='function')await window.saveToStorage();await ref.update({status:'aprovado',approvedBy:mail(),approvedAt:firebase.firestore.FieldValue.serverTimestamp(),decidedBy:mail(),decidedAt:firebase.firestore.FieldValue.serverTimestamp(),conflictCount:result.conflicts?.length||0,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});currentBaseline[m.contexto]=clone(result.merged);await put('baseline',{key:m.ownerEmail+'|'+m.contexto,data:result.merged,createdAt:now()});alert('Planejamento aprovado, mesclado e salvo na base oficial.');openInbox()}
-async function openInbox(){if(!isAdmin())return;let modal=document.getElementById('v55InboxModal');if(!modal){modal=document.createElement('div');modal.id='v55InboxModal';modal.innerHTML='<div class="v55-panel"><div class="flex justify-between items-center"><h2 class="font-black text-lg">Recebidos para aprovação</h2><button id="v55Close" class="text-xl">×</button></div><div id="v55InboxList">Carregando…</div></div>';document.body.append(modal);modal.querySelector('#v55Close').onclick=()=>modal.classList.remove('open')}modal.classList.add('open');const box=modal.querySelector('#v55InboxList');box.textContent='Carregando…';try{const rows=await listFlows();box.innerHTML=rows.length?rows.map(x=>`<div class="v55-card"><b>${x.ownerName||x.ownerEmail}</b><div>${x.contexto}</div><small>Revisão ${x.revision||1} · ${(x.payloadBytes||0).toLocaleString('pt-BR')} bytes</small><div class="v55-actions mt-2"><button class="v55-btn v55-ok" data-a="1" data-id="${x.id}">Aprovar e mesclar</button><button class="v55-btn v55-no" data-a="0" data-id="${x.id}">Devolver</button></div></div>`).join(''):'<p class="p-4">Nenhum pedido pendente.</p>';box.querySelectorAll('button[data-id]').forEach(b=>b.onclick=()=>decide(b.dataset.id,b.dataset.a==='1').catch(e=>alert(e.message)))}catch(e){box.textContent='Falha ao consultar recebidos: '+e.message}}
-function installButtons(){document.querySelectorAll('#v48-send,#v48-complete,#v52-save-local').forEach(x=>x.remove());const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;if(actions&&getProfile()){for(const [id,text,cls,fn] of [['v55-save','Salvar no dispositivo','bg-slate-700',()=>flushLocal('botao').then(()=>alert('Alterações confirmadas no dispositivo. Nada foi enviado à nuvem.')).catch(e=>alert(e.message))],['v55-send','Enviar para aprovação','bg-blue-700',()=>submit().catch(e=>alert('Falha no envio: '+e.message))]])if(!document.getElementById(id)){const b=document.createElement('button');b.id=id;b.type='button';b.className='px-3 py-1.5 '+cls+' text-white rounded text-xs font-bold';b.textContent=text;b.onclick=fn;actions.prepend(b)}}const header=document.querySelector('#appContainer header .flex.items-center.gap-3');if(header&&isAdmin()&&!document.getElementById('v55-inbox')){const b=document.createElement('button');b.id='v55-inbox';b.className='px-3 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold';b.textContent='Recebidos';b.onclick=openInbox;header.prepend(b)}}
-async function syncNow(){await flushLocal('sincronizacao_manual');const pending=(await all('queue')).filter(x=>x.state!=='approved'&&x.state!=='returned');setStatus(pending.length?'Sincronizado; aguardando decisão administrativa':'Dispositivo confirmado e fila verificada','ok');return true}
-function installEvents(){document.addEventListener('input',e=>{if(e.target.closest?.('#viewPlanejamento'))queuePersist('input')},true);document.addEventListener('change',e=>{if(e.target.closest?.('#viewPlanejamento'))queuePersist('change')},true);window.addEventListener('beforeunload',e=>{if(lastPersistedRevision<revision){e.preventDefault();e.returnValue='Há alterações ainda não confirmadas no dispositivo.'}})}
-const API={getProfile,isAdmin,saveLocal:flushLocal,submit,openInbox,approve:id=>decide(id,true),returnRequest:id=>decide(id,false),syncNow,state:()=>({revision,lastPersistedRevision})};window.SGTWorkflow=Object.freeze(API);window.sincronizarAgoraNuvem=syncNow;
-installEvents();bindUpdate();installButtons();firebase.auth().onAuthStateChanged(()=>setTimeout(()=>{bindUpdate();installButtons()},800));setInterval(()=>{bindUpdate();installButtons()},2000);console.info('[S.G.T V55] fluxo durável e aprovação segura ativos');
-})();
-</script>
 
+
+<script id="senac-v54-ui">
+(function(){'use strict';
+// Uma instalação; sem intervalos que empilham wrappers ou substituem saveToStorage.
+const renders=['renderPlanningTable','renderLogisticsTable','renderLunchTable','renderAdminTable'];
+const pending=new Map();let raf=0,editing=0;
+const editor=()=>document.activeElement?.matches?.('#planContent input,#planContent select,#planContent textarea');
+function drain(){raf=0;if(editor())return;const jobs=[...pending.values()];pending.clear();jobs.forEach(fn=>fn());}
+for(const name of renders){const original=window[name];if(typeof original!=='function')continue;window[name]=function(...args){
+ const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
+ if(!editor())return original.apply(this,args);
+ pending.set(name,()=>original.apply(this,args));if(!raf)raf=requestAnimationFrame(drain);
+};}
+document.addEventListener('focusout',()=>{setTimeout(()=>{if(!editor()&&!raf)raf=requestAnimationFrame(drain)},0)},true);
+function button(id,label,fn){const b=document.createElement('button');b.type='button';b.id=id;b.textContent=label;b.className='wf-btn';b.style.cssText='padding:9px 12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;font-weight:700;min-height:40px';b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){alert(e.message)}finally{b.disabled=false}};return b;}
+async function showLegacy(){
+ const rows=await window.SenacV54Legacy.list();let box=document.getElementById('v54-legacy');box?.remove();
+ box=document.createElement('div');box.id='v54-legacy';box.className='wf-modal open';
+ const panel=document.createElement('div');panel.className='wf-modal-panel';panel.style.cssText='background:white;padding:22px;margin:5vh auto;max-width:850px;max-height:85vh;overflow:auto';
+ const title=document.createElement('h3');title.textContent='Envios anteriores — originais preservados';panel.append(title,button('v54-close','Fechar',()=>box.remove()));
+ if(!rows.length){const p=document.createElement('p');p.textContent='Nenhum pacote anterior localizado. Os pedidos atuais estão em Notificações.';panel.append(p);}
+ for(const d of rows){const card=document.createElement('article');card.className='wf-card';const label=document.createElement('p');label.textContent=(d.ownerName||d.ownerEmail)+' · '+d.contexto+' · '+d.status;
+ const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent='Conferir conteúdo original';pre.textContent=JSON.stringify(d.payload,null,2);pre.style.cssText='white-space:pre-wrap;max-height:240px;overflow:auto';details.append(summary,pre);
+ if(d.schema==='senac-fluxo-v55'){pre.textContent='Conteúdo dividido em partes; clique para consultar.';details.addEventListener('toggle',async()=>{if(!details.open||details.dataset.loaded)return;try{pre.textContent=JSON.stringify((await window.SenacV54Legacy.read(d.id)).payload,null,2);details.dataset.loaded='true'}catch(e){pre.textContent=e.message}});}
+ card.append(label,details,button('import-'+d.id,'Recuperar para análise',async()=>{if(!confirm('Recuperar este envio para conferência? O documento original será preservado e os status concluídos serão aplicados sem aprovação adicional.'))return;const r=await window.SenacV54Legacy.import(d.id);box.remove();if(r.cloudPending)alert('Recuperação preservada localmente; aguardando confirmação da nuvem.');}));panel.append(card);}
+ box.append(panel);document.body.append(box);
+}
+function install(){
+ const a=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;if(!a||!window.SenacV29?.ready)return;
+ if(!document.getElementById('v54-local'))a.prepend(button('v54-local','Salvar localmente',async()=>{window.commitEmergency54?.();const ok=await window.saveToStorage();if(!ok)throw Error('Não foi possível confirmar a gravação neste dispositivo.');}));
+ if(SenacV29.profile()&&!document.getElementById('v54-conclude'))a.prepend(button('v54-conclude','Concluir planejamento',()=>window.enviarWorkflowAprovacao()));
+ if(!document.getElementById('v56-recovery'))a.append(button('v56-recovery','Cópias locais anteriores',()=>window.SenacLocalRecovery56.show()));
+ const header=document.querySelector('#appContainer>header');
+ if(header&&SenacV29.admin()&&!document.getElementById('v54-received'))header.append(button('v54-received','Recebidos',()=>window.abrirWorkflowNotificacoes()),button('v54-legacy-button','Envios anteriores',showLegacy));
+}
+window.installPlanningActions54=install;
+document.addEventListener('click',()=>setTimeout(install,0),{passive:true});
+firebase.auth().onAuthStateChanged(()=>setTimeout(install,1000));setTimeout(install,3000);
+
+// Renderização vinculada ao contexto, incluindo transição com campo em foco.
+const lastContext56=new Map(),rawRender56={};
+for(const name of ['renderPlanningTable','renderLogisticsTable','renderLunchTable','renderAdminTable']){
+ const original=window[name];rawRender56[name]=original;
+ window[name]=function(...args){
+  const ctx=STATE.planContext,title=document.getElementById('activePlanTitle');if(title)title.textContent=ctx||'';
+  if(lastContext56.get(name)!==ctx){pending.delete(name);lastContext56.set(name,ctx);
+   const active=document.activeElement;if(active?.closest?.('#planContent'))active.blur();
+   return original.apply(this,args);
+  }return original.apply(this,args);
+ };
+}
+for(const name of ['switchPlan','loadPlanFromHistory']){
+ const fn=window[name];if(typeof fn!=='function')continue;
+ window[name]=function(ctx){
+  window.commitEmergency54?.();
+  if(ctx!==STATE.planContext){const focused=document.activeElement;if(focused?.closest?.('#planContent'))focused.blur();pending.clear();if(raf){cancelAnimationFrame(raf);raf=0;}}
+  const result=fn.apply(this,arguments);
+  if(STATE.planContext===ctx){const origin=document.getElementById('cidadePartidaBase');if(origin)origin.value=DB.planning_logistics?.[ctx]?.[0]?.origin||'';window.SenacV29?.refreshActions();const bulk=document.getElementById('bulkStatusSelect');if(bulk)bulk.value='';}
+  return result;
+ };
+}
+for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervisor']){
+ const original=window[name];if(typeof original!=='function')continue;
+ window[name]=async function(...args){
+  const result=await original.apply(this,args);
+  window.SenacV29?.bindStudents(DB);
+  pending.clear();for(const render of renders){lastContext56.delete(render);window[render]?.();}
+  window.SenacV29?.refreshActions();return result;
+ };
+}
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V56');
+
+window.SGTV54={version:'54',pendingRenders:()=>pending.size};
+})();
+
+// Diário de emergência pequeno, por conta, para campos ainda em foco.
+(function(){
+ const fields={updatePlanItem:'planning',updateLogistics:'planning_logistics',updateLunch:'planning_lunch',updateAdmin:'planning_admin'};
+ const owner=()=>firebase.auth().currentUser?.uid||'';
+ const key=()=> 'senac_emergency_v54:'+owner();
+ const read=()=>{try{return JSON.parse(localStorage.getItem(key())||'[]')}catch(e){return []}};
+ const write=a=>{try{localStorage.setItem(key(),JSON.stringify(a));return true}catch(e){window.__EMERGENCY_FAILED54=true;return false}};
+ const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+ function valid(op){if(op.field!=='date'||!op.after)return true;const d=new Date(op.after+'T12:00:00');if(!/^\d{4}-\d{2}-\d{2}$/.test(op.after)||isNaN(d)||d.getFullYear()<2020||d.getFullYear()>2035)return false;const day={1:'seg',2:'ter',3:'qua',4:'qui',5:'sex'}[d.getDay()];return !(day&&op.row?.student?.contraTurno?.[day]);}
+ document.addEventListener('input',e=>{
+  if(!owner()||!e.target.closest?.('#planContent')||!window.SenacV29?.ready)return;
+  const m=String(e.target.getAttribute('onchange')||'').match(/(updatePlanItem|updateLogistics|updateLunch|updateAdmin)\(\s*(\d+)\s*,\s*['"](\w+)/);
+  if(!m||m[3]==='status')return;const map=fields[m[1]],ctx=STATE.planContext,idx=Number(m[2]),row=DB[map]?.[ctx]?.[idx];if(!row)return;
+  row._rowId??=crypto.randomUUID();const id=[map,ctx,row._rowId,m[3]].join('|'),list=read(),old=list.find(x=>x.id===id);
+  const op={id,map,ctx,idx,rowId:row._rowId,studentId:row.student?.id,field:m[3],before:old?old.before:(e.target.defaultValue??row[m[3]]),after:typeof row[m[3]]==='number'?Number(e.target.value):e.target.value,row:JSON.parse(JSON.stringify(row)),workflow:DB.workflow_planejamento?.[ctx],at:Date.now()};
+  write(list.filter(x=>x.id!==id).concat(op));
+ },true);
+ function locate(data,op){const rows=data[op.map]?.[op.ctx];if(!rows)return null;return rows.find(r=>r._rowId===op.rowId)||(op.studentId?rows.find(r=>String(r.student?.id)===String(op.studentId)):rows[op.idx]);}
+ window.recoverEmergency54=function(data){
+  let recovered=0,conflicts=0;
+  for(const op of read()){
+   if(!valid(op)){conflicts++;continue;}
+   data[op.map]??={};if(!data[op.map][op.ctx]&&op.workflow){data[op.map][op.ctx]=[];data.workflow_planejamento??={};data.workflow_planejamento[op.ctx]??=op.workflow;}
+   let row=locate(data,op);
+   if(!row&&data[op.map][op.ctx]){row=JSON.parse(JSON.stringify(op.row));data[op.map][op.ctx].push(row);}
+   if(!row){conflicts++;continue;}
+   if(same(row[op.field]??'',op.before??'')||same(row[op.field],op.after)){
+    row[op.field]=op.after;row._rowId=op.rowId;recovered++;
+    if(op.field==='obs'&&row.student){const student=[...(data.quali||[]),...(data.tec||[])].find(x=>String(x.id)===String(row.student.id));if(student){student.obs=op.after;student.obs_origem=op.after}}
+   }else conflicts++;
+  }
+  window.__EMERGENCY_RECOVERY54={recovered,conflicts};return data;
+ };
+ window.emergencyCommitted54=function(data,uid){if(uid!==owner())return;write(read().filter(op=>!same(locate(data,op)?.[op.field],op.after)));};
+ window.commitEmergency54=()=>{if(read().some(op=>!valid(op)))throw Error('Há uma data incompleta ou incompatível com o contraturno. Confira antes de salvar.');window.recoverEmergency54(DB);if(window.__EMERGENCY_RECOVERY54.conflicts)throw Error('Há campos locais em conflito com uma atualização recebida. As duas versões estão preservadas; confira antes de concluir.');};
+ window.addEventListener('beforeunload',e=>{if(window.__EMERGENCY_FAILED54){e.preventDefault();e.returnValue='';}});
+})();
+
+// Cópias V55 nunca são apagadas ou enviadas automaticamente.
+(function(){
+ const copy=x=>JSON.parse(JSON.stringify(x));
+ const mail=()=>String(firebase.auth().currentUser?.email||'').toLowerCase();
+ const validContext=x=>typeof x==='string'&&x.length>0&&!['__proto__','prototype','constructor'].includes(x);
+ async function records(){
+  if(indexedDB.databases&&!((await indexedDB.databases()).some(x=>x.name==='SGT_V55_DURABLE')))return [];
+  return new Promise((resolve,reject)=>{const q=indexedDB.open('SGT_V55_DURABLE');q.onupgradeneeded=()=>q.transaction.abort();q.onerror=()=>q.error?.name==='AbortError'?resolve([]):reject(q.error);q.onsuccess=()=>{const db=q.result;if(!db.objectStoreNames.contains('snapshots')){db.close();return resolve([])}const r=db.transaction('snapshots','readonly').objectStore('snapshots').getAll();r.onsuccess=()=>{const prefix=mail()+'|';resolve((r.result||[]).filter(x=>x.key?.startsWith(prefix)&&validContext(x.key.slice(prefix.length))&&Array.isArray(x.data?.planning)));db.close()};r.onerror=()=>{db.close();reject(r.error)}}});
+ }
+ async function recover(key){
+  if(!window.SenacV29?.ready||window.APP_READ_ONLY)throw Error('Entre no sistema antes de recuperar.');
+  const item=(await records()).find(x=>x.key===key);if(!item)throw Error('Cópia não localizada nesta conta.');
+  const original=key.slice(mail().length+1),p=window.SenacV29.profile(),payload=item.data;
+  let ctx=original+' — recuperação local';for(let i=2;DB.planning?.[ctx];i++)ctx=original+' — recuperação local '+i;
+  const students=new Map([...(DB.quali||[]),...(DB.tec||[])].map(s=>[String(s.id),s]));
+  const rows=payload.planning.map(row=>{const s=students.get(String(row.student?.id));if(!s)throw Error('Aluno ausente na base atual. A cópia original continua preservada.');return {...copy(row),student:s}});
+  for(const [field,name] of [['planning','planning'],['planning_logistics','logistics'],['planning_lunch','lunch'],['planning_admin','admin']]){DB[field]??={};DB[field][ctx]=field==='planning'?rows:copy(payload[name]||[]);}
+  DB.workflow_planejamento??={};DB.workflow_planejamento[ctx]={contexto:ctx,responsavelId:p?.id||'admin',responsavelNome:p?.nome||'Michel',status:'rascunho',revisao:1,criadoEm:new Date().toISOString(),recuperadoDe:original};
+  // Histórico fica no arquivo original. A cópia serve à conferência, sem reenviar solicitações antigas.
+  DB.planning_attention??=[];for(const x of payload.attention||[])DB.planning_attention.push({...copy(x),id:crypto.randomUUID(),contexto:ctx});
+  const ok=await saveToStorage();if(!ok)throw Error('Cópia em memória; gravação local ainda não confirmada.');
+  initPlanSelector();switchPlan(ctx);return ctx;
+ }
+ async function show(){
+  const items=await records();let box=document.getElementById('v56-local-recovery');box?.remove();box=document.createElement('div');box.id='v56-local-recovery';box.className='wf-modal open';
+  const panel=document.createElement('div');panel.className='wf-modal-panel';panel.style.cssText='background:white;padding:22px;margin:5vh auto;max-width:850px;max-height:85vh;overflow:auto';
+  const title=document.createElement('h3');title.textContent='Cópias locais anteriores';const info=document.createElement('p');info.textContent='Abra uma cópia separada para conferir. O planejamento atual e o arquivo original serão preservados. Nada será enviado à nuvem até você concluir.';
+  const button=(label,fn)=>{const b=document.createElement('button');b.className='wf-btn';b.style.cssText='border:1px solid #94a3b8;border-radius:8px;padding:10px;margin:8px';b.textContent=label;b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){alert(e.message)}finally{b.disabled=false}};return b};
+  panel.append(title,info,button('Fechar',()=>box.remove()));
+  if(!items.length){const p=document.createElement('p');p.textContent='Nenhuma cópia V55 encontrada para esta conta neste aparelho.';panel.append(p)}
+  for(const item of items){const card=document.createElement('article'),label=document.createElement('p');label.textContent=item.key.slice(mail().length+1)+' · '+(item.confirmedAt||'');card.append(label,button('Abrir cópia para conferência',async()=>{await recover(item.key);box.remove()}),button('Exportar original',()=>{const blob=new Blob([JSON.stringify(item,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='copia-local-v55.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}));panel.append(card)}
+  box.append(panel);document.body.append(box);
+ }
+ window.SenacLocalRecovery56={records,recover,show};
+})();
+
+</script>
 </body>
 </html>
