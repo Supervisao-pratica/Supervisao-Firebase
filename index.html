@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V66-RENOMEACAO-2026-10-28"/>
+<meta name="sgt-build" content="V67-PEDAGOGICO-2026-10-28"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V66</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V67</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -7762,7 +7762,7 @@ window.atualizarAutocompleteGlobal = function() {
 
                                 const ehLinhaPedagogica = (linha) => {
                                     const n = normalizarLinhaPedagogica(linha);
-                                    return n.startsWith("[PEDAGOGICO]") || /^\[PEDAGOGICO EM \d{2}\/\d{2}\/\d{4}\]/.test(n);
+                                    return n.startsWith("[PEDAGOGICO]") || /^\[PEDAGOGICO EM \d{2}\/\d{2}\/\d{4}\]/.test(n) || /^\[PEDAGOGICO\s*[-–—]\s*\d+\s*[ªº°AO]?\s*VISITA\s+EM\s+\d{2}\/\d{2}\/\d{4}(?:\]|$)/.test(n);
                                 };
 
                                 // Remove as linhas pedagógicas antigas, mas preserva qualquer anotação manual.
@@ -14826,7 +14826,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V66');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V67');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
