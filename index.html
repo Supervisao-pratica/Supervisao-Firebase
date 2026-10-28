@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V63-SUPERVISORES-2026-10-28"/>
+<meta name="sgt-build" content="V64-CONCLUSAO-2026-10-28"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V63</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V64</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -13563,7 +13563,22 @@ async function submit40(scope='plan'){
  submitJob40=job;renderSave40();
  try{return await job}catch(e){saveFeedback41('error');throw e}finally{if(submitJob40===job)submitJob40=null;renderSave40();}
 }
-window.salvarPlanejamentoConcluido=()=>submit40('plan');
+function conclusionNotice64(ctx){return (DB.notificacoes_planejamento||[]).find(n=>n.contexto===ctx&&n.tipo==='planejamento_concluido'&&n.solicitante===email())}
+function conclusionState64(ctx){
+ const notice=conclusionNotice64(ctx);if(!notice)return '';
+ const confirmed=(baseline?.notificacoes_planejamento||[]).some(n=>n.id===notice.id);
+ const received=collabQueue.some(o=>o.field==='notificacoes_planejamento'&&o.after?.id===notice.id);
+ return confirmed||received?'sent':'pending';
+}
+function confirmConclusion64(ctx){return !conclusionNotice64(ctx)||confirm('Este planejamento já foi concluído ou possui envio pendente. Deseja enviar novamente? O administrador receberá uma nova notificação.');}
+function conclusionLabel64(){const state=conclusionState64(STATE.planContext);return 'Concluir planejamento'+(state==='sent'?' · enviado à nuvem':state==='pending'?' · envio pendente':'');}
+window.salvarPlanejamentoConcluido=async()=>{
+ if(submitJob40)return submitJob40;
+ const ctx=STATE.planContext;if(!ready||window.APP_READ_ONLY||!admin()||!ctx)throw Error('Aguarde os dados e selecione um planejamento.');
+ if(!confirmConclusion64(ctx))return false;
+ note('admin','planejamento_concluido','Administrador concluiu '+ctx+'.',ctx);
+ return submit40('plan');
+};
 window.salvarAlteracoesConcluidas=async()=>{await saveToStorage();return submit40('all')};
 function saveButtonLabel41(normal){
  if(savePhase41==='local')return normal+' · salvando…';
@@ -13577,8 +13592,8 @@ function renderSave40(){
  const actions=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;
  let save=document.getElementById('v40-save-plan');
  if(actions&&!save){save=button('Concluir planejamento',()=>window.salvarPlanejamentoConcluido(),'wf-btn wf-btn-primary');save.id='v40-save-plan';save.style.cssText='background:#00579d;color:white;border:1px solid #004578;min-height:44px;font-weight:700;padding:10px 16px;border-radius:8px';actions.prepend(save);}
- if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;save.textContent=saveButtonLabel41('Concluir planejamento');save.setAttribute('aria-busy',String(!!submitJob40));}
- document.querySelectorAll('button[onclick="enviarWorkflowAprovacao()"]').forEach(b=>{b.textContent=saveButtonLabel41('Concluir planejamento');b.disabled=!ready||!!submitJob40;});
+ if(save){save.hidden=!admin();save.disabled=!ready||!!submitJob40||!STATE.planContext;save.textContent=conclusionLabel64();save.setAttribute('aria-busy',String(!!submitJob40));}
+ document.querySelectorAll('button[onclick="enviarWorkflowAprovacao()"],#v54-conclude').forEach(b=>{b.textContent=conclusionLabel64();b.disabled=!ready||!!submitJob40;});
  const all=document.getElementById('v40-save-all');if(all){all.hidden=!admin();all.disabled=!ready||!!submitJob40;all.textContent=saveButtonLabel41('Salvar alterações');all.setAttribute('aria-busy',String(!!submitJob40));}
  let hint=document.getElementById('v40-draft-state');const root=document.getElementById('planContent');
  if(root&&!hint){hint=document.createElement('div');hint.id='v40-draft-state';hint.style.cssText='padding:8px 12px;margin:8px 0;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;font-size:12px';root.prepend(hint);}
@@ -14070,7 +14085,7 @@ async function receiveOwnCollaboration(doc,token){
  // V29.4: a fila compartilhada serve para transporte, não para reescrever a tela.
  // A interface só é reconstruída por receiveRegion(), usando a resposta consolidada do admin.
  // Isso elimina alternância 0/14 nas notificações e Realizar/Realizada nos status.
- if(collabQueue.length!==before){await localStore();tell('Alterações de outro dispositivo localizadas; aguardando consolidação administrativa.');}
+ if(collabQueue.length!==before){await localStore();renderSave40();tell('Alterações de outro dispositivo localizadas; aguardando consolidação administrativa.');}
 }
 let deferredRegion=null,deferredGlobal=null,refreshDeferred=false,planningEditUntil=0,deferredEditTimer=null;
 function editingPlan(){return document.activeElement?.matches?.('#planContent input,#planContent textarea,#planContent select,#planContent [contenteditable=true],#v30-attention-text')||Date.now()<planningEditUntil;}
@@ -14295,8 +14310,7 @@ window.enviarWorkflowAprovacao=async function(){
  if(submitJob40)return submitJob40;
  const ctx=STATE.planContext,m=DB.workflow_planejamento?.[ctx];
  if(!m)throw Error('Selecione um planejamento válido.');
- const changed=!same(DB,submittedData40());
- if(!changed&&m.status==='pendente')return submit40('plan');
+ if(!confirmConclusion64(ctx))return false;
  m.status='pendente';m.aprovadoPor=null;m.aprovadoEm=null;m.enviadoPor=email();m.enviadoEm=new Date().toISOString();m.atualizadoEm=m.enviadoEm;m.revisao=(m.revisao||0)+1;m.historico??=[];m.historico.push({acao:'enviado_aprovacao',por:email(),em:m.enviadoEm});
  note('admin','planejamento_concluido',profile().nome+' concluiu '+ctx+'. Dados e status das visitas enviados; Realizada não exige aprovação.',ctx);
  return submit40('plan');
@@ -14760,7 +14774,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V63');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V64');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
