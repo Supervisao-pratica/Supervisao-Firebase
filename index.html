@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V59-NOTIFICACOES-2026-10-27"/>
+<meta name="sgt-build" content="V60-SALVAR-ALUNO-2026-10-28"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V59</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V60</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -1920,7 +1920,16 @@ window.requestRestore = function() {
             if(modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
         }
 
-        async function saveStudentData() { 
+        async function saveStudentData() {
+            if(window.__studentSaveBusy60)return false;
+            window.__studentSaveBusy60=true;
+            const form60=document.getElementById('studentForm'),button60=form60?.querySelector('button[type="submit"]'),label60=button60?.innerHTML;
+            const editing60=STATE.editingId;
+            let status60=document.getElementById('studentSaveStatus60');
+            if(!status60&&form60){status60=document.createElement('p');status60.id='studentSaveStatus60';status60.setAttribute('role','status');status60.setAttribute('aria-live','polite');status60.style.cssText='padding:10px;margin-top:8px;border-radius:8px;background:#eff6ff;color:#075985;font-weight:600';form60.append(status60)}
+            if(button60){button60.disabled=true;button60.textContent='Salvando…';button60.setAttribute('aria-busy','true')}
+            if(status60)status60.textContent='Salvando neste dispositivo. Aguarde a confirmação; não é necessário clicar novamente.';
+            let completed60=false;
             try {
                 const isTec = DB.tec.some(t => t.id == STATE.editingId) || STATE.scope === 'tecnico';
                 const rawData = isTec ? DB.tec : DB.quali; 
@@ -2034,11 +2043,21 @@ window.requestRestore = function() {
                     }
                 } else { rawData.unshift(newData); } 
                 
-                if(typeof saveToStorage === 'function') await saveToStorage(); 
-                if(typeof closeStudentModal === 'function') closeStudentModal(); 
-                if(typeof runFilter === 'function') runFilter(); 
-                if(typeof showToast === 'function') showToast("Dados salvos!"); 
-            } catch (err) { console.error("Erro ao salvar:", err); alert("Erro ao salvar."); }
+                // Permite exibir o retorno do clique antes de preparar a cópia local.
+                await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+                if(typeof saveToStorage !== 'function'||await saveToStorage()!==true)throw new Error('A gravação neste dispositivo não foi confirmada. Mantenha o formulário aberto e tente novamente.');
+                completed60=true;
+                if(status60)status60.textContent='Salvo neste dispositivo. A confirmação da nuvem aparece no indicador de sincronização.';
+                if(STATE.editingId===editing60&&typeof closeStudentModal === 'function') closeStudentModal();
+                if(typeof runFilter === 'function') runFilter();
+                if(typeof showToast === 'function') showToast('Salvo neste dispositivo. Acompanhe a confirmação da nuvem no topo.');
+                return true;
+            } catch (err) { console.error('Erro ao salvar:',err);if(status60)status60.textContent='Salvamento não confirmado. Confira os campos e tente novamente. Não feche esta janela.';alert(err.message||'Erro ao salvar.');return false; }
+            finally {
+                window.__studentSaveBusy60=false;
+                if(button60){button60.disabled=false;button60.innerHTML=label60;button60.removeAttribute('aria-busy')}
+                if(!completed60&&status60?.textContent.startsWith('Salvando'))status60.textContent='Salvamento não concluído. Confira os campos indicados e clique em Salvar novamente.';
+            }
         }
         window.copiarFichaAluno = function() {
             // Função rápida para pegar o valor do campo de texto
@@ -14743,7 +14762,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V59');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V60');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
@@ -14827,7 +14846,7 @@ window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervisor','updatePlanItem','applyBulkStatus']){const fn=window[name];if(typeof fn!=='function')continue;window[name]=function(){window.__PLANNING_EDIT57=(window.__PLANNING_EDIT57||0)+1;try{const r=fn.apply(this,arguments);if(r?.finally)return r.finally(()=>window.__PLANNING_EDIT57--);window.__PLANNING_EDIT57--;return r}catch(e){window.__PLANNING_EDIT57--;throw e}}}
 const originalTab57=window.switchTab;window.switchTab=function(){window.SenacGeneral57.reset();return originalTab57.apply(this,arguments)};
 const originalSave=window.saveStudentData;
-window.saveStudentData=async function(){window.SenacGeneral57.reset();window.__GENERAL_EDIT57=true;try{return await originalSave.apply(this,arguments)}finally{window.__GENERAL_EDIT57=false}};
+window.saveStudentData=async function(){if(window.__studentSaveBusy60)return false;window.SenacGeneral57.reset();window.__GENERAL_EDIT57=true;try{return await originalSave.apply(this,arguments)}finally{window.__GENERAL_EDIT57=false}};
 // Discard CPF columns before existing importers identify or construct students.
 if(window.XLSX?.utils?.sheet_to_json){const original=XLSX.utils.sheet_to_json;XLSX.utils.sheet_to_json=function(){const rows=original.apply(this,arguments);if(!Array.isArray(rows))return rows;if(Array.isArray(rows[0])){const header=rows.slice(0,20).find(r=>Array.isArray(r)&&r.some(c=>/cpf/i.test(String(c))));if(!header)return rows;const blocked=new Set(header.map((c,i)=>/cpf/i.test(String(c))?i:-1).filter(i=>i>=0));return rows.map(r=>Array.isArray(r)?r.filter((_,i)=>!blocked.has(i)):r)}return rows.map(r=>window.stripCpf57(r))};}
 const bodies=new Map(),escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
