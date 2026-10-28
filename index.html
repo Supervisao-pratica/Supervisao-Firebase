@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V61-CIDADES-2026-10-28"/>
+<meta name="sgt-build" content="V62-DATA-LOTE-2026-10-28"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V61</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V62</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -4512,7 +4512,11 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 // =========================================================
                 // A regra agora é: O campo é data? Tem linhas ABAIXO dessa? A data não tá vazia?
                 if (field === 'date' && idx < plan.length - 1 && val !== '') {
-                    setTimeout(() => {
+                    const context62=STATE.planContext,student62=String(item.student?.id);
+                    setTimeout(async () => {
+                        // A cópia usa o roteiro atual, não uma referência anterior à sincronização.
+                        const plan=DB.planning?.[context62];
+                        if(STATE.planContext!==context62||!plan?.[idx]||String(plan[idx].student?.id)!==student62||plan[idx].date!==val)return;
                         const dataFormatada = val.split('-').reverse().join('/'); 
                         const linhaAtual = idx + 1; // Transforma o índice do sistema (0) em linha visual (1)
                         
@@ -4561,9 +4565,15 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                                 copiados++;
                             }
                             
-                            if(typeof window.saveToStorage === 'function') window.saveToStorage();
-                            if(typeof window.renderPlanningTable === 'function') window.renderPlanningTable();
-                            
+                            // O editor com foco adia a renderização. Finalizar o foco após confirmar o lote.
+                            if(STATE.planContext===context62){
+                                const focused62=document.activeElement;
+                                if(focused62?.closest?.('#planContent'))focused62.blur();
+                                if(typeof window.renderPlanningTable === 'function') window.renderPlanningTable();
+                            }
+                            try {
+                                if(typeof window.saveToStorage!=='function'||await window.saveToStorage()!==true)throw new Error('Gravação local não confirmada');
+                            } catch(error62){console.error(error62);alert('As datas foram preenchidas, mas a cópia local não foi confirmada. Mantenha esta página aberta e clique em Salvar localmente.');return;}
                             let msgFinal = `${copiados} linhas ABAIXO foram preenchidas automaticamente!`;
                             if (bloqueados > 0) {
                                 msgFinal += `\n\n🛡️ PROTEÇÃO ATIVA: ${bloqueados} aluno(s) foram ignorados na cópia porque possuem contra-turno neste dia da semana!`;
@@ -14762,7 +14772,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V61');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V62');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
