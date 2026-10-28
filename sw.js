@@ -1,4 +1,4 @@
-const CACHE='supervisao-senac-v64-conclusao';
+const CACHE='supervisao-senac-v65-rateio-online';
 const INDEX=new URL('./index.html',self.registration.scope).href;
 self.addEventListener('install',event=>{event.waitUntil((async()=>{const r=await fetch(INDEX,{cache:'reload'});if(!r.ok)throw Error('Não foi possível obter a versão completa');const cache=await caches.open(CACHE);await cache.put(INDEX,r);})());});
 // Sem troca forçada no meio de uma edição: a atualização assume na próxima abertura.

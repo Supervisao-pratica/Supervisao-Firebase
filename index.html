@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V64-CONCLUSAO-2026-10-28"/>
+<meta name="sgt-build" content="V65-RATEIO-ONLINE-2026-10-28"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V64</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V65</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -4347,7 +4347,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     
                     <td class="p-1"><input type="date" class="plan-input bg-slate-50 border" value="${item.date || ''}" onchange="updatePlanItem(${idx}, 'date', this.value)"></td>
                     <td class="p-1">
-                        <input type="time" class="plan-input bg-slate-50 border w-full text-center font-bold text-slate-400" value="${item.hrAtend}" onchange="updatePlanItem(${idx}, 'hrAtend', this.value)" title="Apenas para e-mail/lembrete (não entra no rateio automático)">
+                        <input type="time" class="plan-input bg-slate-50 border w-full text-center font-bold text-slate-400" value="${item.hrAtend}" onchange="updatePlanItem(${idx}, 'hrAtend', this.value)" title="Horário do atendimento. Sem deslocamento: intervalo entre primeiro e último horário + 30 min finais; sem horários completos: estimativa de 30 min por aluno.">
                     </td>
                     <td class="p-1"><div class="flex items-center gap-1"><input type="text" class="w-14 text-center plan-input bg-slate-50 border text-[10px]" placeholder="Teoria" value="${item.hrTeoria}" onchange="updatePlanItem(${idx}, 'hrTeoria', this.value)"><span class="text-slate-400">/</span><input type="text" class="w-14 text-center plan-input bg-slate-50 border text-[10px]" placeholder="Prática" value="${item.hrPratica || ''}" onchange="updatePlanItem(${idx}, 'hrPratica', this.value)"></div></td>
                     <td class="p-2"><input class="plan-input font-bold w-full" value="${s.turma}" onchange="updatePlanStudent(${idx}, 'turma', this.value)"><div class="text-[9px] text-slate-400 mt-1">CC: ${cc}</div></td>
@@ -14585,6 +14585,26 @@ window.generateRateio=function(){
    const vd=visitas.filter(v=>v.date===date),pernas=logs.filter(x=>x.date===date&&M(x.originTime)!==null&&M(x.destTime)>M(x.originTime)).map(x=>({...x,s:M(x.originTime),e:M(x.destTime)})).sort((a,b)=>a.s-b.s);
    const descansos=lunch.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end),start:x.start,end:x.end}));
    const adm=admins.filter(x=>x.date===date&&M(x.start)!==null&&M(x.end)>M(x.start)).map(x=>({s:M(x.start),e:M(x.end)}));
+   // Somente dias sem deslocamento preenchido recebem a regra de atendimento remoto.
+   const hasTravel65=logs.some(x=>(x.date===date||!x.date)&&(x.origin||x.dest||x.originTime||x.destTime||Number(x.km)>0));
+   if(!hasTravel65){
+     const gs=grupos(vd),times=vd.map(v=>M(v.hrAtend)),complete=times.every(t=>t!==null),distinct=new Set(times.filter(t=>t!==null));
+     if(!gs.length){warnings.push(date+': atendimento sem deslocamento sem turma informada; confira o planejamento.');}
+     else if(complete&&distinct.size>1){
+       const start=Math.min(...times),end=Math.max(...times)+30;
+       if(end>1440)warnings.push(date+': o último atendimento ultrapassaria meia-noite. Confira os horários antes de ratear.');
+       else {
+         const segments=subtrair(start,end,[...descansos,...adm]).map(([s,e])=>({s,e}));
+         alocar(segments,gs,{date,local:'ATENDIMENTO SEM DESLOCAMENTO',periodo:'DIA'},out,500);
+         warnings.push(date+': sem deslocamento — intervalo do primeiro ao último horário, acrescido de 30 minutos para o último atendimento, dividido por quantidade de alunos/turma; almoço e administrativo descontados.');
+       }
+     }else{
+       // Sem limites suficientes, usar a duração estimada autorizada, sem inventar horários.
+       const total=vd.length*30,peso=gs.reduce((n,g)=>n+g.qtd,0);let allocated=0;
+       gs.forEach((g,i)=>{const minutes=i===gs.length-1?total-allocated:Math.round(total*g.qtd/peso);allocated+=minutes;out.push({date,type:'ATENDIMENTO',origin:'ATENDIMENTO SEM DESLOCAMENTO (ESTIMADO)',dest:'-',start:'-',end:'-',hours:minutes/60,turma:g.turma,cc:centro(g.turma),sequence:500+i,alunosRateados:g.qtd,allocationRule:'sem_deslocamento_estimativa_30min_v65'})});
+       warnings.push(date+': sem deslocamento — estimativa de 30 minutos por aluno realizado. Sem horários distintos completos, não foi presumido um intervalo do dia.');
+     }
+   }
    const pacotes=new Map();
    pernas.forEach((p,i)=>{
      const cand=vd.filter(v=>cidadeIgual(v.student?.cidade,p.dest));const td=turmas(cand[0])[0]||'-';
@@ -14774,7 +14794,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V64');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V65');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
