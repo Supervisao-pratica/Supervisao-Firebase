@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V65-RATEIO-ONLINE-2026-10-28"/>
+<meta name="sgt-build" content="V66-RENOMEACAO-2026-10-28"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V65</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V66</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -13503,9 +13503,36 @@ async function finishAction40(before,after=clone(DB),send=false){
  enqueueDelta40(before,after);revision++;await localStore();
  tell('Ação concluída; envio à nuvem em andamento.');scheduleFlush38().catch(fail);return true;
 }
+function movePlan66(data,from,to){
+ if(!from||!to||from===to||[from,to].some(x=>typeof x!=='string'||['__proto__','prototype','constructor'].includes(x)))throw Error('Nome de planejamento inválido.');
+ if(Object.keys(data.planning||{}).some(k=>norm(k)===norm(to)))throw Error('Já existe um planejamento com o novo nome. Nenhum roteiro foi substituído.');
+ if(!data.planning?.[from])throw Error('Planejamento de origem não encontrado.');
+ for(const field of [...maps,'planning_processos','cadastro_planejamento'])if(data[field]?.[from]!==undefined){data[field][to]=data[field][from];delete data[field][from];if(data[field][to]?.contexto===from)data[field][to].contexto=to;}
+ for(const field of lists)for(const item of data[field]||[])if(item.contexto===from)item.contexto=to;
+ for(const student of [...(data.quali||[]),...(data.tec||[]),...Object.values(data.planning||{}).flatMap(rows=>(rows||[]).map(r=>r.student).filter(Boolean))])for(const visit of student.visits||[])if(visit.contexto===from)visit.contexto=to;
+ return data;
+}
+function pendingRenames66(before,after,ctx){return (after.renomeacoes_planejamento||[]).filter(r=>(!ctx||r.contexto===ctx)&&!(before.renomeacoes_planejamento||[]).some(x=>x.id===r.id));}
+window.renomearPlanejamentoAtual=async function(){
+ if(!ready||window.APP_READ_ONLY) return alert('Aguarde o carregamento dos dados.');
+ const from=STATE.planContext;if(!DB.planning?.[from]||(profile()&&!owns(from,profile())))return alert('Selecione um planejamento permitido.');
+ const entered=prompt('Renomear o roteiro:\n'+from+'\n\nDigite o novo nome:',from);if(!entered)return;
+ const to=entered.trim().toUpperCase();if(to===from.toUpperCase())return;
+ if(Object.keys(DB.planning||{}).some(k=>norm(k)===norm(to)))return alert('Já existe um planejamento com esse nome. Nenhum roteiro foi substituído.');
+ try{
+  window.commitEmergency54?.();const next=clone(DB);movePlan66(next,from,to);
+  next.renomeacoes_planejamento??=[];next.renomeacoes_planejamento.push({id:fresh(),de:from,para:to,contexto:to,solicitante:email(),criadaEm:new Date().toISOString()});
+  applyData(next);STATE.planContext=to;
+  if(await saveToStorage()!==true)throw Error('Nome alterado, mas a cópia local não foi confirmada. Mantenha a página aberta.');
+  initPlanSelector();renderPlanningTable();refreshActions();
+  alert('Roteiro renomeado neste dispositivo. Clique em Concluir planejamento para enviar a troca de nome à nuvem, junto dos dados e vínculos.');
+ }catch(e){fail(e);alert(e.message)}
+};
+
 function planSnapshot40(ctx){window.commitEmergency54?.();
  prepareConclusion54(ctx);
  const next=clone(submittedData40());
+ for(const r of pendingRenames66(next,DB,ctx))if(next.planning?.[r.de])movePlan66(next,r.de,r.para);
  for(const field of maps.concat('planning_processos')){next[field]??={};if(DB[field]?.[ctx]===undefined)delete next[field][ctx];else next[field][ctx]=clone(DB[field][ctx]);}
  for(const field of lists){next[field]=(next[field]||[]).filter(x=>x.contexto!==ctx).concat(clone((DB[field]||[]).filter(x=>x.contexto===ctx)));}
  next.solicitacoes_cidades=clone(DB.solicitacoes_cidades||[]);
@@ -13600,7 +13627,7 @@ function renderSave40(){
  if(hint)hint.textContent=admin()?'Planejamento: Salvar localmente guarda neste aparelho; Concluir planejamento envia o roteiro. Cadastros de alunos, turmas e CC são enviados automaticamente.':'Salvar localmente confirma uma cópia neste aparelho. A proteção de emergência guarda os campos durante o preenchimento. Somente Concluir planejamento envia dados à nuvem e notifica o administrador. Realizada não exige aprovação.';
 }
 const maps=['planning','planning_logistics','planning_lunch','planning_admin','workflow_planejamento'];
-const lists=['solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention'];
+const lists=['renomeacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades','notificacoes_planejamento','planning_attention'];
 // V38: cota remota é diferente de espaço no dispositivo. Nunca limpar filas por falha de rede.
 let quotaUntil38=0,quotaReported38=false,cloudConfirmed38=false,flushQueued38=null;
 const QUOTA_MESSAGE38='Limite de gravações da nuvem atingido. Alterações ficam neste dispositivo quando o armazenamento local está disponível. O reenvio será tentado automaticamente; mantenha o sistema aberto ou reabra depois.';
@@ -14022,6 +14049,10 @@ window.salvarNuvemIntegralV9637=async()=>{if(!admin())throw Error('Gravação gl
 function validateOp(o,p,data){
  if(!o||typeof o.id!=='string'||!maps.concat(lists).includes(o.field)||typeof o.key!=='string'||['__proto__','prototype','constructor'].includes(o.key))throw Error('Operação inválida.');
  const v=o.after,e=Object.keys(USERS).find(e=>USERS[e].id===p.id);
+ if(o.field==='renomeacoes_planejamento'){
+  if(!v||o.before!==null||v.id!==o.key||v.solicitante!==e||v.contexto!==v.para||!owns(v.de,p,data)||data.planning?.[v.para])throw Error('Renomeação não autorizada ou destino já existente.');
+  return;
+ }
  if(maps.includes(o.field)){
   if(v===null)throw Error('Exclusão deve ser solicitada ao administrador.');
   const existing=!!data.planning?.[o.key];const newEmptyOwner=o.field==='workflow_planejamento'&&!data.workflow_planejamento?.[o.key]&&!(data.planning?.[o.key]||[]).length&&v.responsavelId===p.id;if(existing&&!owns(o.key,p,data)&&!newEmptyOwner)throw Error('Planejamento fora da região.');
@@ -14048,8 +14079,8 @@ function validateOp(o,p,data){
 async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
  let candidate=clone(submittedData40()),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
- const operations=[...(message.ops||[])].sort((a,b)=>Number(!(a?.field==='workflow_planejamento'&&a.before===null))-Number(!(b?.field==='workflow_planejamento'&&b.before===null)));
- for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);const current=valueAt(candidate,o)??null;let value=o.field==='planning'?merge(officialPlanRows(o.before,current,candidate),officialPlanRows(o.after,current,candidate),officialPlanRows(current,current,candidate),o.field+'.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
+ const priority66=o=>o?.field==='renomeacoes_planejamento'?0:o?.field==='workflow_planejamento'&&o.before===null?1:2;const operations=[...(message.ops||[])].sort((a,b)=>priority66(a)-priority66(b));
+ for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);if(o.field==='renomeacoes_planejamento'){movePlan66(candidate,o.after.de,o.after.para);put(candidate,o,o.after);candidate._collabAck[p.id].push(o.id);count++;continue;}const current=valueAt(candidate,o)??null;let value=o.field==='planning'?merge(officialPlanRows(o.before,current,candidate),officialPlanRows(o.after,current,candidate),officialPlanRows(current,current,candidate),o.field+'.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
  // V29.7: recupera pedido de aprovação que chegou apenas como notificação.
  const requesterEmail=Object.keys(USERS).find(e=>USERS[e].id===p.id);
  const approvalNotices=(candidate.notificacoes_planejamento||[]).filter(n=>n&&n.destinatario==='admin'&&String(n.tipo||'').toLowerCase().includes('aprov')&&n.contexto&&n.solicitante===requesterEmail);
@@ -14431,6 +14462,7 @@ function finalizeConclusions54(data,p){
 }
 
 function changes(before,after){
+ const renames=pendingRenames66(before,after);if(renames.length){before=clone(before);for(const r of renames)if(before.planning?.[r.de])movePlan66(before,r.de,r.para);}
  return baseChanges54(before,after).filter(o=>!(o.field==='solicitacoes_status_visita'&&['rascunho_usuario','concluido_usuario'].includes(o.after?.statusSolicitacao))).map(o=>{
   if(o.field==='planning'&&profile()){o.before=officialPlanRows(o.before,baseline?.planning?.[o.key],baseline||before);o.after=officialPlanRows(o.after,baseline?.planning?.[o.key],baseline||after);}
   return o;
@@ -14794,7 +14826,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V65');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V66');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
