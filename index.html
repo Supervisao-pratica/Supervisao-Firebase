@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V62-DATA-LOTE-2026-10-28"/>
+<meta name="sgt-build" content="V63-SUPERVISORES-2026-10-28"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V62</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V63</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -7874,6 +7874,7 @@ window.atualizarAutocompleteGlobal = function() {
                 if(loader) { loader.classList.remove('hidden'); loader.classList.add('flex'); }
                 if(loadMsg) loadMsg.innerText = "LENDO DADOS DOS SUPERVISORES...";
 
+                await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
                 const data = await file.arrayBuffer();
                 const workbook = XLSX.read(data, { type: 'array' });
                 
@@ -7919,10 +7920,15 @@ window.atualizarAutocompleteGlobal = function() {
                 }
 
                 const dbBase = typeof DB !== 'undefined' ? DB : (window.DB || {});
+                // Construir os índices uma vez, em vez de percorrer a base a cada linha.
+                const indexes63=new Map();
+                for(const list of [dbBase.quali,dbBase.tec]){if(!list)continue;const exact=new Map(),named=[];for(const aluno of list){const name=norm(aluno.nome);named.push({aluno,name});if(!exact.has(name))exact.set(name,[]);exact.get(name).push(aluno)}indexes63.set(list,{exact,named})}
+                const plans63=new Map();for(const plan of Object.values(dbBase.planning||{}))for(const item of plan||[]){if(!item.student)continue;const id=item.student.id;if(!plans63.has(id))plans63.set(id,[]);plans63.get(id).push(item)}
                 let alunosAtualizados = 0;
                 let alunosNaoEncontrados = 0;
 
                 for (let i = linhaCabecalho + 1; i < rows.length; i++) {
+                    if(i%250===0){if(loadMsg)loadMsg.innerText='ATUALIZANDO SUPERVISORES: '+i+' / '+rows.length+' linhas';await new Promise(resolve=>setTimeout(resolve,0))}
                     const row = rows[i];
                     if (!row) continue;
 
@@ -7942,42 +7948,23 @@ window.atualizarAutocompleteGlobal = function() {
                     const buscarEAtualizar = (lista) => {
                         if (!lista) return false;
                         
-                        const exatos = lista.filter(a => norm(a.nome) === nomePlanilha);
-                        const parciais = exatos.length ? exatos : lista.filter(a => {const n=norm(a.nome);return n.length>5 && nomePlanilha.length>5 && (n.includes(nomePlanilha)||nomePlanilha.includes(n));});
+                        const index=indexes63.get(lista),exatos=index.exact.get(nomePlanilha)||[];
+                        const parciais=exatos.length?exatos:index.named.filter(({name:n})=>n.length>5&&nomePlanilha.length>5&&(n.includes(nomePlanilha)||nomePlanilha.includes(n))).map(x=>x.aluno);
                         const aluno = parciais.length === 1 ? parciais[0] : null;
 
                         if (aluno) {
                             if (!aluno.supervisor) aluno.supervisor = { display: "", tel: "", email: "" };
                             // Marca como processado em todos os planejamentos onde o aluno aparece,
                             // mesmo quando os dados do supervisor já estavam iguais.
-                            if (dbBase.planning) {
-                                for (const ctx in dbBase.planning) {
-                                    (dbBase.planning[ctx] || []).forEach(planItem => {
-                                        if (planItem.student && planItem.student.id === aluno.id) {
-                                            planItem.etapas = planItem.etapas || {};
-                                            planItem.etapas.supervisor = { ok: true, em: new Date().toISOString() };
-                                        }
-                                    });
-                                }
-                            }
+                            const linked63=plans63.get(aluno.id)||[];
+                            for(const planItem of linked63){planItem.etapas=planItem.etapas||{};planItem.etapas.supervisor={ok:true,em:new Date().toISOString()}}
                             let mudou = false;
                             
                             if (aluno.supervisor.display !== supNomeOriginal) { aluno.supervisor.display = supNomeOriginal; mudou = true; }
                             if (aluno.supervisor.tel !== supCel) { aluno.supervisor.tel = supCel; mudou = true; }
                             if (aluno.supervisor.email !== supEmail) { aluno.supervisor.email = supEmail; mudou = true; }
                             
-                            if (mudou && dbBase.planning) {
-                                for (let ctx in dbBase.planning) {
-                                    dbBase.planning[ctx].forEach(item => {
-                                        if (item.student && item.student.id === aluno.id) {
-                                            if (!item.student.supervisor) item.student.supervisor = {};
-                                            item.student.supervisor.display = supNomeOriginal;
-                                            item.student.supervisor.tel = supCel;
-                                            item.student.supervisor.email = supEmail;
-                                        }
-                                    });
-                                }
-                            }
+                            if(mudou)for(const item of linked63){item.student.supervisor??={};Object.assign(item.student.supervisor,{display:supNomeOriginal,tel:supCel,email:supEmail})}
                             return true; // aluno localizado e etapa concluída, com ou sem alteração de dados
                         }
                         return false;
@@ -7994,8 +7981,9 @@ window.atualizarAutocompleteGlobal = function() {
                     }
                 }
 
-                // Salva na nuvem e atualiza a tela
-                if(typeof window.saveToStorage === 'function') await window.saveToStorage();
+                // Persiste localmente; o envio do planejamento continua dependente de Concluir.
+                if(loadMsg)loadMsg.innerText='SUPERVISORES ATUALIZADOS. CONFIRMANDO CÓPIA LOCAL…';
+                if(typeof window.saveToStorage !== 'function'||await window.saveToStorage()!==true)throw new Error('Dados atualizados, mas a cópia local não foi confirmada. Mantenha a página aberta e use Salvar localmente.');
                 if(typeof window.renderPlanningTable === 'function') window.renderPlanningTable();
                 
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
@@ -14772,7 +14760,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V62');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V63');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
