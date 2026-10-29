@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V67-PEDAGOGICO-2026-10-28"/>
+<meta name="sgt-build" content="V68-CONTRATURNO-2026-10-29"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V67</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V68</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -7425,6 +7425,7 @@ window.atualizarAutocompleteGlobal = function() {
                 
                 // Limpa alertas antigos para não duplicar e para limpar avisos velhos
                 obsAtual = obsAtual.replace(/🚨 ALERTA: CHOQUE DE AGENDA.*?(\n|$)/g, "")
+                                   .replace(/🔴 ATENÇÃO: CHOQUE DE AGENDA[^\n]*(?:\n|$)/g, "")
                                    .replace(/🚨 ALERTA: Visita agendada no dia do Contraturno.*?(\n|$)/g, "")
                                    .replace(/🚨 ALERTA: Visita agendada APÓS o fim do contrato.*?(\n|$)/g, "")
                                    .trim();
@@ -7803,34 +7804,21 @@ window.atualizarAutocompleteGlobal = function() {
                 let nomesComChoque = [];
                 let avisoExtraChoque = "";
                 
-                // Tenta puxar a data que está digitada no calendário de planejamento (input date)
-                let inputDataRoteiro = document.querySelector('input[type="date"]');
-                if (inputDataRoteiro && inputDataRoteiro.value) {
-                    const partes = inputDataRoteiro.value.split('-');
-                    const dataObj = new Date(partes[0], partes[1] - 1, partes[2]);
+                // Cada aluno pode ter uma data diferente; não consultar outros calendários da página.
+                roteiro.forEach(item => {
+                    item.obs = String(item.obs || '').replace(/(?:🔴 ATENÇÃO:|🚨 ALERTA:) CHOQUE DE AGENDA[^\n]*(?:\n|$)/g, '').trim();
+                    if (!item.student || !/^\d{4}-\d{2}-\d{2}$/.test(item.date || '')) return;
+                    const [ano, mes, dia] = item.date.split('-').map(Number);
+                    const dataObj = new Date(ano, mes - 1, dia, 12);
                     const diasExtenso = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
                     const diaDaVisita = diasExtenso[dataObj.getDay()];
-
-                    roteiro.forEach(item => {
-                        if (item.student && item.student.contraturno === diaDaVisita) {
-                            nomesComChoque.push(item.student.nome);
-                            
-                            // Aplica a marcação vermelha direto na observação para saltar aos olhos
-                            let marcadorEvidencia = `🔴 ATENÇÃO: CHOQUE DE AGENDA (Contraturno na ${diaDaVisita})`;
-                            if (!item.obs) item.obs = "";
-                            if (!item.obs.includes("CHOQUE DE AGENDA")) {
-                                item.obs = `${marcadorEvidencia}\n` + item.obs;
-                            }
-                        }
-                    });
-
-                    if (nomesComChoque.length > 0) {
-                        avisoExtraChoque = `\n\n🚨 ALERTA: CONFLITO DE CONTRATURNO!\nA data do roteiro está para uma ${diaDaVisita}. Os seguintes alunos estarão na sala de aula do Senac e precisam ter a data da visita alterada:\n\n`;
-                        nomesComChoque.forEach(nomeAluno => {
-                            avisoExtraChoque += `❌ ${nomeAluno}\n`;
-                        });
-                        avisoExtraChoque += `\n(Estes alunos foram marcados com 🔴 na coluna de Observações).`;
+                    if (item.student.contraturno === diaDaVisita) {
+                        nomesComChoque.push(item.student.nome + ' (' + diaDaVisita + ')');
+                        item.obs = ('🔴 ATENÇÃO: CHOQUE DE AGENDA (Contraturno na ' + diaDaVisita + ')\n' + item.obs).trim();
                     }
+                });
+                if (nomesComChoque.length > 0) {
+                    avisoExtraChoque = '\n\n🚨 ALERTA: CONFLITO DE CONTRATURNO!\nOs seguintes alunos têm contraturno no mesmo dia da semana da respectiva visita:\n\n' + nomesComChoque.map(nome => '❌ ' + nome).join('\n') + '\n\n(Estes alunos foram marcados com 🔴 na coluna de Observações).';
                 }
                 // ================================================================
 
@@ -14826,7 +14814,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V67');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V68');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
