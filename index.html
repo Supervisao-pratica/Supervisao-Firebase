@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V68-CONTRATURNO-2026-10-29"/>
+<meta name="sgt-build" content="V69-ALUNOS-ATIVOS-2026-10-30"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V68</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V69</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -2384,31 +2384,9 @@ function verificarInativoPlanejamento(item) {
      * Aceita apenas status próprios do aluno.
      * Não faz varredura em todo o objeto.
      */
-    const statusDireto = String(
-        item.statusAluno ||
-        item.situacaoAluno ||
-        item.situacao ||
-        item['situação'] ||
-        ''
-    )
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toUpperCase();
-
-    const statusPermitidos = [
-        'DESLIGADO',
-        'ENCERRADO'
-    ];
-
-    if (statusPermitidos.includes(statusDireto)) {
-        return {
-            inativo: true,
-            motivo: statusDireto,
-            origem: 'status_explicito'
-        };
-    }
+    const statusAluno = ['statusAluno','situacaoAluno','situacao','situação'].map(k => String(item[k] || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase());
+    const estadoInativo = statusAluno.find(s => /^(?:(?:ALUNO|ALUNA|CONTRATO|MATRICULA)\s*(?:[-:]\s*)?)?(?:DESLIGAD[OA]|ENCERRAD[OA])(?:\s*[-:]\s*.*)?$/.test(s));
+    if (estadoInativo) return {inativo:true,motivo:estadoInativo.includes('DESLIGAD')?'DESLIGADO':'ENCERRADO',origem:'status_explicito'};
 
     /*
      * 3. CONTRATO ENCERRADO PELA DATA
@@ -7140,6 +7118,8 @@ window.atualizarAutocompleteGlobal = function() {
                             return; 
                         }
 
+                        const bloqueioAluno = verificarInativoPlanejamento(alunoSistema);
+                        if (bloqueioAluno.inativo) { inconformidades.push('- ' + nomePlanilha + ': inclusão bloqueada (' + bloqueioAluno.motivo + ')'); return; }
                         let errosAluno = [];
                         if(norm(alunoSistema.turma) !== norm(turmaPlanilha)) errosAluno.push(`Turma (Sist: ${alunoSistema.turma || '-'} | Planilha: ${turmaPlanilha})`);
                         if(alunoSistema.empresa) {
@@ -14814,7 +14794,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V68');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V69');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
