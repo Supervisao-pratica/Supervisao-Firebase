@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V69-ALUNOS-ATIVOS-2026-10-30"/>
+<meta name="sgt-build" content="V70-PAINEL-2026-10-30"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V69</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V70</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -711,7 +711,7 @@ th {
 <i class="w-4 h-4" data-lucide="plus"></i> Add Turma
             </button>
 <button class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2" onclick="window.importTurmasLote()">
-<i class="w-4 h-4" data-lucide="file-spreadsheet"></i> Importar Lote
+<i class="w-4 h-4" data-lucide="file-spreadsheet"></i> Importar turmas (Excel/CSV)
             </button>
 <button class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2" onclick="window.importarCodigosAlunos()">
 <i class="w-4 h-4" data-lucide="key"></i> Sincronizar Códigos
@@ -12568,6 +12568,8 @@ document.addEventListener('click',e=>{if(!e.target.closest('.amenu'))document.qu
 })();
 </script>
 <style id="processo-desligamento-style">
+.proc-alert-details>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;list-style:none}.proc-alert-details>summary::-webkit-details-marker{display:none}.proc-alert-details>summary::before{content:"▸";font-size:20px}.proc-alert-details[open]>summary::before{content:"▾"}.proc-alert-details>summary:focus-visible{outline:2px solid #004587;outline-offset:3px}
+
 .amenu-btn{font-size:13px!important;padding:11px 15px!important;min-height:42px}.amenu-list{min-width:290px!important;padding:8px!important}.amenu-list button,.amenu-list label,.amenu-list a{font-size:13px!important;line-height:1.35!important;padding:12px 13px!important}.amenu-note{font-size:11px!important}.proc-box{border:2px solid #fbbf24;background:#fffbeb;border-radius:11px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:12px}.proc-box label{font-size:13px;font-weight:900;color:#92400e}.proc-box small{display:block;color:#a16207;margin-top:3px}.proc-alerts{margin:0 0 12px;padding:12px;border:1px solid #f59e0b;border-radius:12px;background:#fffbeb}.proc-alert-title{font-size:13px;font-weight:950;color:#92400e}.proc-alert-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-top:1px solid #fde68a;font-size:11px}.proc-btn{border:0;border-radius:7px;padding:8px 10px;font-size:11px;font-weight:900;cursor:pointer;background:#d97706;color:#fff}.proc-badge{display:inline-flex;padding:3px 7px;border-radius:999px;background:#fef3c7;color:#92400e;border:1px solid #fbbf24;font-size:9px;font-weight:950;margin-left:6px}
 </style>
 <script id="processo-desligamento-alertas-v7">
@@ -12583,7 +12585,7 @@ function supervisor(a){return a.supervisor||{}}
 function outlook(a){const sup=supervisor(a),nome=sup.display||'Supervisor(a)',to=sup.email||'',sub=`Pendência para Desligamento, ${a.nome} - Turma ${a.turma||''}`,body=`Olá, ${nome},\n\nTudo bem?\n\nVerificamos que ainda não recebemos a documentação necessária para o desligamento do(a) jovem ${a.nome}, da Turma ${a.turma||''}.\n\nPoderia, por gentileza, encaminhar os documentos pendentes para que possamos dar continuidade ao processo?\n\nFicamos à disposição em caso de dúvidas.\n\nAtenciosamente,`;const q=new URLSearchParams({to,subject:sub,body}).toString().replace(/\+/g,'%20');return 'https://outlook.office.com/mail/deeplink/compose?'+q}
 window.enviarEmailProcessoDesligamento=id=>{const a=all().find(x=>String(x.id)===String(id));if(!a)return;window.open(outlook(a),'_blank','noopener')};
 window.exportarProcessosDesligamento=function(){const rows=processando().map(a=>({'Nome do aluno':a.nome||'','Turma':a.turma||'','UF':a.uf||a.estado||a.empresa?.uf||'PR','Cidade':a.cidade||'','Empresa':a.empresa?.razao||'','Supervisor':a.supervisor?.display||'','E-mail do supervisor':a.supervisor?.email||'','Data da marcação':a.processoDesligamentoData?new Date(a.processoDesligamentoData).toLocaleDateString('pt-BR'):'','Dias em processo':dias(a),'Alerta de 7 dias':dias(a)>=7?'SIM':'NÃO'}));if(!rows.length)return alert('Não há alunos ativos em processo de desligamento.');const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Em processo');XLSX.writeFile(wb,`Alunos_Em_Processo_Desligamento_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.xlsx`)};
-function renderAlerts(){const overdue=processando().filter(a=>dias(a)>=7);let box=document.getElementById('processoDesligamentoAlertas'),filters=document.getElementById('alunosActionMenus');if(!filters)return;if(!box){box=document.createElement('div');box.id='processoDesligamentoAlertas';filters.insertAdjacentElement('afterend',box)}if(!overdue.length){box.remove();return}box.className='proc-alerts';box.innerHTML=`<div class="proc-alert-title">⚠ ${overdue.length} aluno(s) em processo de desligamento há 7 dias ou mais</div>`+overdue.map(a=>`<div class="proc-alert-row"><div><b>${a.nome}</b> · Turma ${a.turma||'-'} · ${dias(a)} dias<br><span>${a.supervisor?.display||'Supervisor não informado'} · ${a.supervisor?.email||'e-mail não informado'}</span></div><button class="proc-btn" onclick="enviarEmailProcessoDesligamento('${a.id}')">✉ Enviar cobrança ao supervisor</button></div>`).join('')}
+function renderAlerts(){const overdue=processando().filter(a=>dias(a)>=7);let box=document.getElementById('processoDesligamentoAlertas'),filters=document.getElementById('alunosActionMenus');if(!filters)return;if(!box){box=document.createElement('div');box.id='processoDesligamentoAlertas';filters.insertAdjacentElement('afterend',box)}if(!overdue.length){box.remove();return}box.className='proc-alerts';let expanded=false;try{expanded=localStorage.getItem('sgt_desligamentos_expandidos')==='true'}catch(_){}box.innerHTML=`<details class="proc-alert-details" ${expanded?'open':''}><summary class="proc-alert-title" title="Clique para expandir ou recolher a lista">⚠ ${overdue.length} aluno(s) em processo de desligamento há 7 dias ou mais</summary><div class="proc-alert-list">`+overdue.map(a=>`<div class="proc-alert-row"><div><b>${a.nome}</b> · Turma ${a.turma||'-'} · ${dias(a)} dias<br><span>${a.supervisor?.display||'Supervisor não informado'} · ${a.supervisor?.email||'e-mail não informado'}</span></div><button class="proc-btn" onclick="enviarEmailProcessoDesligamento('${a.id}')">✉ Enviar cobrança ao supervisor</button></div>`).join('')+'</div></details>';const details=box.querySelector('details');details.addEventListener('toggle',()=>{try{localStorage.setItem('sgt_desligamentos_expandidos',String(details.open))}catch(_){}})}
 function addExport(){const list=document.querySelector('#alunosActionMenus [data-menu="rel"] .amenu-list');if(list&&!document.getElementById('btnExportProcesso')){const b=document.createElement('button');b.id='btnExportProcesso';b.type='button';b.innerHTML='⚠ Exportar alunos em processo de desligamento';b.onclick=exportarProcessosDesligamento;list.appendChild(b)}}
 const form=document.getElementById('studentForm');if(form)form.addEventListener('submit',()=>{const a=findCurrent(),checked=!!document.getElementById('editProcessoDesligamento')?.checked,oldDate=a?.processoDesligamentoData||null,nome=document.getElementById('editNome')?.value,turma=document.getElementById('editTurma')?.value;setTimeout(async()=>{const saved=all().find(x=>norm(x.nome)===norm(nome)&&norm(x.turma)===norm(turma));if(saved){saved.processoDesligamento=checked;saved.processoDesligamentoData=checked?(oldDate||new Date().toISOString()):null;await saveToStorage();renderAlerts();if(typeof renderTable==='function')renderTable()}},350)},true);
 const observer=new MutationObserver(()=>{const modal=document.getElementById('studentModal');if(modal&&!modal.classList.contains('hidden'))setTimeout(syncModal,20)});observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
@@ -14794,7 +14796,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V69');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V70');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
