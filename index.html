@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V71-MANUAL-2026-10-30"/>
+<meta name="sgt-build" content="V72-FLUXOS-2026-11-04"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V71</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V72</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -808,7 +808,7 @@ th {
 </div>
 <div class="flex-1 overflow-y-auto p-2 bg-slate-50/50" id="planCandidatesList"><div class="text-center text-xs text-slate-400 mt-10">Selecione uma região para carregar alunos.</div></div>
 </div>
-<div class="flex-1 flex flex-col bg-white border rounded-xl shadow-lg h-full overflow-hidden" id="planContent">
+<div class="flex-1 flex flex-col bg-white border rounded-xl shadow-lg h-full overflow-hidden" id="planContent"><div style="padding:10px 16px;background:#eff6ff;border-bottom:1px solid #bfdbfe;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex-shrink:0" class="no-print"><strong style="color:#004587">Precisa de ajuda para montar seu roteiro?</strong><button type="button" id="manualPlanejamentoButton71" class="px-3 py-1.5 bg-white border border-blue-300 text-blue-800 rounded text-xs font-bold no-print" style="min-height:44px" aria-haspopup="dialog" aria-controls="manualPlanejamento71">📖 Como usar o planejamento</button></div>
 <div class="p-4 border-b bg-slate-50 flex justify-between items-center flex-wrap gap-4">
 <div class="flex items-center gap-3">
 <div class="bg-senac-orange p-2 rounded text-white shadow-sm"><i class="w-5 h-5" data-lucide="calendar"></i></div>
@@ -832,7 +832,7 @@ th {
 </div>
 </div>
 <div class="flex gap-2 no-print items-center overflow-x-auto pb-1">
-<button type="button" id="manualPlanejamentoButton71" class="px-3 py-1.5 bg-white border border-blue-300 text-blue-800 rounded text-xs font-bold no-print" style="min-height:44px" aria-haspopup="dialog" aria-controls="manualPlanejamento71">📖 Como usar o planejamento</button>
+
 <button class="px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white rounded text-xs font-bold flex items-center gap-1 shadow-md transition-colors" onclick="openRateioModal()" title="Cálculo Inteligente via Linha do Tempo"><i class="w-3 h-3" data-lucide="calculator"></i> Rateio</button>
 <div class="w-px h-6 bg-slate-200 mx-1"></div>
 <button class="px-3 py-1.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-senac-blue rounded text-xs font-bold flex items-center gap-1" onclick="openEmailModal('agendamento')" title="E-mail Agendamento"><i class="w-3 h-3" data-lucide="mail"></i> <span class="hidden md:inline">Agendar</span></button>
@@ -2030,6 +2030,8 @@ window.requestRestore = function() {
                     fim: dataFimSegura,    // <--- USANDO A VARIÁVEL SEGURA CORRETA
                     visits: finalVisits, 
                     isDesligado: isDesl,
+                    processoDesligamento: !isDesl && !!document.getElementById('editProcessoDesligamento')?.checked,
+                    processoDesligamentoData: !isDesl && document.getElementById('editProcessoDesligamento')?.checked ? (alunoAntigo?.processoDesligamentoData || new Date().toISOString()) : null,
                     status: baseStatus,
                     obs_origem: obsText
                 }; 
@@ -2050,7 +2052,7 @@ window.requestRestore = function() {
                 completed60=true;
                 if(status60)status60.textContent='Salvo neste dispositivo. A confirmação da nuvem aparece no indicador de sincronização.';
                 if(STATE.editingId===editing60&&typeof closeStudentModal === 'function') closeStudentModal();
-                if(typeof runFilter === 'function') runFilter();
+                if(typeof runFilter === 'function') runFilter();window.refreshProcessos72?.();
                 if(typeof showToast === 'function') showToast('Salvo neste dispositivo. Acompanhe a confirmação da nuvem no topo.');
                 return true;
             } catch (err) { console.error('Erro ao salvar:',err);if(status60)status60.textContent='Salvamento não confirmado. Confira os campos e tente novamente. Não feche esta janela.';alert(err.message||'Erro ao salvar.');return false; }
@@ -2385,7 +2387,7 @@ function verificarInativoPlanejamento(item) {
      * Aceita apenas status próprios do aluno.
      * Não faz varredura em todo o objeto.
      */
-    const statusAluno = ['statusAluno','situacaoAluno','situacao','situação'].map(k => String(item[k] || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase());
+    const statusAluno = ['statusAluno','situacaoAluno','situacao','situação','status','Situacao Matr','Situação Matr'].map(k => String(item[k] || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase());
     const estadoInativo = statusAluno.find(s => /^(?:(?:ALUNO|ALUNA|CONTRATO|MATRICULA)\s*(?:[-:]\s*)?)?(?:DESLIGAD[OA]|ENCERRAD[OA])(?:\s*[-:]\s*.*)?$/.test(s));
     if (estadoInativo) return {inativo:true,motivo:estadoInativo.includes('DESLIGAD')?'DESLIGADO':'ENCERRADO',origem:'status_explicito'};
 
@@ -7598,7 +7600,7 @@ window.atualizarAutocompleteGlobal = function() {
                 const roteiro = dbObj.planning[ctx];
 
                 let alunosAtualizados = 0;
-                let alunosComRisco = 0; 
+                let alunosComRisco = 0; const alunosEvadidos72=[];
 
                 roteiro.forEach(item => {
                     if (!item.student || !item.student.nome) return;
@@ -7616,7 +7618,7 @@ window.atualizarAutocompleteGlobal = function() {
                             if (linhaCompleta.includes("DESLIGADO")) {
                                 textoAlertaCritico = "🚨 DESLIGADO - NÃO VISITAR";
                             } else if (linhaCompleta.includes("EVADIDO")) {
-                                textoAlertaCritico = "🚨 EVADIDO - NÃO VISITAR";
+                                textoAlertaCritico = "🚨 EVADIDO — RETIRAR ESTE ALUNO DO PLANEJAMENTO ANTES DA VISITA";alunosEvadidos72.push(item.student.nome);
                             } else if (linhaCompleta.includes("LARANJA")) {
                                 textoAlertaCritico = "🟠 ALERTA LARANJA - AVALIAR VISITA";
                             }
@@ -7744,16 +7746,11 @@ window.atualizarAutocompleteGlobal = function() {
 
                                 const ehLinhaPedagogica = (linha) => {
                                     const n = normalizarLinhaPedagogica(linha);
-                                    return n.startsWith("[PEDAGOGICO]") || /^\[PEDAGOGICO EM \d{2}\/\d{2}\/\d{4}\]/.test(n) || /^\[PEDAGOGICO\s*[-–—]\s*\d+\s*[ªº°AO]?\s*VISITA\s+EM\s+\d{2}\/\d{2}\/\d{4}(?:\]|$)/.test(n);
+                                    return /^\[PEDAGOGIC[OA](?:\]|[\s:–—-])/.test(n) || n.startsWith("[PEDAGOGICO]") || /^\[PEDAGOGICO EM \d{2}\/\d{2}\/\d{4}\]/.test(n) || /^\[PEDAGOGICO\s*[-–—]\s*\d+\s*[ªº°AO]?\s*VISITA\s+EM\s+\d{2}\/\d{2}\/\d{4}(?:\]|$)/.test(n);
                                 };
 
                                 // Remove as linhas pedagógicas antigas, mas preserva qualquer anotação manual.
-                                let obsSemPedagogico = obsAtual
-                                    .split(/\n+/)
-                                    .filter(linha => !ehLinhaPedagogica(linha))
-                                    .join("\n")
-                                    .replace(/\n{3,}/g, "\n\n")
-                                    .trim();
+                                let obsSemPedagogico = [...new Set(candidatosObs.flatMap(v=>String(v||'').split(/\n+/)).map(v=>v.trim()).filter(linha=>linha&&!ehLinhaPedagogica(linha)))].join('\n');
 
                                 // Coloca apenas o bloco pedagógico mais recente, sem histórico.
                                 let novaObsFinal = obsSemPedagogico !== "" ? obsSemPedagogico + "\n\n" + relatorio : relatorio;
@@ -7809,8 +7806,9 @@ window.atualizarAutocompleteGlobal = function() {
                 if(loader) { loader.classList.add('hidden'); loader.classList.remove('flex'); }
                 
                 let mensagemFinal = `✅ Leitura concluída com sucesso!\n${alunosAtualizados} aluno(s) tiveram o relatório atualizado.`;
+                if(alunosEvadidos72.length)mensagemFinal += "\n\nEVADIDOS — retire estes alunos do roteiro pelo X da linha:\n"+[...new Set(alunosEvadidos72)].join("\n");
                 if (alunosComRisco > 0) {
-                    mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Olhe a coluna de Observação no roteiro para não perder a viagem!`;
+                    mensagemFinal += `\n\n⚠️ ATENÇÃO: Foram encontrados ${alunosComRisco} aluno(s) com status de DESLIGADO, EVADIDO ou LARANJA. Confira a coluna de Observação. Para aluno EVADIDO, retire-o deste planejamento pelo X da linha e confira a situação cadastral antes de reagendar.`;
                 }
                 
                 // Anexa o aviso com os nomes se houver choque
@@ -12578,17 +12576,19 @@ document.addEventListener('click',e=>{if(!e.target.closest('.amenu'))document.qu
 const DAY=86400000;
 const all=()=>[...(DB.quali||[]),...(DB.tec||[])], norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
 function dias(a){if(!a.processoDesligamentoData)return 0;const inicio=new Date(a.processoDesligamentoData);if(Number.isNaN(inicio.getTime()))return 0;const hoje=new Date();const diaInicio=Date.UTC(inicio.getFullYear(),inicio.getMonth(),inicio.getDate());const diaHoje=Date.UTC(hoje.getFullYear(),hoje.getMonth(),hoje.getDate());return Math.max(0,Math.floor((diaHoje-diaInicio)/DAY))}
-function processando(){return all().filter(a=>a.processoDesligamento===true&&!a.isDesligado)}
+function processando(){return all().filter(a=>a.processoDesligamento===true&&!verificarInativoPlanejamento(a).inativo)}
 function findCurrent(){const nome=document.getElementById('editNome')?.value,turma=document.getElementById('editTurma')?.value;if(!nome)return null;return all().find(a=>norm(a.nome)===norm(nome)&&(!turma||norm(a.turma)===norm(turma)))||null}
 function ensureField(){if(document.getElementById('editProcessoDesligamento'))return;const deslig=document.getElementById('editDesligado');if(!deslig)return;const host=deslig.closest('.md\\:col-span-2')||deslig.parentElement?.parentElement;if(!host)return;const d=document.createElement('div');d.id='processoDesligamentoBox';d.className='md:col-span-2 proc-box';d.innerHTML='<div><label for="editProcessoDesligamento">⚠ Em processo de desligamento</label><small>O aluno permanece ativo e entra no acompanhamento semanal.</small></div><input type="checkbox" id="editProcessoDesligamento" style="width:24px;height:24px;accent-color:#d97706">';host.insertAdjacentElement('afterend',d)}
 function syncModal(){ensureField();const a=findCurrent(),ck=document.getElementById('editProcessoDesligamento');if(ck)ck.checked=!!a?.processoDesligamento}
 function supervisor(a){return a.supervisor||{}}
 function outlook(a){const sup=supervisor(a),nome=sup.display||'Supervisor(a)',to=sup.email||'',sub=`Pendência para Desligamento, ${a.nome} - Turma ${a.turma||''}`,body=`Olá, ${nome},\n\nTudo bem?\n\nVerificamos que ainda não recebemos a documentação necessária para o desligamento do(a) jovem ${a.nome}, da Turma ${a.turma||''}.\n\nPoderia, por gentileza, encaminhar os documentos pendentes para que possamos dar continuidade ao processo?\n\nFicamos à disposição em caso de dúvidas.\n\nAtenciosamente,`;const q=new URLSearchParams({to,subject:sub,body}).toString().replace(/\+/g,'%20');return 'https://outlook.office.com/mail/deeplink/compose?'+q}
+window.finalizarDesligamento72=async function(id){if(!window.SenacV29?.admin())return alert('Ação disponível ao administrador.');const a=all().find(x=>String(x.id)===String(id));if(!a)return;if(!confirm('Confirmar desligamento de '+a.nome+'? O aluno sairá da lista em processo e ficará entre os desligados.'))return;window.SenacGeneral57?.reset();window.__GENERAL_EDIT57=true;try{a.isDesligado=true;a.status='Encerrado';a.statusAluno='Desligado';a.processoDesligamento=false;a.processoDesligamentoFinalizadoEm=new Date().toISOString();if(await saveToStorage()!==true)throw Error('Cópia local não confirmada. Mantenha o sistema aberto.');renderAlerts();runFilter();window.renderCentralPendencias?.();window.renderPlanningCandidates?.();showToast('Desligamento salvo neste dispositivo. Acompanhe a confirmação da nuvem.')}catch(e){alert(e.message)}finally{window.__GENERAL_EDIT57=false}};
 window.enviarEmailProcessoDesligamento=id=>{const a=all().find(x=>String(x.id)===String(id));if(!a)return;window.open(outlook(a),'_blank','noopener')};
 window.exportarProcessosDesligamento=function(){const rows=processando().map(a=>({'Nome do aluno':a.nome||'','Turma':a.turma||'','UF':a.uf||a.estado||a.empresa?.uf||'PR','Cidade':a.cidade||'','Empresa':a.empresa?.razao||'','Supervisor':a.supervisor?.display||'','E-mail do supervisor':a.supervisor?.email||'','Data da marcação':a.processoDesligamentoData?new Date(a.processoDesligamentoData).toLocaleDateString('pt-BR'):'','Dias em processo':dias(a),'Alerta de 7 dias':dias(a)>=7?'SIM':'NÃO'}));if(!rows.length)return alert('Não há alunos ativos em processo de desligamento.');const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Em processo');XLSX.writeFile(wb,`Alunos_Em_Processo_Desligamento_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.xlsx`)};
-function renderAlerts(){const overdue=processando().filter(a=>dias(a)>=7);let box=document.getElementById('processoDesligamentoAlertas'),filters=document.getElementById('alunosActionMenus');if(!filters)return;if(!box){box=document.createElement('div');box.id='processoDesligamentoAlertas';filters.insertAdjacentElement('afterend',box)}if(!overdue.length){box.remove();return}box.className='proc-alerts';let expanded=false;try{expanded=localStorage.getItem('sgt_desligamentos_expandidos')==='true'}catch(_){}box.innerHTML=`<details class="proc-alert-details" ${expanded?'open':''}><summary class="proc-alert-title" title="Clique para expandir ou recolher a lista">⚠ ${overdue.length} aluno(s) em processo de desligamento há 7 dias ou mais</summary><div class="proc-alert-list">`+overdue.map(a=>`<div class="proc-alert-row"><div><b>${a.nome}</b> · Turma ${a.turma||'-'} · ${dias(a)} dias<br><span>${a.supervisor?.display||'Supervisor não informado'} · ${a.supervisor?.email||'e-mail não informado'}</span></div><button class="proc-btn" onclick="enviarEmailProcessoDesligamento('${a.id}')">✉ Enviar cobrança ao supervisor</button></div>`).join('')+'</div></details>';const details=box.querySelector('details');details.addEventListener('toggle',()=>{try{localStorage.setItem('sgt_desligamentos_expandidos',String(details.open))}catch(_){}})}
+function renderAlerts(){const overdue=processando().filter(a=>dias(a)>=7);let box=document.getElementById('processoDesligamentoAlertas'),filters=document.getElementById('alunosActionMenus');if(!filters)return;if(!box){box=document.createElement('div');box.id='processoDesligamentoAlertas';filters.insertAdjacentElement('afterend',box)}if(!overdue.length){box.remove();return}box.className='proc-alerts';let expanded=false;try{expanded=localStorage.getItem('sgt_desligamentos_expandidos')==='true'}catch(_){}box.innerHTML=`<details class="proc-alert-details" ${expanded?'open':''}><summary class="proc-alert-title" title="Clique para expandir ou recolher a lista">⚠ ${overdue.length} aluno(s) em processo de desligamento há 7 dias ou mais</summary><div class="proc-alert-list">`+overdue.map(a=>`<div class="proc-alert-row"><div><b>${a.nome}</b> · Turma ${a.turma||'-'} · ${dias(a)} dias<br><span>${a.supervisor?.display||'Supervisor não informado'} · ${a.supervisor?.email||'e-mail não informado'}</span></div><button class="proc-btn" onclick="enviarEmailProcessoDesligamento('${a.id}')">✉ Enviar cobrança ao supervisor</button>${window.SenacV29?.admin()?`<button class="proc-btn" type="button" data-desligar72="${encodeURIComponent(String(a.id))}">Marcar desligamento</button>`:''}</div>`).join('')+'</div></details>';box.querySelectorAll('[data-desligar72]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await window.finalizarDesligamento72(decodeURIComponent(b.dataset.desligar72))}finally{b.disabled=false}});const details=box.querySelector('details');details.addEventListener('toggle',()=>{try{localStorage.setItem('sgt_desligamentos_expandidos',String(details.open))}catch(_){}})}
+window.refreshProcessos72=renderAlerts;
 function addExport(){const list=document.querySelector('#alunosActionMenus [data-menu="rel"] .amenu-list');if(list&&!document.getElementById('btnExportProcesso')){const b=document.createElement('button');b.id='btnExportProcesso';b.type='button';b.innerHTML='⚠ Exportar alunos em processo de desligamento';b.onclick=exportarProcessosDesligamento;list.appendChild(b)}}
-const form=document.getElementById('studentForm');if(form)form.addEventListener('submit',()=>{const a=findCurrent(),checked=!!document.getElementById('editProcessoDesligamento')?.checked,oldDate=a?.processoDesligamentoData||null,nome=document.getElementById('editNome')?.value,turma=document.getElementById('editTurma')?.value;setTimeout(async()=>{const saved=all().find(x=>norm(x.nome)===norm(nome)&&norm(x.turma)===norm(turma));if(saved){saved.processoDesligamento=checked;saved.processoDesligamentoData=checked?(oldDate||new Date().toISOString()):null;await saveToStorage();renderAlerts();if(typeof renderTable==='function')renderTable()}},350)},true);
+
 const observer=new MutationObserver(()=>{const modal=document.getElementById('studentModal');if(modal&&!modal.classList.contains('hidden'))setTimeout(syncModal,20)});observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
 function decorate(){document.querySelectorAll('#tableBody tr').forEach(tr=>{const text=norm(tr.textContent),a=processando().find(x=>text.includes(norm(x.nome)));if(a&&!tr.querySelector('.proc-badge')){const td=tr.querySelector('td');if(td)td.insertAdjacentHTML('beforeend',`<span class="proc-badge">EM PROCESSO · ${dias(a)} DIAS</span>`);tr.style.background='#fffbeb'}})}
 const oldRender=window.renderTable||renderTable;if(typeof oldRender==='function')window.renderTable=function(){const r=oldRender.apply(this,arguments);setTimeout(decorate,0);return r};
@@ -12601,7 +12601,7 @@ setInterval(renderAlerts,60000);window.addEventListener('DOMContentLoaded',()=>s
 <div class="pend-overlay" id="centralPendenciasModal" onclick="if(event.target===this)fecharCentralPendencias()"><div class="pend-modal"><div class="pend-head"><div><h3>Alunos com pendências · Cobrança Supervisor</h3><div style="font-size:10px;opacity:.9">Paraná e Rede permanecem separados em todos os filtros, totais e exportações.</div></div><button class="pend-close" onclick="fecharCentralPendencias()">Fechar</button></div><div class="pend-tabs"><button class="pend-tab active" id="pendTabParana" onclick="setPendScope('parana')">Paraná <span id="pendCountPR"></span></button><button class="pend-tab" id="pendTabRede" onclick="setPendScope('rede')">Rede <span id="pendCountRede"></span></button></div><div class="pend-filters"><input id="pendBusca" oninput="renderCentralPendencias()" placeholder="Nome, turma, empresa ou supervisor"/><select id="pendTipo" onchange="renderCentralPendencias()"><option value="todos">Todas as pendências</option><option value="desligamento">Processo de desligamento</option><option value="vencidas">Desligamento há 7 dias ou mais</option></select><select id="pendTerritorio" onchange="renderCentralPendencias()"></select><select id="pendCidade" onchange="renderCentralPendencias()"></select><select id="pendSupervisor" onchange="renderCentralPendencias()"></select></div><div class="pend-stats" id="pendStats"></div><div class="pend-body"><table class="pend-table"><thead><tr><th>Aluno</th><th>Território</th><th>Pendência</th><th>Tempo</th><th>Supervisor</th><th>Ações</th></tr></thead><tbody id="pendBody"></tbody></table></div><div class="pend-foot"><span id="pendResumo" style="font-size:11px;font-weight:800;color:#475569"></span><div><button class="pend-action" onclick="exportarCentralPendencias()">📊 Exportar Excel separado</button> <button class="pend-close" onclick="fecharCentralPendencias()">Fechar</button></div></div></div></div>
 <script id="central-cobrancas-supervisor-v8">
 (function(){'use strict';let scope='parana';const DAY=86400000,n=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim(),all=()=>[...(DB.quali||[]),...(DB.tec||[])];
-function uf(a){return String(a.uf||a.estado||a.empresa?.uf||a.ufEmpresa||a.ufMatricula||'PR').trim().toUpperCase()||'PR'}function rede(a){return uf(a)!=='PR'||String(a.abrangencia||'').toLowerCase()==='rede'||String(a.regiao||'').toUpperCase()==='REDE'}function dias(a){return a.processoDesligamentoData?Math.max(0,Math.floor((Date.now()-new Date(a.processoDesligamentoData))/DAY)):0}function base(sc){return all().filter(a=>!a.isDesligado&&a.processoDesligamento===true&&(sc==='rede'?rede(a):!rede(a)))}
+function uf(a){return String(a.uf||a.estado||a.empresa?.uf||a.ufEmpresa||a.ufMatricula||'PR').trim().toUpperCase()||'PR'}function rede(a){return uf(a)!=='PR'||String(a.abrangencia||'').toLowerCase()==='rede'||String(a.regiao||'').toUpperCase()==='REDE'}function dias(a){return a.processoDesligamentoData?Math.max(0,Math.floor((Date.now()-new Date(a.processoDesligamentoData))/DAY)):0}function base(sc){return all().filter(a=>!verificarInativoPlanejamento(a).inativo&&a.processoDesligamento===true&&(sc==='rede'?rede(a):!rede(a)))}
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function email(a){if(typeof enviarEmailProcessoDesligamento==='function')enviarEmailProcessoDesligamento(a.id)}
 window.enviarCobrancaDesligamentoAlunoAtual=function(){const nome=document.getElementById('editNome')?.value,turma=document.getElementById('editTurma')?.value,a=all().find(x=>n(x.nome)===n(nome)&&n(x.turma)===n(turma));if(!a)return alert('Salve ou localize o aluno antes de gerar a cobrança.');if(!a.processoDesligamento)return alert('Marque primeiro a opção Em processo de desligamento e salve o cadastro.');email(a)};
@@ -12654,13 +12654,7 @@ setTimeout(()=>{cleanContacts();garantirMenuVisivel()},1500);
     return todos().find(a => norm(a.nome) === norm(nome) && (!turma || norm(a.turma) === norm(turma))) || null;
   }
   function aplicarValor(checkbox){
-    const aluno = atual();
-    if(!aluno || !checkbox) return;
-    const marcado = checkbox.checked === true;
-    const anterior = aluno.processoDesligamento === true;
-    aluno.processoDesligamento = marcado;
-    if(marcado && !anterior) aluno.processoDesligamentoData = new Date().toISOString();
-    if(!marcado) aluno.processoDesligamentoData = null;
+    if(!checkbox)return;
     checkbox.dataset.usuarioAlterou = '1';
   }
   document.addEventListener('change', event => {
@@ -13149,23 +13143,20 @@ body.workflow-operador-v23 #btnQuali,body.workflow-operador-v23 #btnTec,body.wor
  const openNewOriginal=window.openNewPlanInput;
  window.openNewPlanInput=function(){const r=openNewOriginal.apply(this,arguments);const u=op(),i=document.getElementById('newPlanNameInput');if(u&&i){i.placeholder='Data da visita: dd/mm/aaaa';i.value=''}return r};
  // Rateio permanece dentro do Planejamento, mas só abre para operador se aprovado.
- ['openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'].forEach(nome=>{const fn=window[nome];if(typeof fn==='function'){window[nome]=function(){if(op()&&!window.SenacV29?.actionAllowed(nome)){alert('Rateio disponível após aprovação do status Realizada.');return}return fn.apply(this,arguments)}}});
+ ['openRateioModal','generateRateio','exportRateioExcel','copyRateioEmail'].forEach(nome=>{const fn=window[nome];if(typeof fn==='function'){window[nome]=function(){if(op()&&!window.SenacV29?.actionAllowed(nome)){alert('Rateio disponível quando houver atendimento marcado como Realizada.');return}return fn.apply(this,arguments)}}});
  function pendenteMesmoItem(ctx,idx){return DB.solicitacoes_status_visita.find(x=>x.contexto===ctx&&x.indice===idx&&x.statusSolicitacao==='pendente')}
- function solicitarStatus(idx,novo){init();const ctx=STATE.planContext,item=DB.planning?.[ctx]?.[idx],u=op();if(!u||!item)return false;if(pendenteMesmoItem(ctx,idx)){alert('Já existe uma alteração de status aguardando aprovação para este aluno.');renderPlanningTable();return true}
-  const atual=item.status||'Realizar';if(atual===novo){renderPlanningTable();return true}
-  const s={id:'sts_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),contexto:ctx,indice:idx,visitaData:item.date||null,alunoId:String(item.student?.id||''),alunoNome:item.student?.nome||'Aluno',statusAtual:atual,statusSolicitado:novo,solicitadoPor:email(),solicitanteNome:u.nome,solicitadoEm:new Date().toISOString(),statusSolicitacao:'pendente'};
-  DB.solicitacoes_status_visita.push(s);notificar('admin','status_visita',`${u.nome} solicitou alteração de ${s.alunoNome}: ${atual} → ${novo}.`,ctx);saveToStorage();renderPlanningTable();alert('Alteração enviada para aprovação. O status oficial permanece inalterado até a decisão do administrador.');return true
- }
+ function solicitarStatus(idx,novo){if(window.SenacV29?.ready)return window.SenacV29.requestStatus31([idx],novo);alert('Aguarde o carregamento antes de alterar o status.');return false}
+
  const updateOriginal=window.updatePlanItem;
  window.updatePlanItem=function(idx,field,val){if(op()&&field==='status')return solicitarStatus(idx,val);return updateOriginal.apply(this,arguments)};
  const bulkOriginal=window.applyBulkStatus;
- window.applyBulkStatus=function(){if(!op())return bulkOriginal.apply(this,arguments);const sel=document.getElementById('bulkStatusSelect');if(!sel?.value)return alert('Selecione um status primeiro.');if(!confirm(`Enviar para aprovação a alteração de todos os alunos para “${sel.value}”?`))return;(DB.planning?.[STATE.planContext]||[]).forEach((_,idx)=>{if(!pendenteMesmoItem(STATE.planContext,idx))solicitarStatus(idx,sel.value)});sel.value=''};
+ window.applyBulkStatus=function(){if(!op())return bulkOriginal.apply(this,arguments);const sel=document.getElementById('bulkStatusSelect');if(!sel?.value)return alert('Selecione um status.');if(!window.SenacV29?.ready)return alert('Aguarde o carregamento.');window.SenacV29.requestStatus31((DB.planning?.[STATE.planContext]||[]).map((_,i)=>i),sel.value);sel.value=''};
  window.aprovarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const item=DB.planning?.[s.contexto]?.[s.indice];if(!item||String(item.student?.id||'')!==String(s.alunoId)){const lista=DB.planning?.[s.contexto]||[];const achou=lista.find(x=>String(x.student?.id||'')===String(s.alunoId));if(!achou)return alert('Aluno não localizado no planejamento.');achou.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(achou)}else{item.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(item)}s.statusSolicitacao='aprovado';s.aprovadoPor=email();s.aprovadoEm=new Date().toISOString();notificar(s.solicitadoPor,'status_aprovado',`Alteração de status aprovada: ${s.alunoNome}, ${s.statusAtual} → ${s.statusSolicitado}.`,s.contexto);await saveToStorage();renderPlanningTable();renderPendenciasStatusV23();alert('Status aprovado localmente. Consulte o indicador de sincronização para confirmar a nuvem.')};
  window.recusarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const obs=prompt('Motivo da recusa:','');if(!obs?.trim()){if(obs!==null)alert('Informe o motivo da devolução.');return;}s.statusSolicitacao='recusado';s.recusadoPor=email();s.recusadoEm=new Date().toISOString();s.observacao=obs;notificar(s.solicitadoPor,'status_recusado',`Alteração de status recusada para ${s.alunoNome}.${obs?' Motivo: '+obs:''}`,s.contexto);await saveToStorage();renderPendenciasStatusV23()};
- window.renderPendenciasStatusV23=function(){const box=document.getElementById('workflowAdminList');if(!box||!admin())return;init();const arr=DB.solicitacoes_status_visita.filter(x=>x.statusSolicitacao==='pendente');let sec=document.getElementById('statusPendenciasV23');if(!sec){sec=document.createElement('div');sec.id='statusPendenciasV23';box.prepend(sec)}sec.innerHTML=`<div class="wf-notice">Alterações de status aguardando aprovação: ${arr.length}</div>`+(arr.length?arr.map(s=>`<div class="wf-card"><b>${esc(s.alunoNome)}</b><div>${esc(s.solicitanteNome)} · ${esc(s.contexto)}</div><div>${esc(s.statusAtual)} → <b>${esc(s.statusSolicitado)}</b></div><button class="wf-btn wf-btn-ok" onclick="aprovarStatusVisitaV23('${esc(s.id)}')">Aprovar status</button> <button class="wf-btn wf-btn-warn" onclick="recusarStatusVisitaV23('${esc(s.id)}')">Recusar</button></div>`).join(''):'')};
+ window.renderPendenciasStatusV23=function(){const box=document.getElementById('workflowAdminList');if(!box||!admin())return;init();const arr=DB.solicitacoes_status_visita.filter(x=>x.statusSolicitacao==='pendente'&&x.statusSolicitado!=='Realizada');let sec=document.getElementById('statusPendenciasV23');if(!sec){sec=document.createElement('div');sec.id='statusPendenciasV23';box.prepend(sec)}sec.innerHTML=`<div class="wf-notice">Alterações de status aguardando aprovação: ${arr.length}</div>`+(arr.length?arr.map(s=>`<div class="wf-card"><b>${esc(s.alunoNome)}</b><div>${esc(s.solicitanteNome)} · ${esc(s.contexto)}</div><div>${esc(s.statusAtual)} → <b>${esc(s.statusSolicitado)}</b></div><button class="wf-btn wf-btn-ok" onclick="aprovarStatusVisitaV23('${esc(s.id)}')">Aprovar status</button> <button class="wf-btn wf-btn-warn" onclick="recusarStatusVisitaV23('${esc(s.id)}')">Recusar</button></div>`).join(''):'')};
  const adminOpen=window.abrirWorkflowAdmin;if(typeof adminOpen==='function')window.abrirWorkflowAdmin=function(){const r=adminOpen.apply(this,arguments);setTimeout(renderPendenciasStatusV23,0);return r};
  // Sinaliza pedidos pendentes na linha sem mudar o status oficial.
- const renderOriginal=window.renderPlanningTable;if(typeof renderOriginal==='function')window.renderPlanningTable=function(){const r=renderOriginal.apply(this,arguments);if(op()){init();document.querySelectorAll('#planTableBody tr').forEach((tr,idx)=>{const p=pendenteMesmoItem(STATE.planContext,idx);if(p){const td=tr.children[11];if(td&&!td.querySelector('.status-pendente-v23'))td.insertAdjacentHTML('beforeend',`<span class="status-pendente-v23">Solicitado: ${esc(p.statusSolicitado)} · aguardando aprovação</span>`)}})}return r};
+ const renderOriginal=window.renderPlanningTable;if(typeof renderOriginal==='function')window.renderPlanningTable=function(){const r=renderOriginal.apply(this,arguments);if(op()){init();document.querySelectorAll('#planTableBody tr').forEach((tr,idx)=>{const p=pendenteMesmoItem(STATE.planContext,idx);if(p&&p.statusSolicitado!=='Realizada'){const td=tr.children[11];if(td&&!td.querySelector('.status-pendente-v23'))td.insertAdjacentHTML('beforeend',`<span class="status-pendente-v23">Solicitado: ${esc(p.statusSolicitado)} · aguardando aprovação</span>`)}})}return r};
  function start(){init();aplicarPerfil()}
  firebase.auth().onAuthStateChanged(u=>{if(u)setTimeout(start,1000)});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(start,1300),{once:true});else setTimeout(start,1300);
 })();
@@ -13972,7 +13963,7 @@ window.saveToStorage=async function(){
  if(quotaReported38||!navigator.onLine||recoveryMode42){recoveryMode42=true;/* Rascunho local até Concluir. */}
  revision++;const requested=clone(DB);lastRequested42=requested;updateDraftState40();
  try{
-  const saved=await localStore();if(!saved)return false;if(generalChanged57)queueGeneral57();
+  const saved=await localStore();if(!saved)return false;if(generalChanged57){if(window.__GENERAL_EDIT57){clearTimeout(generalTimer57);scheduleFlush38().catch(fail)}else queueGeneral57();}
   tell(recoveryMode42?'Salvo neste dispositivo. Apenas planejamentos já concluídos estão na fila da nuvem.':'Cópia de segurança local atualizada. A nuvem só recebe ao Concluir planejamento.');return true;
  }catch(e){window.__LOCAL_CACHE_FAILED__=true;localReceipt42(false);throw e}
  finally{if(lastRequested42===requested)lastRequested42=null;}
@@ -14200,7 +14191,7 @@ async function deleteDecision(req,approve){const actionBefore40=clone(DB);
  req.status=approve?'aprovado':'devolvido';req.decididoPor=email();req.decididoEm=new Date().toISOString();req.motivoDevolucao=reason;
  note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await finishAction40(actionBefore40,clone(DB),true);refresh();showNotifications(false);
 }
-function statusGroups31(data=DB){const groups=new Map();for(const r of data.solicitacoes_status_visita||[]){if(r.statusSolicitacao!=='pendente')continue;const key=JSON.stringify([r.contexto,r.solicitadoPor]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}return [...groups.values()]}
+function statusGroups31(data=DB){const groups=new Map();for(const r of data.solicitacoes_status_visita||[]){if(r.statusSolicitacao!=='pendente'||r.statusSolicitado==='Realizada')continue;const key=JSON.stringify([r.contexto,r.solicitadoPor]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}return [...groups.values()]}
 function requestStatus31(indexes,status){
  const p=profile(),ctx=STATE.planContext;if(!ready||!p||!owns(ctx,p))throw Error('Selecione um planejamento da sua região.');
  if(!['Realizada','Realizar','Não realizada'].includes(status))throw Error('Status inválido.');
@@ -14209,6 +14200,7 @@ function requestStatus31(indexes,status){
   if(status==='Realizada'&&!/^\d{4}-\d{2}-\d{2}$/.test(row.date||''))throw Error('Informe a data da visita antes de marcar Realizada.');
   let req=DB.solicitacoes_status_visita.find(r=>r.contexto===ctx&&String(r.alunoId)===String(row.student?.id)&&r.statusSolicitacao==='rascunho_usuario');
   if(!req){req={id:'conclusao_'+fresh(),contexto:ctx,alunoId:String(row.student.id),alunoNome:row.student.nome,statusAtual:row.status||'Realizar',solicitadoPor:email(),solicitanteNome:p.nome,statusSolicitacao:'rascunho_usuario'};DB.solicitacoes_status_visita.push(req)}
+  for(const old of DB.solicitacoes_status_visita)if(old!==req&&old.contexto===ctx&&String(old.alunoId)===String(row.student?.id)&&old.solicitadoPor===email()&&old.statusSolicitacao==='pendente')old.statusSolicitacao='substituido_rascunho';
   req.statusSolicitado=status;req.visitaData=row.date;req.visitaTipo=row.visitaTipo;req.observacaoVisita=row.obs||'';req.solicitadoEm=new Date().toISOString();row.status=status;
  }
  saveToStorage().catch(fail);renderPlanningTable();refreshActions();tell('Status alterado no rascunho. Conclua o planejamento para salvar na nuvem e notificar o administrador.');
@@ -14270,7 +14262,7 @@ function showNotifications(mark=true){
  const mine=(DB.notificacoes_planejamento||[]).filter(n=>n.destinatario===(admin()?'admin':email()));mine.sort((a,b)=>String(b.criadaEm).localeCompare(String(a.criadaEm))).forEach(n=>add(String(n.tipo||'Notificação').replace(/_/g,' '),[['Descrição',n.mensagem],['Solicitante',requester(n)],['Região',regionFor(n.contexto)],['Planejamento',n.contexto],['Data',new Date(n.criadaEm).toLocaleString('pt-BR')]],n.contexto));
 
  if(!list.children.length)list.append(card('Nenhuma notificação',[]));document.getElementById('workflowNotificationsModal').classList.add('open');
- if(mark&&mine.some(n=>!n.lida)){mine.forEach(n=>n.lida=true);saveToStorage().catch(fail)}
+ if(mark&&mine.some(n=>!n.lida)){const beforeRead72=clone(DB);mine.forEach(n=>n.lida=true);finishAction40(beforeRead72,clone(DB),true).catch(fail)}
 
 }
 window.abrirWorkflowNotificacoes=()=>showNotifications();window.abrirWorkflowAdmin=()=>showNotifications();
@@ -14350,7 +14342,7 @@ window.stripCpf57=stripCpf57;
 function generalSnapshot57(data){const result={};for(const k of ['quali','tec','cc_map','regioes_map','rede_cidades','controle_turmas','controle_logs','finance_logs','usuarios_planejamento'])if(data?.[k]!==undefined)result[k]=clone(data[k]);return result;}
 function stageGeneral57(){
  if(!admin()||!ready)return false;if(window.__PLANNING_EDIT57){observedGeneral57=null;return false;}const before=observedGeneral57||lastLocal||baseline;if(!before)return false;observedGeneral57=generalSnapshot57(DB);
- const after=generalSnapshot57(before),planningVisible=document.getElementById('viewPlanning')&&!document.getElementById('viewPlanning').classList.contains('hidden');
+ const after=generalSnapshot57(before),planningVisible=document.getElementById('viewPlanejamento')&&!document.getElementById('viewPlanejamento').classList.contains('hidden');
  const allowStudents=!window.__PLANNING_EDIT57&&(window.__GENERAL_EDIT57||!planningVisible);
  const keys=['cc_map','regioes_map','rede_cidades','controle_turmas','controle_logs','finance_logs','usuarios_planejamento'];if(allowStudents)keys.push('quali','tec');
  let changed=false;for(const k of keys)if(!same(before[k],DB[k])){after[k]=clone(DB[k]);changed=true}
@@ -14364,6 +14356,7 @@ function visitDay54(value){if(value===null||value===undefined||value==='')return
 
 function prepareConclusion54(ctx){
  const now=new Date().toISOString();
+ if(profile())for(const old of DB.solicitacoes_status_visita||[])if(old.contexto===ctx&&old.solicitadoPor===email()&&['pendente','substituido_rascunho'].includes(old.statusSolicitacao)&&old.statusSolicitado==='Realizada'){const row=DB.planning?.[ctx]?.find(x=>String(x.student?.id)===String(old.alunoId));if(row){if(old.statusSolicitacao==='pendente')row.status='Realizada';old.statusSolicitado=row.status;old.statusSolicitacao='rascunho_usuario';}}
  if(profile()){
   DB.solicitacoes_status_visita??=[];const prior=submittedData40().planning?.[ctx]||[];
   for(const row of DB.planning?.[ctx]||[]){const old=prior.find(x=>String(x.student?.id)===String(row.student?.id));
@@ -14402,7 +14395,7 @@ function finalizeConclusions54(data,p){
   if(n.tipo!=='planejamento_concluido'||n.solicitante!==sender||!n.conclusao54||!owns(n.contexto,p,next))continue;
   next.solicitacoes_status_visita??=[];
   for(const r of n.conclusao54.status||[]){
-   if(!r.id||next.solicitacoes_status_visita.some(x=>x.id===r.id))continue;
+   if(!r.id)continue;const existing72=next.solicitacoes_status_visita.find(x=>x.id===r.id);if(existing72){if(existing72.statusSolicitacao==='pendente'&&existing72.solicitadoPor===sender&&existing72.contexto===n.contexto&&['Realizada','Realizar','Não realizada'].includes(r.statusSolicitado)){Object.assign(existing72,clone(r),{contexto:n.contexto,solicitadoPor:sender,statusSolicitacao:'concluido_usuario'});}continue;}
    const row=next.planning?.[n.contexto]?.find(x=>String(x.student?.id)===String(r.alunoId));
    if(!row||!inRegion(row.student,p)||!['Realizada','Realizar','Não realizada'].includes(r.statusSolicitado))continue;
    next.solicitacoes_status_visita.push({...clone(r),contexto:n.contexto,solicitadoPor:sender,statusSolicitacao:'concluido_usuario'});
@@ -14434,7 +14427,7 @@ function finalizeConclusions54(data,p){
 
 function changes(before,after){
  const renames=pendingRenames66(before,after);if(renames.length){before=clone(before);for(const r of renames)if(before.planning?.[r.de])movePlan66(before,r.de,r.para);}
- return baseChanges54(before,after).filter(o=>!(o.field==='solicitacoes_status_visita'&&['rascunho_usuario','concluido_usuario'].includes(o.after?.statusSolicitacao))).map(o=>{
+ return baseChanges54(before,after).filter(o=>!(o.field==='solicitacoes_status_visita'&&['rascunho_usuario','concluido_usuario','substituido_rascunho'].includes(o.after?.statusSolicitacao))).map(o=>{
   if(o.field==='planning'&&profile()){o.before=officialPlanRows(o.before,baseline?.planning?.[o.key],baseline||before);o.after=officialPlanRows(o.after,baseline?.planning?.[o.key],baseline||after);}
   return o;
  });
@@ -14797,7 +14790,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V71');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V72');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
