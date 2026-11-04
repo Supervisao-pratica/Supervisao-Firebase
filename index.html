@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V72-FLUXOS-2026-11-04"/>
+<meta name="sgt-build" content="V73-SALVAMENTO-2026-11-04"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V72</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V73</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -12608,7 +12608,7 @@ window.enviarCobrancaDesligamentoAlunoAtual=function(){const nome=document.getEl
 window.abrirCentralPendencias=function(){document.getElementById('centralPendenciasModal').classList.add('open');scope=(STATE.abrangencia||'parana')==='rede'?'rede':'parana';setPendScope(scope)};window.fecharCentralPendencias=()=>document.getElementById('centralPendenciasModal').classList.remove('open');window.setPendScope=function(s){scope=s;document.getElementById('pendTabParana').classList.toggle('active',s==='parana');document.getElementById('pendTabRede').classList.toggle('active',s==='rede');populate();renderCentralPendencias()};
 function populate(){const data=base(scope),terr=[...new Set(data.map(a=>scope==='rede'?uf(a):(a.regiao||'Sem região')))].sort(),cid=[...new Set(data.map(a=>a.cidade||'Sem cidade'))].sort(),sup=[...new Set(data.map(a=>a.supervisor?.display||'Não informado'))].sort(),fill=(id,vals,label)=>{const el=document.getElementById(id),old=el.value;el.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option>${esc(v)}</option>`).join('');if(vals.includes(old))el.value=old};fill('pendTerritorio',terr,scope==='rede'?'Todas as UFs':'Todas as regiões');fill('pendCidade',cid,'Todas as cidades');fill('pendSupervisor',sup,'Todos os supervisores')}
 function filtered(sc=scope){let d=base(sc),q=n(document.getElementById('pendBusca')?.value),tipo=document.getElementById('pendTipo')?.value||'todos',ter=document.getElementById('pendTerritorio')?.value||'',cid=document.getElementById('pendCidade')?.value||'',sup=document.getElementById('pendSupervisor')?.value||'';if(tipo==='vencidas')d=d.filter(a=>dias(a)>=7);if(q)d=d.filter(a=>n([a.nome,a.turma,a.empresa?.razao,a.supervisor?.display].join(' ')).includes(q));if(ter)d=d.filter(a=>(sc==='rede'?uf(a):(a.regiao||'Sem região'))===ter);if(cid)d=d.filter(a=>(a.cidade||'Sem cidade')===cid);if(sup)d=d.filter(a=>(a.supervisor?.display||'Não informado')===sup);return d.sort((a,b)=>dias(b)-dias(a)||String(a.nome).localeCompare(String(b.nome),'pt-BR'))}
-window.renderCentralPendencias=function(){const d=filtered(),over=d.filter(a=>dias(a)>=7),semEmail=d.filter(a=>!a.supervisor?.email);document.getElementById('pendCountPR').textContent=`(${base('parana').length})`;document.getElementById('pendCountRede').textContent=`(${base('rede').length})`;document.getElementById('pendStats').innerHTML=`<div class="pend-stat"><b>${d.length}</b><span>Em processo</span></div><div class="pend-stat"><b style="color:#b45309">${over.length}</b><span>Há 7 dias ou mais</span></div><div class="pend-stat"><b>${new Set(d.map(a=>a.supervisor?.display).filter(Boolean)).size}</b><span>Supervisores</span></div><div class="pend-stat"><b style="color:#b91c1c">${semEmail.length}</b><span>Sem e-mail</span></div>`;document.getElementById('pendBody').innerHTML=d.length?d.map(a=>`<tr><td><b>${esc(a.nome)}</b><br>Turma ${esc(a.turma||'-')} · ${esc(a.empresa?.razao||'')}</td><td><b>${scope==='rede'?esc(uf(a)):esc(a.regiao||'-')}</b><br>${esc(a.cidade||'-')}</td><td>Em processo de desligamento${dias(a)>=7?'<br><b style="color:#b45309">COBRANÇA VENCIDA</b>':''}</td><td><b>${dias(a)} dias</b><br>${a.processoDesligamentoData?new Date(a.processoDesligamentoData).toLocaleDateString('pt-BR'):''}</td><td>${esc(a.supervisor?.display||'Não informado')}<br>${esc(a.supervisor?.email||'E-mail não informado')}</td><td><button class="pend-action pend-warn" onclick="enviarEmailProcessoDesligamento('${a.id}')">✉ Cobrar</button></td></tr>`).join(''):'<tr><td colspan="6" style="padding:28px;text-align:center;color:#64748b">Nenhum aluno encontrado neste recorte.</td></tr>';document.getElementById('pendResumo').textContent=`${scope==='rede'?'Rede':'Paraná'}: ${d.length} aluno(s), ${over.length} com cobrança vencida.`}
+window.renderCentralPendencias=function(){const d=filtered(),over=d.filter(a=>dias(a)>=7),semEmail=d.filter(a=>!a.supervisor?.email);document.getElementById('pendCountPR').textContent=`(${base('parana').length})`;document.getElementById('pendCountRede').textContent=`(${base('rede').length})`;document.getElementById('pendStats').innerHTML=`<div class="pend-stat"><b>${d.length}</b><span>Em processo</span></div><div class="pend-stat"><b style="color:#b45309">${over.length}</b><span>Há 7 dias ou mais</span></div><div class="pend-stat"><b>${new Set(d.map(a=>a.supervisor?.display).filter(Boolean)).size}</b><span>Supervisores</span></div><div class="pend-stat"><b style="color:#b91c1c">${semEmail.length}</b><span>Sem e-mail</span></div>`;document.getElementById('pendBody').innerHTML=d.length?d.map(a=>`<tr><td><b>${esc(a.nome)}</b><br>Turma ${esc(a.turma||'-')} · ${esc(a.empresa?.razao||'')}</td><td><b>${scope==='rede'?esc(uf(a)):esc(a.regiao||'-')}</b><br>${esc(a.cidade||'-')}</td><td>Em processo de desligamento${dias(a)>=7?'<br><b style="color:#b45309">COBRANÇA VENCIDA</b>':''}</td><td><b>${dias(a)} dias</b><br>${a.processoDesligamentoData?new Date(a.processoDesligamentoData).toLocaleDateString('pt-BR'):''}</td><td>${esc(a.supervisor?.display||'Não informado')}<br>${esc(a.supervisor?.email||'E-mail não informado')}</td><td><button class="pend-action pend-warn" onclick="enviarEmailProcessoDesligamento('${a.id}')">✉ Cobrar</button>${window.SenacV29?.admin()?'<button type="button" class="pend-action" style="display:block;margin-top:6px;background:#b91c1c;color:white" data-desligar-central73="'+esc(a.id)+'">Marcar desligamento</button>':''}</td></tr>`).join(''):'<tr><td colspan="6" style="padding:28px;text-align:center;color:#64748b">Nenhum aluno encontrado neste recorte.</td></tr>';document.querySelectorAll('[data-desligar-central73]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Salvando…';try{await window.finalizarDesligamento72(b.dataset.desligarCentral73)}finally{b.disabled=false;b.textContent='Marcar desligamento'}});document.getElementById('pendResumo').textContent=`${scope==='rede'?'Rede':'Paraná'}: ${d.length} aluno(s), ${over.length} com cobrança vencida.`}
 function rows(sc){return base(sc).map(a=>({'Abrangência':sc==='rede'?'REDE':'PARANÁ','Nome do aluno':a.nome||'','Turma':a.turma||'','UF':uf(a),'Região':sc==='rede'?'':a.regiao||'','Cidade':a.cidade||'','Empresa':a.empresa?.razao||'','Supervisor':a.supervisor?.display||'','E-mail do supervisor':a.supervisor?.email||'','Data da marcação':a.processoDesligamentoData?new Date(a.processoDesligamentoData).toLocaleDateString('pt-BR'):'','Dias em processo':dias(a),'Cobrança vencida':dias(a)>=7?'SIM':'NÃO'}))}window.exportarCentralPendencias=function(){const pr=rows('parana'),rd=rows('rede');if(!pr.length&&!rd.length)return alert('Não há alunos em processo de desligamento.');const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(pr),'Paraná');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rd),'Rede');XLSX.writeFile(wb,`Central_Pendencias_Desligamento_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.xlsx`)};
 function install(){const menus=document.getElementById('alunosActionMenus');if(!menus)return;const total=base('parana').length+base('rede').length;if(!menus.querySelector('[data-menu="cob"]')){const fer=menus.querySelector('[data-menu="fer"]'),m=document.createElement('div');m.className='amenu pend-open-main';m.dataset.menu='cob';m.innerHTML=`<button type="button" class="amenu-btn" onclick="abrirCentralPendencias()">✉ Cobrança Supervisor <span class="pend-count">${total}</span></button>`;menus.insertBefore(m,fer)}menus.querySelectorAll('[data-menu="cob"] .pend-count').forEach(el=>{el.textContent=String(total);el.dataset.total=String(total)});addDirectButton()}function addDirectButton(){const cad=document.querySelector('#alunosActionMenus [data-menu="cad"] .amenu-list');if(cad&&!document.getElementById('btnCentralPendencias')){const b=document.createElement('button');b.id='btnCentralPendencias';b.innerHTML='⚠ Alunos com pendências';b.onclick=abrirCentralPendencias;cad.appendChild(b)}}
 window.addEventListener('DOMContentLoaded',()=>{setTimeout(install,900);setTimeout(install,2500)});setTimeout(install,1600);window.addEventListener('focus',install);document.addEventListener('visibilitychange',()=>{if(!document.hidden)install()});document.addEventListener('click',()=>setTimeout(install,150));setInterval(install,30000);
@@ -13738,7 +13738,9 @@ function applyData(data){
 }
 function quotaErrorV37(e){return e?.name==='QuotaExceededError'||e?.code===22||/quota/i.test(String(e?.message||e||''))}
 function packLocalV37(value){return LZString.compressToUTF16(JSON.stringify(value))}
-function unpackLocalV37(value){if(!value?.compressedV37)return value;try{return JSON.parse(LZString.decompressFromUTF16(value.payload)||'null')}catch(e){console.warn('Cache local compactado inválido:',e);return null}}
+async function unpackLocalV37(value){
+ if(value?.compressedGzip73){try{if(typeof DecompressionStream!=='function')throw Error('Este navegador não suporta a leitura da cópia local atual. Use um navegador atualizado.');const stream=new Response(value.payload).body.pipeThrough(new DecompressionStream('gzip'));return JSON.parse(await new Response(stream).text());}catch(e){console.warn('Cópia local GZIP não pôde ser lida:',e);return null}}
+if(!value?.compressedV37)return value;try{return JSON.parse(LZString.decompressFromUTF16(value.payload)||'null')}catch(e){console.warn('Cache local compactado inválido:',e);return null}}
 // Compactação do cache fora da interface; fila única consolida chamadas simultâneas.
 let cacheWorker40=null,localTask40=null,localAgain40=false,compressionId40=0;
 const compressionTasks40=new Map();
@@ -13754,6 +13756,12 @@ async function compress40(raw,base64=false){
  }catch(e){return fallback();}
 }
 const packLocalAsync40=raw=>compress40(raw);
+async function packCache73(raw){
+ if(typeof CompressionStream==='function'&&typeof DecompressionStream==='function'&&typeof Response==='function'){
+  try{const stream=new Response(JSON.stringify(raw)).body.pipeThrough(new CompressionStream('gzip'));return {compressedGzip73:true,payload:await new Response(stream).arrayBuffer()};}catch(e){console.warn('Compactação nativa indisponível; usando formato anterior.',e)}
+ }
+ return {compressedV37:true,payload:await packLocalAsync40(raw)};
+}
 function localStore(){
  localAgain40=true;
  if(!localTask40)localTask40=(async()=>{let result;do{localAgain40=false;result=await localStoreOnce40();}while(localAgain40);return result;})().catch(e=>{window.__LOCAL_CACHE_FAILED__=true;localReceipt42(false);throw e}).finally(()=>{localTask40=null;});
@@ -13762,7 +13770,7 @@ function localStore(){
 async function localStoreOnce40(){
  const cacheOwner40=uid();const db=await dbPromise,currentRevision=revision;if(cacheOwner40!==uid())return false;
  const raw={data:clone(DB),baseline,generation,pending,revision:currentRevision,collabVersion,collabQueue,submitted40,quotaPause:{until:quotaUntil38,reported:quotaReported38},recovered42,recoveryMode42};
- const item={compressedV37:true,payload:await packLocalAsync40(raw),revision:currentRevision,updatedAt:Date.now()};
+ const item={...await packCache73(raw),revision:currentRevision,updatedAt:Date.now()};
  try{
   await new Promise((ok,no)=>{const tx=db.transaction(STORE_NAME,'readwrite'),st=tx.objectStore(STORE_NAME);if(typeof st.get==='function'){const previous=st.get('v29:'+cacheOwner40);previous.onsuccess=()=>{if(previous.result&&previous.result.payload!==item.payload)st.put(previous.result,'v42:previous:'+cacheOwner40);st.put(item,'v29:'+cacheOwner40);};}else st.put(item,'v29:'+cacheOwner40);tx.oncomplete=ok;tx.onerror=()=>no(tx.error||new Error('Falha no cache local'));tx.onabort=()=>no(tx.error||new Error('Gravação local abortada'))});
  }catch(e){
@@ -13777,9 +13785,9 @@ async function localStoreOnce40(){
 async function localRead(){
  const owner=uid(),db=await dbPromise;
  const read=key=>new Promise((ok,no)=>{const r=db.transaction(STORE_NAME,'readonly').objectStore(STORE_NAME).get(key);r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
- const current=await read('v29:'+owner),value=unpackLocalV37(current);
+ const current=await read('v29:'+owner),value=await unpackLocalV37(current);
  if(value?.data)return value;
- const previous=unpackLocalV37(await read('v42:previous:'+owner));
+ const previous=await unpackLocalV37(await read('v42:previous:'+owner));
  if(previous?.data){tell('Cópia anterior deste dispositivo recuperada. Conferindo as pendências.',true);return previous;}
  if(current)throw Error('A cópia local não pôde ser lida. Não limpe os dados do navegador; preserve este dispositivo para recuperação.');
  return null;
@@ -14790,7 +14798,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V72');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V73');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
