@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V74-NAVEGACAO-2026-11-05"/>
+<meta name="sgt-build" content="V75-PENDENCIAS-2026-11-05"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V74</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V75</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -13491,7 +13491,7 @@ window.renomearPlanejamentoAtual=async function(){
  }catch(e){fail(e);alert(e.message)}
 };
 
-function planSnapshot40(ctx){window.commitEmergency54?.();
+function planSnapshot40(ctx){window.commitEmergency54?.(ctx);
  prepareConclusion54(ctx);
  const next=clone(submittedData40());
  for(const r of pendingRenames66(next,DB,ctx))if(next.planning?.[r.de])movePlan66(next,r.de,r.para);
@@ -14757,7 +14757,7 @@ async function showLegacy(){
 window.abrirEnviosAnteriores59=showLegacy;
 function install(){
  const a=document.querySelector('button[onclick="openRateioModal()"]')?.parentElement;if(!a||!window.SenacV29?.ready)return;
- if(!document.getElementById('v54-local'))a.prepend(button('v54-local','Salvar localmente',async()=>{window.commitEmergency54?.();const ok=await window.saveToStorage();if(!ok)throw Error('Não foi possível confirmar a gravação neste dispositivo.');}));
+ if(!document.getElementById('v54-local'))a.prepend(button('v54-local','Salvar localmente',async()=>{window.commitEmergency54?.(STATE.planContext,{localOnly:true});const ok=await window.saveToStorage();if(!ok)throw Error('Não foi possível confirmar a gravação neste dispositivo.');}));
  if(SenacV29.profile()&&!document.getElementById('v54-conclude'))a.prepend(button('v54-conclude','Concluir planejamento',()=>window.enviarWorkflowAprovacao()));
  if(!document.getElementById('v56-recovery'))a.append(button('v56-recovery','Cópias locais anteriores',()=>window.SenacLocalRecovery56.show()));
  const header=document.querySelector('#appContainer>header');
@@ -14799,7 +14799,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V74');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V75');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
@@ -14812,7 +14812,7 @@ window.SGTV54={version:'54',pendingRenders:()=>pending.size};
  const read=()=>{try{return JSON.parse(localStorage.getItem(key())||'[]')}catch(e){return []}};
  const write=a=>{try{localStorage.setItem(key(),JSON.stringify(a));return true}catch(e){window.__EMERGENCY_FAILED54=true;return false}};
  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
- function valid(op){if(op.field!=='date'||!op.after)return true;const d=new Date(op.after+'T12:00:00');if(!/^\d{4}-\d{2}-\d{2}$/.test(op.after)||isNaN(d)||d.getFullYear()<2020||d.getFullYear()>2035)return false;const day={1:'seg',2:'ter',3:'qua',4:'qui',5:'sex'}[d.getDay()];return !(day&&op.row?.student?.contraTurno?.[day]);}
+ function valid(op,data=DB){if(op.field!=='date'||!op.after)return true;const d=new Date(op.after+'T12:00:00');if(!/^\d{4}-\d{2}-\d{2}$/.test(op.after)||isNaN(d)||d.getFullYear()<2020||d.getFullYear()>2035)return false;const day={1:'seg',2:'ter',3:'qua',4:'qui',5:'sex'}[d.getDay()];return !(day&&(locate(data,op)?.student||op.row?.student)?.contraTurno?.[day]);}
  document.addEventListener('input',e=>{
   if(!owner()||!e.target.closest?.('#planContent')||!window.SenacV29?.ready)return;
   const m=String(e.target.getAttribute('onchange')||'').match(/(updatePlanItem|updateLogistics|updateLunch|updateAdmin)\(\s*(\d+)\s*,\s*['"](\w+)/);
@@ -14822,10 +14822,11 @@ window.SGTV54={version:'54',pendingRenders:()=>pending.size};
   write(list.filter(x=>x.id!==id).concat(op));
  },true);
  function locate(data,op){const rows=data[op.map]?.[op.ctx];if(!rows)return null;return rows.find(r=>r._rowId===op.rowId)||(op.studentId?rows.find(r=>String(r.student?.id)===String(op.studentId)):rows[op.idx]);}
- window.recoverEmergency54=function(data){
+ window.recoverEmergency54=function(data,ctx){
   let recovered=0,conflicts=0;
   for(const op of read()){
-   if(!valid(op)){conflicts++;continue;}
+   if(ctx!==undefined&&op.ctx!==ctx)continue;
+   if(!valid(op,data)){conflicts++;continue;}
    data[op.map]??={};if(!data[op.map][op.ctx]&&op.workflow){data[op.map][op.ctx]=[];data.workflow_planejamento??={};data.workflow_planejamento[op.ctx]??=op.workflow;}
    let row=locate(data,op);
    if(!row&&data[op.map][op.ctx]){row=JSON.parse(JSON.stringify(op.row));data[op.map][op.ctx].push(row);}
@@ -14838,7 +14839,28 @@ window.SGTV54={version:'54',pendingRenders:()=>pending.size};
   window.__EMERGENCY_RECOVERY54={recovered,conflicts};return data;
  };
  window.emergencyCommitted54=function(data,uid){if(uid!==owner())return;write(read().filter(op=>!same(locate(data,op)?.[op.field],op.after)));};
- window.commitEmergency54=()=>{if(read().some(op=>!valid(op)))throw Error('Há uma data incompleta ou incompatível com o contraturno. Confira antes de salvar.');window.recoverEmergency54(DB);if(window.__EMERGENCY_RECOVERY54.conflicts)throw Error('Há campos locais em conflito com uma atualização recebida. As duas versões estão preservadas; confira antes de concluir.');};
+ function archiveResolved75(ctx){
+  const list=read(),resolved=[];
+  for(const op of list){
+   if(op.ctx!==ctx||valid(op,DB)||op.field!=='date')continue;
+   const row=locate(DB,op);if(!row?.date||!valid({...op,after:row.date},DB))continue;
+   // A data válida exibida no roteiro prevalece sobre uma tentativa antiga rejeitada.
+   if(ctx===STATE.planContext){const rows=DB[op.map]?.[ctx]||[],idx=rows.indexOf(row),fn=Object.keys(fields).find(k=>fields[k]===op.map);const input=[...document.querySelectorAll('#planContent input[type="date"]')].find(el=>{const code=el.getAttribute('onchange')||'';return code.includes(fn+'('+idx+',')&&/['"]date['"]/.test(code)});if(input&&input.value!==row.date)continue;}
+   resolved.push({...op,resolvedDate75:row.date,archivedAt75:new Date().toISOString()});
+  }
+  if(!resolved.length)return;
+  // Arquivar antes de retirar da fila ativa; falha de armazenamento mantém a pendência.
+  const archiveKey=key()+':resolved75',old=JSON.parse(localStorage.getItem(archiveKey)||'[]');
+  for(const op of resolved)if(!old.some(x=>x.id===op.id&&x.at===op.at&&same(x.after,op.after)))old.push(op);
+  localStorage.setItem(archiveKey,JSON.stringify(old));const ids=new Set(resolved.map(x=>x.id));if(!write(list.filter(x=>!ids.has(x.id))))throw Error('Não foi possível confirmar a atualização do diário local.');
+ }
+ window.commitEmergency54=(ctx=STATE.planContext,options={})=>{
+  archiveResolved75(ctx);window.recoverEmergency54(DB,ctx);
+  if(options.localOnly)return;
+  const bad=read().find(op=>op.ctx===ctx&&!valid(op,DB));
+  if(bad)throw Error('Confira a data de '+(locate(DB,bad)?.student?.nome||bad.row?.student?.nome||'uma linha')+' no planejamento '+ctx+'. A pendência foi preservada neste dispositivo.');
+  if(window.__EMERGENCY_RECOVERY54.conflicts)throw Error('Há campos locais em conflito neste planejamento: '+ctx+'. As duas versões estão preservadas; confira antes de concluir.');
+ };
  window.addEventListener('beforeunload',e=>{if(window.__EMERGENCY_FAILED54){e.preventDefault();e.returnValue='';}});
 })();
 
