@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V73-SALVAMENTO-2026-11-04"/>
+<meta name="sgt-build" content="V74-NAVEGACAO-2026-11-05"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V73</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V74</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -14782,7 +14782,8 @@ for(const name of ['renderPlanningTable','renderLogisticsTable','renderLunchTabl
 for(const name of ['switchPlan','loadPlanFromHistory']){
  const fn=window[name];if(typeof fn!=='function')continue;
  window[name]=function(ctx){
-  window.commitEmergency54?.();
+  // Navegar não conclui o roteiro: recupera campos válidos e preserva pendências no diário local.
+  window.recoverEmergency54?.(DB);
   if(ctx!==STATE.planContext){const focused=document.activeElement;if(focused?.closest?.('#planContent'))focused.blur();pending.clear();if(raf){cancelAnimationFrame(raf);raf=0;}}
   const result=fn.apply(this,arguments);
   if(STATE.planContext===ctx){const origin=document.getElementById('cidadePartidaBase');if(origin)origin.value=DB.planning_logistics?.[ctx]?.[0]?.origin||'';window.SenacV29?.refreshActions();const bulk=document.getElementById('bulkStatusSelect');if(bulk)bulk.value='';}
@@ -14798,7 +14799,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V73');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V74');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
