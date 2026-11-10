@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V77-MOBILE-2026-11-10"/>
+<meta name="sgt-build" content="V78-PEDIDOS-2026-11-10"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V77</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V78</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -13155,7 +13155,7 @@ body.workflow-operador-v23 #btnQuali,body.workflow-operador-v23 #btnTec,body.wor
  window.applyBulkStatus=function(){if(!op())return bulkOriginal.apply(this,arguments);const sel=document.getElementById('bulkStatusSelect');if(!sel?.value)return alert('Selecione um status.');if(!window.SenacV29?.ready)return alert('Aguarde o carregamento.');window.SenacV29.requestStatus31((DB.planning?.[STATE.planContext]||[]).map((_,i)=>i),sel.value);sel.value=''};
  window.aprovarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const item=DB.planning?.[s.contexto]?.[s.indice];if(!item||String(item.student?.id||'')!==String(s.alunoId)){const lista=DB.planning?.[s.contexto]||[];const achou=lista.find(x=>String(x.student?.id||'')===String(s.alunoId));if(!achou)return alert('Aluno não localizado no planejamento.');achou.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(achou)}else{item.status=s.statusSolicitado;if(typeof syncVisitStatus==='function')syncVisitStatus(item)}s.statusSolicitacao='aprovado';s.aprovadoPor=email();s.aprovadoEm=new Date().toISOString();notificar(s.solicitadoPor,'status_aprovado',`Alteração de status aprovada: ${s.alunoNome}, ${s.statusAtual} → ${s.statusSolicitado}.`,s.contexto);await saveToStorage();renderPlanningTable();renderPendenciasStatusV23();alert('Status aprovado localmente. Consulte o indicador de sincronização para confirmar a nuvem.')};
  window.recusarStatusVisitaV23=async function(id){if(!admin())return;init();const s=DB.solicitacoes_status_visita.find(x=>x.id===id);if(!s||s.statusSolicitacao!=='pendente')return;const obs=prompt('Motivo da recusa:','');if(!obs?.trim()){if(obs!==null)alert('Informe o motivo da devolução.');return;}s.statusSolicitacao='recusado';s.recusadoPor=email();s.recusadoEm=new Date().toISOString();s.observacao=obs;notificar(s.solicitadoPor,'status_recusado',`Alteração de status recusada para ${s.alunoNome}.${obs?' Motivo: '+obs:''}`,s.contexto);await saveToStorage();renderPendenciasStatusV23()};
- window.renderPendenciasStatusV23=function(){const box=document.getElementById('workflowAdminList');if(!box||!admin())return;init();const arr=DB.solicitacoes_status_visita.filter(x=>x.statusSolicitacao==='pendente'&&x.statusSolicitado!=='Realizada');let sec=document.getElementById('statusPendenciasV23');if(!sec){sec=document.createElement('div');sec.id='statusPendenciasV23';box.prepend(sec)}sec.innerHTML=`<div class="wf-notice">Alterações de status aguardando aprovação: ${arr.length}</div>`+(arr.length?arr.map(s=>`<div class="wf-card"><b>${esc(s.alunoNome)}</b><div>${esc(s.solicitanteNome)} · ${esc(s.contexto)}</div><div>${esc(s.statusAtual)} → <b>${esc(s.statusSolicitado)}</b></div><button class="wf-btn wf-btn-ok" onclick="aprovarStatusVisitaV23('${esc(s.id)}')">Aprovar status</button> <button class="wf-btn wf-btn-warn" onclick="recusarStatusVisitaV23('${esc(s.id)}')">Recusar</button></div>`).join(''):'')};
+ window.renderPendenciasStatusV23=function(){const box=document.getElementById('workflowAdminList');if(!box||!admin())return;init();const arr=DB.solicitacoes_status_visita.filter(x=>x.statusSolicitacao==='pendente'&&x.statusSolicitado!=='Realizada'&&(DB.planning?.[x.contexto]||[]).some(row=>String(row.student?.id)===String(x.alunoId)));let sec=document.getElementById('statusPendenciasV23');if(!sec){sec=document.createElement('div');sec.id='statusPendenciasV23';box.prepend(sec)}sec.innerHTML=`<div class="wf-notice">Alterações de status aguardando aprovação: ${arr.length}</div>`+(arr.length?arr.map(s=>`<div class="wf-card"><b>${esc(s.alunoNome)}</b><div>${esc(s.solicitanteNome)} · ${esc(s.contexto)}</div><div>${esc(s.statusAtual)} → <b>${esc(s.statusSolicitado)}</b></div><button class="wf-btn wf-btn-ok" onclick="aprovarStatusVisitaV23('${esc(s.id)}')">Aprovar status</button> <button class="wf-btn wf-btn-warn" onclick="recusarStatusVisitaV23('${esc(s.id)}')">Recusar</button></div>`).join(''):'')};
  const adminOpen=window.abrirWorkflowAdmin;if(typeof adminOpen==='function')window.abrirWorkflowAdmin=function(){const r=adminOpen.apply(this,arguments);setTimeout(renderPendenciasStatusV23,0);return r};
  // Sinaliza pedidos pendentes na linha sem mudar o status oficial.
  const renderOriginal=window.renderPlanningTable;if(typeof renderOriginal==='function')window.renderPlanningTable=function(){const r=renderOriginal.apply(this,arguments);if(op()){init();document.querySelectorAll('#planTableBody tr').forEach((tr,idx)=>{const p=pendenteMesmoItem(STATE.planContext,idx);if(p&&p.statusSolicitado!=='Realizada'){const td=tr.children[11];if(td&&!td.querySelector('.status-pendente-v23'))td.insertAdjacentHTML('beforeend',`<span class="status-pendente-v23">Solicitado: ${esc(p.statusSolicitado)} · aguardando aprovação</span>`)}})}return r};
@@ -13656,6 +13656,7 @@ function baseChanges54(before,after){const a=entities(before),b=entities(after),
 function valueAt(d,o){return maps.includes(o.field)?d[o.field]?.[o.key]:(d[o.field]||[]).find(x=>x.id===o.key)}
 function put(d,o,value){if(maps.includes(o.field)){d[o.field]??={};if(value===null)delete d[o.field][o.key];else d[o.field][o.key]=clone(value)}else{d[o.field]??=[];d[o.field]=d[o.field].filter(x=>x.id!==o.key);if(value!==null)d[o.field].push(clone(value))}}
 function merge(base,local,remote,path='base'){
+ if(/^(base\.)?solicitacoes_status_visita\.[^.]+\.statusSolicitacao$/.test(path)&&[base,local,remote].includes('cancelado_aluno_removido'))return 'cancelado_aluno_removido';
  if(/^(base\.)?planning\.[^.]+$/.test(path)&&[base,local,remote].every(Array.isArray)&&[base,local,remote].every(rows=>rows.every(x=>x.student?.id)&&new Set(rows.map(x=>String(x.student.id))).size===rows.length)){
   const keyed=rows=>Object.fromEntries(rows.map(x=>[String(x.student.id),x]));const result=merge(keyed(base),keyed(local),keyed(remote),path+'.students');return Object.values(result).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
  }
@@ -14201,7 +14202,17 @@ async function deleteDecision(req,approve){const actionBefore40=clone(DB);
  req.status=approve?'aprovado':'devolvido';req.decididoPor=email();req.decididoEm=new Date().toISOString();req.motivoDevolucao=reason;
  note(req.solicitante,approve?'exclusao_aprovada':'exclusao_devolvida',approve?'Exclusão aprovada: '+req.contexto:'Exclusão devolvida: '+reason,req.contexto);await finishAction40(actionBefore40,clone(DB),true);refresh();showNotifications(false);
 }
-function statusGroups31(data=DB){const groups=new Map();for(const r of data.solicitacoes_status_visita||[]){if(r.statusSolicitacao!=='pendente'||r.statusSolicitado==='Realizada')continue;const key=JSON.stringify([r.contexto,r.solicitadoPor]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}return [...groups.values()]}
+function hasStatusStudent78(data,r){return (data.planning?.[r.contexto]||[]).some(row=>String(row.student?.id)===String(r.alunoId));}
+let orphanCleanup78=null;
+function cleanupStatusOrphans78(){
+ if(orphanCleanup78)return orphanCleanup78;
+ if(!admin()||!ready||!baseline||!cloudConfirmed38)return Promise.resolve();
+ const official=submittedData40(),orphans=(DB.solicitacoes_status_visita||[]).filter(r=>r.statusSolicitacao==='pendente'&&r.alunoId&&Array.isArray(baseline.planning?.[r.contexto])&&Array.isArray(official.planning?.[r.contexto])&&!hasStatusStudent78(baseline,r)&&!hasStatusStudent78(official,r)&&!hasStatusStudent78(DB,r));
+ if(!orphans.length)return Promise.resolve();
+ const before=clone(DB);for(const r of orphans){r.statusSolicitacao='cancelado_aluno_removido';r.encerradoEm78=new Date().toISOString();r.encerradoPor78=email();r.motivoEncerramento78='Aluno não pertence mais ao planejamento confirmado. Pedido antigo encerrado sem alterar visitas ou cadastro.';}
+ orphanCleanup78=finishAction40(before,clone(DB),true).finally(()=>{orphanCleanup78=null});return orphanCleanup78;
+}
+function statusGroups31(data=DB){const groups=new Map();for(const r of data.solicitacoes_status_visita||[]){if(r.statusSolicitacao!=='pendente'||r.statusSolicitado==='Realizada'||!hasStatusStudent78(data,r))continue;const key=JSON.stringify([r.contexto,r.solicitadoPor]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}return [...groups.values()]}
 function requestStatus31(indexes,status){
  const p=profile(),ctx=STATE.planContext;if(!ready||!p||!owns(ctx,p))throw Error('Selecione um planejamento da sua região.');
  if(!['Realizada','Realizar','Não realizada'].includes(status))throw Error('Status inválido.');
@@ -14262,6 +14273,7 @@ function showSystem59(page=0){
 let notificationPage76=0;
 async function deleteNotices76(ids){if(!admin())return;const items=(DB.notificacoes_planejamento||[]).filter(n=>n.destinatario==='admin'&&!n.excluidaAdmin76&&ids.includes(n.id));if(!items.length||!confirm('Excluir '+items.length+' notificação(ões) da caixa? Solicitações pendentes e planejamentos serão mantidos.'))return;const before=clone(DB);for(const n of items){n.excluidaAdmin76=true;n.lida=true;}await finishAction40(before,clone(DB),true);showNotifications(false);refreshActions();}
 function showNotifications(mark=true,page=notificationPage76){
+ cleanupStatusOrphans78().catch(fail);
  if(mark)page=0;
  notificationView59='users';
  const list=document.getElementById('workflowNotificationsList');if(!list)return;list.replaceChildren();
@@ -14809,7 +14821,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V77');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V78');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
