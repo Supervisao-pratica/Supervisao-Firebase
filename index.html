@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V76-FILTROS-2026-11-10"/>
+<meta name="sgt-build" content="V77-MOBILE-2026-11-10"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V76</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V77</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -14809,7 +14809,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V76');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V77');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
@@ -14992,5 +14992,27 @@ search.addEventListener('input',()=>{const terms=norm(search.value).trim().split
 })();
 
 </script>
-</body>
+<style id="mobile-fit77">/* Ajustes de encaixe; nenhuma mudança nas ações ou na persistência. */
+.wf-box,.wf-list,.wf-card{min-width:0;box-sizing:border-box}
+.wf-card h4,.wf-card p,.wf-row span{overflow-wrap:anywhere}
+@media(max-width:700px){
+ #planSidebar{width:100%!important;min-width:0!important;max-width:100%!important;height:auto!important;flex-shrink:0}
+ #planSidebar>div{min-width:0;max-width:100%;box-sizing:border-box}
+ #planSidebar select{width:100%;min-width:0;max-width:100%;text-overflow:ellipsis}
+ #planSidebar button,#planSidebar summary{min-height:44px;white-space:normal}
+ #planCandidatesList{max-height:40vh;max-height:40dvh;overflow-y:auto;overscroll-behavior:contain}
+ #planCandidatesList label{min-width:0;overflow-wrap:anywhere}
+ #planCandidatesList input[type=checkbox]{min-width:22px;min-height:22px}
+ #planContent .wf-row{width:100%;min-width:0}
+ .wf-modal{padding:8px;box-sizing:border-box}
+ .wf-box{width:100%;max-width:100%;max-height:94vh;max-height:94dvh;overflow-y:auto;overscroll-behavior:contain}
+ .wf-box>div:first-child{flex-wrap:wrap;gap:8px;min-width:0}
+ .wf-box h3{min-width:0;overflow-wrap:anywhere}
+ .wf-box .wf-btn{min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+ .wf-box .wf-row{align-items:stretch;min-width:0}
+ .wf-box .wf-row>.wf-btn{flex:1 1 120px;min-width:0}
+ .wf-box .wf-row>span{flex:1 1 100%;text-align:center;align-self:center}
+ [data-clear-notices76]{width:100%}
+}
+</style></body>
 </html>
