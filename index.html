@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V80-ATENCAO-2026-11-16"/>
+<meta name="sgt-build" content="V81-HORIZONTAL-2026-11-16"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V80</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V81</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -12540,7 +12540,7 @@ const oldExport=window.exportarRelatorioExcel;window.exportarRelatorioExcel=func
 .v297-person[data-online="true"]{color:#166534}
 
 #v30-attention-form{display:grid!important;grid-template-columns:minmax(240px,1fr) auto;grid-template-areas:'label label' 'text button';align-items:end;gap:8px 12px;width:100%}#v30-attention-text{grid-area:text;width:100%!important;min-height:72px!important;padding:10px!important;border:1px solid #cbd5e1!important;border-radius:9px!important;box-sizing:border-box!important}#v30-attention-form button{grid-area:button;min-height:42px}.chart-wrapper,.planning-section{content-visibility:auto;contain-intrinsic-size:auto 220px}body.v35-scrolling *{animation-play-state:paused!important;transition:none!important}body.v35-scrolling #viewPlanejamento *,body.v35-scrolling #viewDashboard *{box-shadow:none!important}#planTableBody{contain:layout style paint}@media(max-width:760px){#v30-attention-form{grid-template-columns:1fr;grid-template-areas:'label' 'text' 'button'}}
-@media(max-width:700px){.desl-summary{grid-template-columns:repeat(2,1fr)}#alunosActionMenus{position:relative}.amenu-list{position:fixed;left:10px;right:10px;top:auto;min-width:0}}
+@media(max-width:700px), (orientation:landscape) and (max-height:600px) and (max-width:1100px) and (pointer:coarse){.desl-summary{grid-template-columns:repeat(2,1fr)}#alunosActionMenus{position:relative}.amenu-list{position:fixed;left:10px;right:10px;top:auto;min-width:0}}
 </style>
 <input accept=".xlsx,.xls,.csv" class="hidden" id="desligamentosExcelInput" onchange="processarPlanilhaDesligamentos(this.files[0]);this.value=''" type="file"/>
 <div class="desl-overlay" id="desligamentosPreview" onclick="if(event.target===this)fecharPreviewDesligamentos()"><div class="desl-modal"><div class="desl-head"><div><h3>Prévia da importação de desligamentos</h3><div style="font-size:9px;opacity:.9">Nenhum cadastro será alterado antes de aplicar a prévia.</div></div><button class="desl-cancel" onclick="fecharPreviewDesligamentos()">Fechar</button></div><div class="desl-body"><div class="desl-summary" id="deslSummary"></div><div style="overflow:auto;max-height:55vh"><table class="desl-table"><thead><tr><th><input checked="" onchange="marcarTodosDesligamentos(this.checked)" type="checkbox"/></th><th>Nome na planilha</th><th>Aluno localizado</th><th>Turma / UF</th><th>Resultado</th></tr></thead><tbody id="deslPreviewBody"></tbody></table></div></div><div class="desl-foot"><div class="amenu-note">Somente correspondências exatas e não ambíguas podem ser aplicadas.</div><div><button class="desl-action desl-cancel" onclick="fecharPreviewDesligamentos()">Cancelar</button> <button class="desl-action desl-apply" onclick="aplicarDesligamentosSelecionados()">Aplicar desligamentos selecionados</button></div></div></div></div>
@@ -12591,7 +12591,7 @@ function renderAlerts(){const overdue=processando().filter(a=>dias(a)>=7);let bo
 window.refreshProcessos72=()=>{renderAlerts();window.refreshCentralCount76?.()};
 function addExport(){const list=document.querySelector('#alunosActionMenus [data-menu="rel"] .amenu-list');if(list&&!document.getElementById('btnExportProcesso')){const b=document.createElement('button');b.id='btnExportProcesso';b.type='button';b.innerHTML='⚠ Exportar alunos em processo de desligamento';b.onclick=exportarProcessosDesligamento;list.appendChild(b)}}
 
-const observer=new MutationObserver(()=>{const modal=document.getElementById('studentModal');if(modal&&!modal.classList.contains('hidden'))setTimeout(syncModal,20)});observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class']});
+const modalProcesso81=document.getElementById('studentModal');if(modalProcesso81){const observer=new MutationObserver(records=>{if(!modalProcesso81.classList.contains('hidden')&&records.some(r=>String(r.oldValue||'').split(/\s+/).includes('hidden')))syncModal()});observer.observe(modalProcesso81,{attributes:true,attributeFilter:['class'],attributeOldValue:true});if(!modalProcesso81.classList.contains('hidden'))syncModal()}
 function decorate(){document.querySelectorAll('#tableBody tr').forEach(tr=>{const text=norm(tr.textContent),a=processando().find(x=>text.includes(norm(x.nome)));if(a&&!tr.querySelector('.proc-badge')){const td=tr.querySelector('td');if(td)td.insertAdjacentHTML('beforeend',`<span class="proc-badge">EM PROCESSO · ${dias(a)} DIAS</span>`);tr.style.background='#fffbeb'}})}
 const oldRender=window.renderTable||renderTable;if(typeof oldRender==='function')window.renderTable=function(){const r=oldRender.apply(this,arguments);setTimeout(decorate,0);return r};
 setInterval(renderAlerts,60000);window.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{addExport();renderAlerts();decorate()},800));setTimeout(()=>{addExport();renderAlerts();decorate()},1500);
@@ -13373,7 +13373,7 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
 .v29-loading #viewPlanejamento,.v29-loading #viewDashboard{pointer-events:none;opacity:.55}
 .v29-loading #appContainer button{pointer-events:none;opacity:.55}
 body.workflow-operador #abrangenciaControl{display:none!important}
-@media(max-width:700px){
+@media(max-width:700px), (orientation:landscape) and (max-height:600px) and (max-width:1100px) and (pointer:coarse){
  html,body{width:100%;max-width:100%;overflow-x:hidden}#appContainer{height:auto;min-height:100dvh}
  #appContainer>header{padding:10px;position:relative}#appContainer>header>div{max-width:100%}
  #appContainer nav{width:100%;display:flex;flex-wrap:wrap}#appContainer nav .tab-btn{flex:1 1 auto;padding:10px;font-size:12px}
@@ -14821,7 +14821,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V80');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V81');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
@@ -15007,7 +15007,7 @@ search.addEventListener('input',()=>{const terms=norm(search.value).trim().split
 <style id="mobile-fit77">/* Ajustes de encaixe; nenhuma mudança nas ações ou na persistência. */
 .wf-box,.wf-list,.wf-card{min-width:0;box-sizing:border-box}
 .wf-card h4,.wf-card p,.wf-row span{overflow-wrap:anywhere}
-@media(max-width:700px){
+@media(max-width:700px), (orientation:landscape) and (max-height:600px) and (max-width:1100px) and (pointer:coarse){
  #planSidebar{width:100%!important;min-width:0!important;max-width:100%!important;height:auto!important;flex-shrink:0}
  #planSidebar>div{min-width:0;max-width:100%;box-sizing:border-box}
  #planSidebar select{width:100%;min-width:0;max-width:100%;text-overflow:ellipsis}
@@ -15025,6 +15025,33 @@ search.addEventListener('input',()=>{const terms=norm(search.value).trim().split
  .wf-box .wf-row>.wf-btn{flex:1 1 120px;min-width:0}
  .wf-box .wf-row>span{flex:1 1 100%;text-align:center;align-self:center}
  [data-clear-notices76]{width:100%}
+}
+</style><style id="landscape-mobile81">@media (orientation:landscape) and (max-height:600px) and (max-width:1100px) and (pointer:coarse){
+ html,body{height:auto!important;min-height:100vh;min-height:100dvh;overflow-y:auto!important}
+ #app-layout,#appContainer{height:auto!important;min-height:100dvh;min-width:0}
+ #main-content{height:auto!important;max-height:none!important;overflow:visible!important;min-width:0;padding:10px!important}
+ #appContainer>header{height:auto!important;min-height:44px;flex-wrap:wrap;gap:8px;padding:8px!important}
+ #appContainer>header>div{height:auto!important;min-width:0;max-width:100%;flex-wrap:wrap;gap:8px}
+ #appContainer nav{height:auto;flex-wrap:nowrap!important;overflow-x:auto;min-width:0;max-width:100%;overscroll-behavior-x:contain}
+ #appContainer nav .tab-btn{min-height:44px;flex:0 0 auto!important;white-space:nowrap}
+ #viewPlanejamento,#planContent{height:auto!important;max-height:none!important;overflow:visible!important;min-width:0}
+ #planContent>.flex-1{height:auto!important;overflow:visible!important;min-width:0;padding:8px!important}
+ #planSidebar>.space-y-3{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;padding:10px!important}
+ #planSidebar>.space-y-3>*{margin-top:0!important;min-width:0}
+ #planSidebar>.space-y-3>button{grid-column:1/-1}
+ #planCandidatesList{max-height:150px;max-height:38dvh}
+ .v29-plan-actions{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .v29-plan-actions button{padding:8px!important}
+ .v29-plan-table tbody tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;margin:8px 0}
+ .v29-plan-table tbody td.col-obs,.v29-plan-table tbody td[colspan]{grid-column:1/-1}
+ .wf-modal{padding:6px;align-items:flex-start;overflow-y:auto}
+ .wf-box{max-height:calc(100vh - 12px);max-height:calc(100dvh - 12px);padding:10px}
+ .wf-box>div:first-child{position:sticky;top:-10px;background:white;z-index:2;padding:6px 0}
+ #studentModal>div,#historyModal>div,#manualPlanejamento71{max-height:calc(100vh - 12px)!important;max-height:calc(100dvh - 12px)!important;margin:6px auto!important;overflow-y:auto}
+ #manualPlanejamento71 .mp-head{padding:8px 12px;gap:8px}
+ #manualPlanejamento71 h2{font-size:17px}
+ #manualPlanejamento71 .mp-head p{display:none}
+ .amenu-list{max-height:70vh;max-height:70dvh;overflow-y:auto}
 }
 </style></body>
 </html>
