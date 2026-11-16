@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V78-PEDIDOS-2026-11-10"/>
+<meta name="sgt-build" content="V79-OBSERVACOES-2026-11-16"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V78</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V79</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -4297,7 +4297,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 
                 const isTec = (DB.tec || []).some(t => t.id === s.id);
                 const cursoLabel = isTec ? 'Técnica' : 'Qualificação';
-                const currentObs = limparAditivoPlanejamento(item.obs || s.obs_origem || '');
+                const currentObs = limparAditivoPlanejamento(item.obs ?? s.obs_origem ?? '');
 
                 let statusClass = "text-slate-600"; 
                 if(item.status === "Realizar") statusClass = "text-amber-500 font-bold bg-amber-50"; 
@@ -4355,7 +4355,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     <td class="p-2"><input class="plan-input w-full font-bold" value="${s.supervisor.display}" onchange="updatePlanSupervisor(${idx}, 'display', this.value)"><input class="plan-input w-full text-[9px] text-slate-500 mt-1" value="${s.supervisor.tel || ''}" placeholder="Tel" onchange="updatePlanSupervisor(${idx}, 'tel', this.value)"><input class="plan-input w-full text-[9px] text-blue-500 mt-1" value="${s.supervisor.email || ''}" placeholder="Email" onchange="updatePlanSupervisor(${idx}, 'email', this.value)"></td>
                     <td class="p-1"><select class="plan-input" onchange="validateVisitSelection(${idx}, this)">${Array.from({length: isTec ? 6 : 3}, (_, visitIndex) => { const label = `${visitIndex + 1}ª Visita`; return `<option value="${label}" ${item.visitaTipo === label ? 'selected' : ''}>${label}</option>`; }).join('')}</select></td>
                     <td class="p-1"><select class="plan-input border ${statusClass}" onchange="updatePlanItem(${idx}, 'status', this.value); renderPlanningTable();"><option class="text-slate-600 bg-white" value="Realizar" ${item.status === 'Realizar' ? 'selected' : ''}>Realizar</option><option class="text-emerald-600 font-bold bg-white" value="Realizada" ${item.status === 'Realizada' ? 'selected' : ''}>Realizada</option><option class="text-red-500 font-bold bg-white" value="Não realizada" ${item.status === 'Não realizada' ? 'selected' : ''}>Não realizada</option></select></td>
-                    <td class="p-1 col-obs"><textarea class="plan-input text-[10px] w-full resize-y min-h-[40px] leading-tight" placeholder="..." onchange="updatePlanItem(${idx}, 'obs', this.value)">${currentObs}</textarea></td>
+                    <td class="p-1 col-obs"><textarea class="plan-input text-[10px] w-full resize-y min-h-[40px] leading-tight" placeholder="..." onchange="updatePlanItem(${idx}, 'obs', this.value)">${String(currentObs).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea></td>
                     <td class="p-1 text-center no-print"><button onclick="removeFromPlan(${idx})" class="text-red-400 hover:text-red-600"><i data-lucide="x" class="w-3 h-3"></i></button></td>
                 </tr>`; 
             }).join(""); 
@@ -12453,7 +12453,7 @@ window.fecharBuscaResponsaveis=function(){document.getElementById('buscaResponsa
 const timers={};
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function aluno(id){return [...(DB.quali||[]),...(DB.tec||[])].find(a=>String(a.id)===String(id))}
-function syncPlanning(a){Object.values(DB.planning||{}).forEach(lista=>(lista||[]).forEach(item=>{if(item?.student&&String(item.student.id)===String(a.id)){item.obs=a.obs||'';item.student.obs=a.obs||'';item.student.obs_origem=a.obs||''}}))}
+function syncPlanning(a){Object.values(DB.planning||{}).forEach(lista=>(lista||[]).forEach(item=>{if(item?.student&&String(item.student.id)===String(a.id)){if(item.obs==null)item.obs=a.obs||'';item.student.obs=a.obs||'';item.student.obs_origem=a.obs||''}}))}
 function syncVisible(id,value,origin){document.querySelectorAll(`[data-history-student="${CSS.escape(String(id))}"]`).forEach(el=>{if(el!==origin&&el.value!==value)el.value=value});if(String(STATE.editingId)===String(id)){const edit=document.getElementById('editObs');if(edit&&edit!==origin&&edit.value!==value)edit.value=value}}
 window.salvarHistoricoAluno=function(id,value,statusId,origin){const a=aluno(id);if(!a)return;a.obs=value;a.obs_origem=value;syncPlanning(a);syncVisible(id,value,origin);const st=document.getElementById(statusId);if(st)st.textContent='Salvando e sincronizando...';clearTimeout(timers[id]);timers[id]=setTimeout(async()=>{try{await saveToStorage();if(typeof renderPlanningTable==='function'&&document.getElementById('planContent')&&!document.getElementById('planContent').classList.contains('hidden'))renderPlanningTable();if(st){st.textContent='Salvo nos 3 locais';setTimeout(()=>{if(st)st.textContent='Sincronizado com aluno e planejamento'},1500)}}catch(e){console.error(e);if(st)st.textContent='Erro ao salvar'}},550)};
 window.novoRegistroHistoricoLinha=function(id,textareaId,statusId,e){if(e){e.preventDefault();e.stopPropagation()}const ta=document.getElementById(textareaId),a=aluno(id);if(!ta||!a)return;const now=new Date(),stamp=`[${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}] - `;ta.value=(ta.value.trim()?ta.value.trim()+'\n\n':'')+stamp;ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);salvarHistoricoAluno(id,ta.value,statusId,ta)};
@@ -12464,7 +12464,7 @@ window.renderContatoUfAluno=function(a){let html=oldRender(a),box=coreBox(a);htm
 const oldOpen=window.abrirContatoAluno;
 window.abrirContatoAluno=function(tipo,id,uf,emails,nome,telefone){const a=aluno(id);if(!a)return;const texto=String(a.obs||a.obs_origem||'').trim()||'[registrar observação/histórico]';const subject=`Apoio solicitado - ${uf} - ${a.nome||'Aluno'} - Turma ${a.turma||''}`;const body=`Prezada equipe do Senac ${uf},\n\nSolicito apoio referente ao aluno abaixo:\n\nAluno: ${a.nome||''}\nTurma: ${a.turma||''}\nCidade: ${a.cidade||''}\nUF: ${uf}\nEmpresa: ${a.empresa?.razao||''}\n\nObservações / histórico:\n${texto}\n\nAtenciosamente,`;if(tipo==='outlook'){const q=new URLSearchParams({to:emails.split('|').join(','),subject,body}).toString().replace(/\+/g,'%20');window.open('https://outlook.office.com/mail/deeplink/compose?'+q,'_blank','noopener')}else if(tipo==='mailto')location.href=`mailto:${emails.split('|').join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;else if(tipo==='wa'){const d=String(telefone||'').replace(/\D/g,''),num=d.startsWith('55')?d:'55'+d,msg=`Olá, ${nome}.\n\nEstou entrando em contato sobre o aluno ${a.nome||''}, turma ${a.turma||''}, vinculado à UF ${uf}.\n\nObservações / histórico: ${texto}\n\nAgradeço pelo apoio.`;window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank','noopener')}};
 // Planning -> student: capture edits in observation textareas and promote them to shared chronological history.
-document.addEventListener('input',e=>{const el=e.target;if(!el||el.tagName!=='TEXTAREA'||!el.closest('#planContent'))return;const tr=el.closest('tr');if(!tr)return;const rows=[...document.querySelectorAll('#planTableBody tr')],idx=rows.indexOf(tr),list=DB.planning?.[STATE.planContext];if(idx<0||!list?.[idx]?.student)return;const a=aluno(list[idx].student.id);if(!a)return;a.obs=el.value;a.obs_origem=el.value;list[idx].obs=el.value;syncPlanning(a);clearTimeout(timers['plan_'+a.id]);timers['plan_'+a.id]=setTimeout(()=>saveToStorage(),550)},true);
+document.addEventListener('input',e=>{const el=e.target;if(!el||el.tagName!=='TEXTAREA'||!el.closest('#planContent'))return;const tr=el.closest('tr');if(!tr)return;const rows=[...document.querySelectorAll('#planTableBody tr')],idx=rows.indexOf(tr),list=DB.planning?.[STATE.planContext];if(idx<0||!list?.[idx]?.student)return;const a=aluno(list[idx].student.id);if(!a)return;a.obs=el.value;a.obs_origem=el.value;list[idx].obs=el.value;clearTimeout(timers['plan_'+a.id]);timers['plan_'+a.id]=setTimeout(()=>saveToStorage(),550)},true);
 // Detailed student modal -> planning/line, preserving existing modal behavior.
 document.getElementById('editObs')?.addEventListener('input',function(){const id=STATE.editingId;if(id)salvarHistoricoAluno(id,this.value,'',this)});
 // Migration: previous temporary pendency text is preserved by appending it as a dated legacy record only when main history is empty.
@@ -14402,7 +14402,7 @@ function prepareConclusion54(ctx){
  if(!profile())return;
  const previous=submittedData40(),patches=[];
  for(const row of DB.planning?.[ctx]||[]){
-  const student=row.student,old=[...(previous.quali||[]),...(previous.tec||[])].find(x=>String(x.id)===String(student?.id));if(!old)continue;
+  const student={...row.student,...(row.obs!=null?{obs:row.obs,obs_origem:row.obs}:{})},old=[...(previous.quali||[]),...(previous.tec||[])].find(x=>String(x.id)===String(student?.id));if(!old)continue;
   const fields={};for(const key of ['supervisor','obs','obs_origem','contraturno','contraTurno'])if(!same(student[key],old[key]))fields[key]={before:clone(old[key]??null),after:clone(student[key]??null)};
   if(Object.keys(fields).length)patches.push({id:String(student.id),fields});
  }
@@ -14821,7 +14821,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V78');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V79');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
