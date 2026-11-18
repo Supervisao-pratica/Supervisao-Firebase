@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V83-HORARIOS-EMAIL-2026-11-17"/>
+<meta name="sgt-build" content="V84-DESLOCAMENTOS-2026-11-17"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V83</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V84</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -4884,11 +4884,11 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                 return `
                 <div class="grid grid-cols-12 border-b border-slate-100 hover:bg-slate-50 text-[10px] items-center">
                     <div class="col-span-2 p-1 border-r"><input type="date" value="${row.date}" onchange="updateLogistics(${idx}, 'date', this.value)" class="plan-input font-bold"></div>
-                    <div class="col-span-2 p-1 border-r flex flex-col"><input type="text" placeholder="Origem" value="${row.origin}" onchange="updateLogistics(${idx}, 'origin', this.value)" class="plan-input text-center font-bold text-slate-600"><input type="time" value="${row.originTime}" onchange="updateLogistics(${idx}, 'originTime', this.value)" class="plan-input text-center font-bold text-blue-600"></div>
+                    <div class="col-span-2 p-1 border-r flex flex-col"><input type="text" placeholder="Origem" value="${row.origin}" onchange="updateLogistics(${idx}, 'origin', this.value)" class="plan-input text-center font-bold text-slate-600"><input type="time" value="${row.originTime}" onchange="if(this.validity.badInput){this.value=DB.planning_logistics[STATE.planContext]?.[${idx}]?.originTime||'';showToast('Horário incompleto. O último valor válido foi mantido; preencha horas e minutos.')}else{updateLogistics(${idx}, 'originTime', this.value)}" class="plan-input text-center font-bold text-blue-600"></div>
                     <div class="col-span-2 p-1 border-r flex flex-col">
                         <input type="text" placeholder="Destino" value="${row.dest}" onchange="updateLogistics(${idx}, 'dest', this.value)" class="plan-input text-center font-bold text-slate-600">
                         <div class="flex items-center gap-1 mt-0.5 w-full">
-                            <input type="time" value="${row.destTime}" onchange="updateLogistics(${idx}, 'destTime', this.value)" class="plan-input text-center font-bold text-blue-600 flex-1">
+                            <input type="time" value="${row.destTime}" onchange="if(this.validity.badInput){this.value=DB.planning_logistics[STATE.planContext]?.[${idx}]?.destTime||'';showToast('Horário incompleto. O último valor válido foi mantido; preencha horas e minutos.')}else{updateLogistics(${idx}, 'destTime', this.value)}" class="plan-input text-center font-bold text-blue-600 flex-1">
                             <button onclick="toggleHospedagem(${idx})" class="p-1 rounded shadow-sm border transition-colors ${hospClass}" title="${row.hospedagem ? 'Hospedagem Marcada!' : 'Marcar Hospedagem / Pernoite'}">
                                 <i data-lucide="bed-double" class="w-4 h-4"></i>
                             </button>
@@ -9368,8 +9368,8 @@ window.renderLogisticsTable=function(){
     const hospClass=row.hospedagem?'bg-purple-100 border-purple-300 text-purple-700 shadow-inner':'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-200';
     return `<div class="grid grid-cols-12 border-b border-slate-100 hover:bg-slate-50 text-[10px] items-center">
       <div class="col-span-2 p-1 border-r"><input type="date" value="${safe(row.date)}" onchange="updateLogistics(${idx}, 'date', this.value)" class="plan-input font-bold"></div>
-      <div class="col-span-3 p-1 border-r flex flex-col"><input type="text" placeholder="Origem" value="${safe(row.origin)}" onchange="updateLogistics(${idx}, 'origin', this.value)" class="plan-input text-center font-bold text-slate-600"><input type="time" value="${safe(row.originTime)}" onchange="updateLogistics(${idx}, 'originTime', this.value)" class="plan-input text-center font-bold text-blue-600"></div>
-      <div class="col-span-3 p-1 border-r flex flex-col"><input type="text" placeholder="Destino" value="${safe(row.dest)}" onchange="updateLogistics(${idx}, 'dest', this.value)" class="plan-input text-center font-bold text-slate-600"><div class="flex items-center gap-1 mt-0.5 w-full"><input type="time" value="${safe(row.destTime)}" onchange="updateLogistics(${idx}, 'destTime', this.value)" class="plan-input text-center font-bold text-blue-600 flex-1"><button onclick="toggleHospedagem(${idx})" class="p-1 rounded shadow-sm border transition-colors ${hospClass}" title="${row.hospedagem?'Hospedagem marcada':'Marcar hospedagem / pernoite'}"><i data-lucide="bed-double" class="w-4 h-4"></i></button></div></div>
+      <div class="col-span-3 p-1 border-r flex flex-col"><input type="text" placeholder="Origem" value="${safe(row.origin)}" onchange="updateLogistics(${idx}, 'origin', this.value)" class="plan-input text-center font-bold text-slate-600"><input type="time" value="${safe(row.originTime)}" onchange="if(this.validity.badInput){this.value=DB.planning_logistics[STATE.planContext]?.[${idx}]?.originTime||'';showToast('Horário incompleto. O último valor válido foi mantido; preencha horas e minutos.')}else{updateLogistics(${idx}, 'originTime', this.value)}" class="plan-input text-center font-bold text-blue-600"></div>
+      <div class="col-span-3 p-1 border-r flex flex-col"><input type="text" placeholder="Destino" value="${safe(row.dest)}" onchange="updateLogistics(${idx}, 'dest', this.value)" class="plan-input text-center font-bold text-slate-600"><div class="flex items-center gap-1 mt-0.5 w-full"><input type="time" value="${safe(row.destTime)}" onchange="if(this.validity.badInput){this.value=DB.planning_logistics[STATE.planContext]?.[${idx}]?.destTime||'';showToast('Horário incompleto. O último valor válido foi mantido; preencha horas e minutos.')}else{updateLogistics(${idx}, 'destTime', this.value)}" class="plan-input text-center font-bold text-blue-600 flex-1"><button onclick="toggleHospedagem(${idx})" class="p-1 rounded shadow-sm border transition-colors ${hospClass}" title="${row.hospedagem?'Hospedagem marcada':'Marcar hospedagem / pernoite'}"><i data-lucide="bed-double" class="w-4 h-4"></i></button></div></div>
       <div class="col-span-1 p-1 border-r"><input type="number" placeholder="KM" value="${safe(row.km)}" onchange="updateLogistics(${idx}, 'km', this.value)" class="plan-input text-center font-bold text-slate-700"></div>
       <div class="col-span-2 p-1 border-r"><input type="number" step="0.10" placeholder="R$" value="${safe(row.toll)}" onchange="updateLogistics(${idx}, 'toll', this.value)" class="plan-input text-center text-red-500 font-bold"></div>
       <div class="col-span-1 p-1 text-center no-print"><button onclick="removeLogisticsRow(${idx})" class="text-red-400 hover:text-red-600 mt-1"><i data-lucide="trash-2" class="w-4 h-4 mx-auto"></i></button></div>
@@ -14823,7 +14823,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V83');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V84');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
