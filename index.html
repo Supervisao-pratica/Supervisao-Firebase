@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V84-DESLOCAMENTOS-2026-11-17"/>
+<meta name="sgt-build" content="V86-SINCRONIA-2026-11-23"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V84</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V86</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -4619,7 +4619,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                         const parts = planItem.date.split('-'); 
                         syncDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12); 
                     } else { 
-                        planItem.date = syncDate.toISOString().split('T')[0]; 
+                        showToast('Informe a data da visita realizada para atualizar o cadastro.');return;
                     }
                     const dateKey = `${syncDate.getFullYear()}-${String(syncDate.getMonth()+1).padStart(2,'0')}-${String(syncDate.getDate()).padStart(2,'0')}`;
                     const visitDateKey = (visit) => {
@@ -4629,17 +4629,13 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                     };
                     const duplicateIdx = student.visits.findIndex((visit, idx) => idx !== vIdx && visit?.ok && visitDateKey(visit) === dateKey);
                     if (duplicateIdx > -1) {
-                        planItem.visitaTipo = `${duplicateIdx + 1}ª Visita`;
+                        showToast('A mesma data já consta em outra visita. O histórico foi preservado para conferência.');return;
                         if(typeof saveToStorage === 'function') saveToStorage();
                         if(typeof renderPlanningTable === 'function') renderPlanningTable();
                         if(typeof showToast === 'function') showToast(`A data já pertence à ${duplicateIdx + 1}ª visita; nenhuma visita foi duplicada.`);
                         return;
                     }
-                    const firstPending = student.visits.findIndex(visit => !visit?.ok);
-                    if (firstPending > -1 && (vIdx > firstPending || student.visits[vIdx]?.ok)) {
-                        vIdx = firstPending;
-                        planItem.visitaTipo = `${vIdx + 1}ª Visita`;
-                    }
+                    if(student.visits[vIdx]?.ok&&visitDateKey(student.visits[vIdx])!==dateKey){showToast('Esta visita já possui outra data confirmada. Confira a divergência antes de substituir.');return;}
                     student.visits[vIdx].ok = true; 
                     student.visits[vIdx].date = syncDate;
                     student.visits[vIdx].protected = true;
@@ -13273,7 +13269,7 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
  let totalConfirmado=Number(localStorage.getItem(KEY_TOTAL)||0),roteirosConfirmados=Number(localStorage.getItem(KEY_ROT)||0),cargaConcluida=false,autorizacao=null;
  const metricas=d=>({alunos:(d?.quali?.length||0)+(d?.tec?.length||0),roteiros:Object.keys(d?.planning||{}).length});
  function confirmar(d){const m=metricas(d);if(m.alunos>0){totalConfirmado=Math.max(totalConfirmado,m.alunos);roteirosConfirmados=Math.max(roteirosConfirmados,m.roteiros);localStorage.setItem(KEY_TOTAL,String(totalConfirmado));localStorage.setItem(KEY_ROT,String(roteirosConfirmados));localStorage.setItem('senac_ultima_base_integra_resumo_v27',JSON.stringify({...m,em:new Date().toISOString()}));cargaConcluida=true}return m}
- function validar(d,acao='gravação'){const m=metricas(d);if(window.SenacV29?.profile()&&window.SenacV29.ready)return m;if(m.alunos>0&&!cargaConcluida)confirmar(d);if(!cargaConcluida&&autorizacao!=='restauracao'){const e=new Error(`PROTEÇÃO ANTIPERDA: ${acao} adiada até a carga integral ser confirmada.`);e.protecaoInicializacao=true;throw e}if(m.alunos===0)throw new Error(`PROTEÇÃO ANTIPERDA: ${acao} com zero alunos foi bloqueada.`);if(totalConfirmado>0&&m.alunos<Math.floor(totalConfirmado*.90)&&autorizacao!=='substituicao'&&autorizacao!=='restauracao'){const q=Math.round((1-m.alunos/totalConfirmado)*100);throw new Error(`PROTEÇÃO ANTIPERDA: queda de ${q}% bloqueada (${totalConfirmado} para ${m.alunos} alunos).`)}if(roteirosConfirmados>0&&m.roteiros===0&&autorizacao!=='substituicao'&&autorizacao!=='restauracao')throw new Error(`PROTEÇÃO ANTIPERDA: desaparecimento de ${roteirosConfirmados} roteiros bloqueado.`);return m}
+ function validar(d,acao='gravação'){const m=metricas(d);if(window.SenacV29?.profile()&&window.SenacV29.ready)return m;if(m.alunos>0&&!cargaConcluida)confirmar(d);if(!cargaConcluida&&autorizacao!=='restauracao'){const e=new Error(`PROTEÇÃO ANTIPERDA: ${acao} adiada até a carga integral ser confirmada.`);e.protecaoInicializacao=true;throw e}if(m.alunos===0)throw new Error(`PROTEÇÃO ANTIPERDA: ${acao} com zero alunos foi bloqueada.`);if(totalConfirmado>0&&m.alunos<Math.floor(totalConfirmado*.90)&&autorizacao!=='substituicao'&&autorizacao!=='restauracao'){const q=Math.round((1-m.alunos/totalConfirmado)*100);throw new Error(`PROTEÇÃO ANTIPERDA: queda de ${q}% bloqueada (${totalConfirmado} para ${m.alunos} alunos).`)}if(roteirosConfirmados>0&&m.roteiros===0&&Object.entries(d.planning_tombstones86||{}).filter(([ctx,t])=>{const a=d.planejamentos_excluidos?.[t.id];return a?.por===t.por&&a?.contexto===ctx&&Array.isArray(a.dados?.planning)}).length<roteirosConfirmados&&autorizacao!=='substituicao'&&autorizacao!=='restauracao')throw new Error(`PROTEÇÃO ANTIPERDA: desaparecimento de ${roteirosConfirmados} roteiros bloqueado.`);return m}
  window.PROTECAO_ANTIPERDA_V27={metricas,validar,confirmar,get totalConfirmado(){return totalConfirmado},get roteirosConfirmados(){return roteirosConfirmados},autorizar(tipo,ms=120000){autorizacao=tipo;setTimeout(()=>{if(autorizacao===tipo)autorizacao=null},ms)},encerrar(){autorizacao=null}};
  // A fonte vazia nunca vence uma cópia local íntegra.
  const loadOriginal=window.loadFromStorage;
@@ -13342,7 +13338,7 @@ body.usuario-planejamento-somente #btnPlan{display:flex!important;visibility:vis
   if(!vis.length){list.innerHTML='<div class="text-center text-sm text-slate-400 py-6">Nenhum roteiro encontrado para este usuário.</div>';return true}
   list.innerHTML=vis.map(x=>`<div class="history-plan-item-v28 p-3 border border-slate-200 rounded-lg bg-white hover:border-blue-300 transition-colors" data-search="${esc(N(x.nome))}"><div class="flex justify-between items-center gap-3"><div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><p class="font-bold text-sm text-slate-700 truncate">${esc(x.nome)}</p><span class="history-owner-badge-v28 owner-${x.dono}-v28">${PERFIS[x.dono].nome}</span></div><p class="text-[9px] text-slate-500 mt-1">${x.qtd} aluno(s) neste roteiro</p></div><div class="flex gap-2 shrink-0"><button type="button" class="btn-open-plan-v28 bg-senac-blue text-white p-2 rounded hover:bg-blue-800" data-plan="${esc(x.nome)}" title="Abrir roteiro"><i data-lucide="folder-open" class="w-4 h-4"></i></button><button type="button" class="btn-delete-plan-v28 border border-red-200 text-red-500 p-2 rounded hover:bg-red-50" data-plan="${esc(x.nome)}" title="Excluir roteiro"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div></div>`).join('');
   list.querySelectorAll('.btn-open-plan-v28').forEach(b=>b.onclick=()=>{switchPlan(b.dataset.plan);closeHistoryModal()});
-  list.querySelectorAll('.btn-delete-plan-v28').forEach(b=>b.onclick=()=>{const nome=b.dataset.plan;if(!confirm(`Excluir o roteiro "${nome}"?`))return;delete DB.planning[nome];delete DB.planning_logistics?.[nome];delete DB.planning_lunch?.[nome];delete DB.planning_admin?.[nome];if(DB.planning_processos)delete DB.planning_processos[nome];saveToStorage().then(()=>render()).catch(e=>alert(e.message))});
+  list.querySelectorAll('.btn-delete-plan-v28').forEach(b=>b.onclick=()=>window.arquivarPlanejamento86(b.dataset.plan));
   if(window.lucide)lucide.createIcons();return true;
  }
  const abrirAnterior=window.openHistoryModal;
@@ -13399,6 +13395,18 @@ body.workflow-operador #abrangenciaControl{display:none!important}
 @media print{#v29-install,.v29-filter-drawer>summary{display:none!important}}
 
 </style>
+<script id="visits-reconcile85">(function(){
+const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
+function day(v){if(!v)return '';const s=String(v),m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);if(!m)return '';const y=+m[1],mo=+m[2],d=+m[3],x=new Date(Date.UTC(y,mo-1,d));return y>=2020&&y<=2035&&x.getUTCFullYear()===y&&x.getUTCMonth()===mo-1&&x.getUTCDate()===d?m[0]:''}
+function scan(data,contexts){const students=new Map(),duplicates=new Set();for(const kind of ['quali','tec'])for(const s of data[kind]||[]){const id=String(s.id);if(students.has(id))duplicates.add(id);else students.set(id,{student:s,kind})}const candidates=new Map(),issues=[],skipped=[];let rows=0;
+const concluded=new Set((data.notificacoes_planejamento||[]).filter(n=>n.tipo==='planejamento_concluido').map(n=>n.contexto));
+for(const [ctx,list] of Object.entries(data.planning||{})){if(contexts&&!contexts.includes(ctx))continue;const wf=data.workflow_planejamento?.[ctx];const eligible=contexts||['aprovado','aprovado_legado'].includes(wf?.status)||concluded.has(ctx);for(const r of list||[]){if(!['realizada','visitado'].includes(norm(r.status)))continue;rows++;const id=String(r.student?.id),entry=students.get(id),idx=Number(String(r.visitaTipo||'').match(/^\s*([1-6])/)?.[1])-1,date=day(r.date),base={id,name:entry?.student.nome||r.student?.nome||id,ctx,index:idx,date};if(!eligible){skipped.push({...base,reason:'Roteiro sem conclusão ou aprovação comprovada'});continue}if(!entry||duplicates.has(id)||!date||!Number.isInteger(idx)||idx<0||idx>=(entry.kind==='tec'?6:3)){issues.push({...base,reason:'Cadastro, data ou número da visita não identificados com segurança'});continue}const key=id+'|'+idx;if(!candidates.has(key))candidates.set(key,[]);candidates.get(key).push({...base,obs:r.obs||''})}}
+const repairs=[];for(const list of candidates.values()){const first=list[0],{student,kind}=students.get(first.id),dates=new Set(list.map(x=>x.date)),existing=student.visits?.[first.index];if(dates.size!==1){issues.push({...first,reason:'Planejamentos divergem sobre a data da mesma visita',dates:[...dates]});continue}if(existing?.ok&&day(existing.date)===first.date)continue;if(existing?.ok&&day(existing.date)){issues.push({...first,reason:'Cadastro já tem outra data confirmada',existingDate:day(existing.date)});continue}if((student.visits||[]).some((v,i)=>i!==first.index&&v?.ok&&day(v.date)===first.date)){issues.push({...first,reason:'A mesma data está confirmada em outro número de visita'});continue}repairs.push({...first,kind,contexts:[...new Set(list.map(x=>x.ctx))],observations:[...new Set(list.map(x=>x.obs.trim()).filter(Boolean))],before:existing?JSON.parse(JSON.stringify(existing)):null})}
+return {rows,repairs,issues,skipped};}
+function apply(data,report){for(const p of report.repairs){const s=(data[p.kind]||[]).find(s=>String(s.id)===p.id);if(!s)throw Error('Cadastro mudou durante a conferência');s.visits??=[];const previous=s.visits[p.index]||null;if(JSON.stringify(previous)!==JSON.stringify(p.before))throw Error('Visita mudou durante a conferência. Refaça a análise.');while(s.visits.length<=p.index)s.visits.push({ok:false,date:null});const observations=[...new Set([previous?.obs||'',...p.observations].filter(Boolean))].join('\n');s.visits[p.index]={...(previous||{}),ok:true,date:p.date+'T12:00:00.000Z',obs:observations,protected:true,source:'planejamento_reconciliado',contexto:p.ctx,recovery85:{at:new Date().toISOString(),contexts:p.contexts,previous}}}return data}
+window.SenacVisits85={scan,apply,day};
+})();
+</script>
 <script id="senac-v29-script">
 
 
@@ -13416,7 +13424,7 @@ const norm=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim
 const email=()=>String(firebase.auth().currentUser?.email||'').toLowerCase();
 const profile=()=>USERS[email()]||null,admin=()=>email()===ADMIN;
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const same=(a,b)=>{if(a?.toJSON)a=a.toJSON();if(b?.toJSON)b=b.toJSON();if(a===b)return true;if(a==null||b==null||typeof a!=='object'||typeof b!=='object')return false;if(Array.isArray(a)!==Array.isArray(b))return false;const ak=Object.keys(a),bk=Object.keys(b);return ak.length===bk.length&&ak.every(k=>Object.prototype.hasOwnProperty.call(b,k)&&same(a[k],b[k]));};
 function preserveCities(previous,incoming){const out=clone(previous||{});for(const [name,cities] of Object.entries(incoming||{})){if(!Array.isArray(cities))continue;const key=Object.keys(out).find(k=>norm(k)===norm(name))||name;const values=new Map((Array.isArray(out[key])?out[key]:[]).map(c=>[norm(c),c]));cities.forEach(c=>{if(norm(c))values.set(norm(c),c)});out[key]=[...values.values()]}return out}
 const uid=()=>firebase.auth().currentUser?.uid||'';
 const fresh=()=>crypto.randomUUID?crypto.randomUUID():Date.now()+'_'+Math.random().toString(36).slice(2);
@@ -13559,12 +13567,13 @@ async function submit40(scope='plan'){
 function conclusionNotice64(ctx){return (DB.notificacoes_planejamento||[]).find(n=>n.contexto===ctx&&n.tipo==='planejamento_concluido'&&n.solicitante===email())}
 function conclusionState64(ctx){
  const notice=conclusionNotice64(ctx);if(!notice)return '';
+ if(profile()&&(window.__V29_COLLAB_ERRORS||[]).some(e=>(e.operacao?.key===ctx||e.operacao?.after?.contexto===ctx)&&Date.parse(e.em)>=Date.parse(notice.criadaEm)))return 'conflict';
  const confirmed=(baseline?.notificacoes_planejamento||[]).some(n=>n.id===notice.id);
  const received=collabQueue.some(o=>o.field==='notificacoes_planejamento'&&o.after?.id===notice.id);
- return confirmed||received?'sent':'pending';
+ return confirmed?'sent':received?'received':'pending';
 }
 function confirmConclusion64(ctx){return !conclusionNotice64(ctx)||confirm('Este planejamento já foi concluído ou possui envio pendente. Deseja enviar novamente? O administrador receberá uma nova notificação.');}
-function conclusionLabel64(){const state=conclusionState64(STATE.planContext);return 'Concluir planejamento'+(state==='sent'?' · enviado à nuvem':state==='pending'?' · envio pendente':'');}
+function conclusionLabel64(){const state=conclusionState64(STATE.planContext);return 'Concluir planejamento'+(state==='sent'?' · confirmado na base':state==='received'?' · enviado, aguardando processamento':state==='conflict'?' · conferir devolução em Sistema':state==='pending'?' · envio pendente':'');}
 window.salvarPlanejamentoConcluido=async()=>{
  if(submitJob40)return submitJob40;
  const ctx=STATE.planContext;if(!ready||window.APP_READ_ONLY||!admin()||!ctx)throw Error('Aguarde os dados e selecione um planejamento.');
@@ -13647,8 +13656,9 @@ function projection(data,p){
  const allowedClasses=new Set([...d.quali,...d.tec].map(a=>String(a.turma)));
  Object.entries(data.cc_map||{}).forEach(([k,v])=>{if(allowedClasses.has(k))d.cc_map[k]=v});
  const e=Object.keys(USERS).find(e=>USERS[e].id===p.id);
- lists.forEach(k=>d[k]=(data[k]||[]).filter(x=>k==='planning_attention'?contexts.includes(x.contexto):k==='notificacoes_planejamento'?x.destinatario===e:(x.solicitadoPor||x.solicitante)===e));
- bindStudents(d);return d;
+ lists.forEach(k=>d[k]=(data[k]||[]).filter(x=>k==='planning_attention'?contexts.includes(x.contexto):k==='notificacoes_planejamento'?(x.destinatario===e||x.solicitante===e):(x.solicitadoPor||x.solicitante)===e));
+ d.planning_tombstones86=Object.fromEntries(Object.entries(data.planning_tombstones86||{}).filter(([,t])=>t.responsavelId===p.id));
+ bindStudents(d);return enforceArchives86(d);
 }
 function bindStudents(data){const students=new Map([...(data.quali||[]),...(data.tec||[])].map(a=>[String(a.id),a]));Object.values(data.planning||{}).forEach(rows=>{if(Array.isArray(rows))rows.forEach(row=>{const current=students.get(String(row.student?.id));if(current)row.student=current})});}
 function officialPlanRows(rows,current,data){if(!Array.isArray(rows))return rows;const students=new Map([...(data.quali||[]),...(data.tec||[])].map(a=>[String(a.id),a]));return rows.map(row=>{const old=(current||[]).find(x=>String(x.student?.id)===String(row.student?.id));return {...clone(row),student:clone(students.get(String(row.student?.id))||row.student),etapas:clone(row.etapas||old?.etapas||{}),status:old?.status||'Realizar'}});}
@@ -13663,6 +13673,7 @@ function merge(base,local,remote,path='base'){
   const keyed=rows=>Object.fromEntries(rows.map(x=>[String(x.student.id),x]));const result=merge(keyed(base),keyed(local),keyed(remote),path+'.students');return Object.values(result).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
  }
 
+ if(/^(base\.)?workflow_planejamento\..+\.historico$/.test(path)&&[base,local,remote].every(v=>v==null||Array.isArray(v))){const result=[];for(const entry of [...(base||[]),...(remote||[]),...(local||[])])if(!result.some(x=>same(x,entry)))result.push(clone(entry));return result.sort((a,b)=>String(a.em||'').localeCompare(String(b.em||'')));}
  // Notificações são criadas em várias sessões; leitura é cumulativa.
  if(/^(base\.)?notificacoes_planejamento\.[^.]+\.(?:lida|excluidaAdmin76)$/.test(path))return !!(base||local||remote);
  if(/^(base\.)?notificacoes_planejamento\.[^.]+$/.test(path)&&local&&remote&&!Array.isArray(local)&&!Array.isArray(remote)){
@@ -13728,18 +13739,19 @@ function reconcileGlobal(base,local,remote){
   }
  }
  if(Object.keys(reviews).length)result._syncReviews=reviews;
- return result;
+ result.planning_tombstones86={...clone(base?.planning_tombstones86||{}),...clone(local?.planning_tombstones86||{}),...clone(remote?.planning_tombstones86||{})};
+ return enforceArchives86(result);
 }
 function pendingReviews(){const done=new Set(DB._syncReviewedIds||[]);return Object.values(DB._syncReviews||{}).filter(x=>!done.has(x.id));}
 function preserveStableUiStateV35(incoming,current=DB){const data=clone(incoming||{}),local=current||{};for(const [ctx,rows] of Object.entries(data.planning||{})){if(!Array.isArray(rows))continue;const oldRows=local.planning?.[ctx]||[];for(const row of rows){const old=oldRows.find(x=>String(x.student?.id)===String(row.student?.id));if(!old)continue;row.etapas={...(row.etapas||{})};for(const key of ['pedagogico','supervisor']){const a=old.etapas?.[key],b=row.etapas?.[key];if(a?.ok&&(!b?.ok||String(a.em||'')>String(b.em||'')))row.etapas[key]=clone(a)}/* O status recebido e aprovado é autoritativo, inclusive reversões. */}}return data;}
 function applyData(data){
- data=preserveStableUiStateV35(data);
+ data=enforceArchives86(preserveStableUiStateV35(data));
  // V27 usa limites globais: um recorte regional precisa de limites próprios.
  if(profile()){
   const defaults={planning:{},planning_logistics:{},planning_lunch:{},planning_admin:{},regioes_map:{},cc_map:{},controle_turmas:[],controle_logs:[],finance_logs:[],custom_passwords:{}};
   DB={...defaults,...clone(data)};window.DB=DB;
   ['quali','tec'].forEach(k=>DB[k]=(DB[k]||[]).map(a=>({...a,ini:a.ini?new Date(a.ini):null,fim:a.fim?new Date(a.fim):null,visits:(a.visits||[]).map(v=>({...v,date:v.date?new Date(v.date):null}))})));
- }else processDataLoad(data);stripCpf57(DB);bindStudents(DB);window.recoverEmergency54?.(DB);
+ }else processDataLoad(data);stripCpf57(DB);bindStudents(DB);window.recoverEmergency54?.(DB);enforceArchives86(DB);
 }
 function quotaErrorV37(e){return e?.name==='QuotaExceededError'||e?.code===22||/quota/i.test(String(e?.message||e||''))}
 function packLocalV37(value){return LZString.compressToUTF16(JSON.stringify(value))}
@@ -14024,6 +14036,7 @@ window.salvarNuvemIntegralV9637=async()=>{if(!admin())throw Error('Gravação gl
 function validateOp(o,p,data){
  if(!o||typeof o.id!=='string'||!maps.concat(lists).includes(o.field)||typeof o.key!=='string'||['__proto__','prototype','constructor'].includes(o.key))throw Error('Operação inválida.');
  const v=o.after,e=Object.keys(USERS).find(e=>USERS[e].id===p.id);
+ const ctx=maps.includes(o.field)?o.key:v?.contexto;if(data.planning_tombstones86?.[ctx])throw Error('Planejamento arquivado pelo administrador; envio antigo preservado sem reativar o roteiro.');
  if(o.field==='renomeacoes_planejamento'){
   if(!v||o.before!==null||v.id!==o.key||v.solicitante!==e||v.contexto!==v.para||!owns(v.de,p,data)||data.planning?.[v.para])throw Error('Renomeação não autorizada ou destino já existente.');
   return;
@@ -14047,15 +14060,16 @@ function validateOp(o,p,data){
   if(o.field==='solicitacoes_exclusao'&&(v.solicitante!==e||v.status!=='pendente'||!owns(v.contexto,p,data)))throw Error('Solicitação de exclusão inválida.');
   if(o.field==='solicitacoes_cidades'&&(v.solicitante!==e||v.status!=='pendente'||norm(v.regiao)!==norm(p.regiao)||!String(v.cidade||'').trim()))throw Error('Solicitação de cidade inválida.');
   if(o.field==='notificacoes_planejamento'){
-   const prev=valueAt(data,o);if(prev){if(prev.destinatario!==e||!same({...prev,lida:v.lida},v))throw Error('Somente leitura da própria notificação pode ser alterada.')}else if(v.destinatario!=='admin'||!owns(v.contexto,p,data))throw Error('Destinatário inválido.');
+   const prev=valueAt(data,o);if(prev){if(prev.destinatario!==e||!o.before||!same({...o.before,lida:v.lida},v))throw Error('Somente leitura da própria notificação pode ser alterada.')}else if(v.destinatario!=='admin'||!owns(v.contexto,p,data))throw Error('Destinatário inválido.');
   }
  }
 }
 async function ingest(p,message){
  if(!ready||!admin()||message?.schema!=='senac-collaboration-v29')return;
+ await rebase32();
  let candidate=clone(submittedData40()),count=0;candidate._collabAck??={};candidate._collabErrors??={};candidate._collabAck[p.id]??=[];candidate._collabErrors[p.id]??=[];const reviewed=new Set(Array.isArray(message.reviewedErrors)?message.reviewedErrors:[]),errorsBefore=candidate._collabErrors[p.id].length;candidate._collabErrors[p.id]=candidate._collabErrors[p.id].filter(e=>!reviewed.has(e.id));const reviewedChanged=candidate._collabErrors[p.id].length!==errorsBefore;
  const priority66=o=>o?.field==='renomeacoes_planejamento'?0:o?.field==='workflow_planejamento'&&o.before===null?1:2;const operations=[...(message.ops||[])].sort((a,b)=>priority66(a)-priority66(b));
- for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);if(o.field==='renomeacoes_planejamento'){movePlan66(candidate,o.after.de,o.after.para);put(candidate,o,o.after);candidate._collabAck[p.id].push(o.id);count++;continue;}const current=valueAt(candidate,o)??null;let value=o.field==='planning'?merge(officialPlanRows(o.before,current,candidate),officialPlanRows(o.after,current,candidate),officialPlanRows(current,current,candidate),o.field+'.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
+ for(const o of operations){if(!o||typeof o.id!=='string')continue;if(candidate._collabAck[p.id].includes(o.id))continue;try{validateOp(o,p,candidate);if(o.field==='renomeacoes_planejamento'){movePlan66(candidate,o.after.de,o.after.para);put(candidate,o,o.after);candidate._collabAck[p.id].push(o.id);count++;continue;}const current=valueAt(candidate,o)??null;if(o.field==='notificacoes_planejamento'&&current&&o.before){put(candidate,o,{...current,lida:!!(current.lida||o.after.lida)});candidate._collabAck[p.id].push(o.id);count++;continue;}let value=o.field==='planning'?merge(officialPlanRows(o.before,current,candidate),officialPlanRows(o.after,current,candidate),officialPlanRows(current,current,candidate),o.field+'.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);if(o.field==='planning'&&Array.isArray(value))value=value.map(x=>({...x,student:clone([...(candidate.quali||[]),...(candidate.tec||[])].find(a=>String(a.id)===String(x.student?.id)))}));if(value&&o.before===null&&['notificacoes_planejamento','solicitacoes_status_visita','solicitacoes_exclusao','solicitacoes_cidades'].includes(o.field)){value.solicitante=Object.keys(USERS).find(e=>USERS[e].id===p.id);value.solicitanteNome=p.nome;}if(value&&o.field==='workflow_planejamento'&&value.status==='pendente'){value.enviadoPor=Object.keys(USERS).find(e=>USERS[e].id===p.id);}put(candidate,o,value)}catch(e){candidate._collabErrors[p.id].push({id:o.id,motivo:e.message,operacao:clone(o),em:new Date().toISOString()})}candidate._collabAck[p.id].push(o.id);count++}
  // V29.7: recupera pedido de aprovação que chegou apenas como notificação.
  const requesterEmail=Object.keys(USERS).find(e=>USERS[e].id===p.id);
  const approvalNotices=(candidate.notificacoes_planejamento||[]).filter(n=>n&&n.destinatario==='admin'&&String(n.tipo||'').toLowerCase().includes('aprov')&&n.contexto&&n.solicitante===requesterEmail);
@@ -14071,12 +14085,12 @@ async function ingest(p,message){
  const doneBefore54=Object.keys(candidate._conclusions54||{}).length;candidate=finalizeConclusions54(candidate,p);if(Object.keys(candidate._conclusions54||{}).length!==doneBefore54)count++;
  if(!count){if(reviewedChanged){applySubmitted40(candidate);await localStore();await flush()}return}
  // Alterações reprovadas ficam registradas na resposta; o original local permanece no backup.
- applySubmitted40(candidate);await localStore();await flush();
+ applySubmitted40(candidate);refresh();await localStore();await flush();
 }
 async function receiveGlobal(doc,token){
  if(token!==session||!doc.exists||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
- if(ready&&editingPlan()){deferredGlobal=[doc,token];releaseDeferredPlanningSync();return;}
- const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(gen===generation&&ready){cloudConfirmed38=true;tell('Base conferida com a nuvem.');if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
+ if(ready&&Date.now()<planningEditUntil){deferredGlobal=[doc,token];releaseDeferredPlanningSync();return;}
+ const meta=doc.data(),gen=String(meta.generation||meta.updatedAt||'');if(ready&&Number(meta.updatedAt)<Number(baseline?.updatedAt))return;if(gen===generation&&ready){cloudConfirmed38=true;tell('Base conferida com a nuvem.');if(admin()&&needsReplay){needsReplay=false;await flush()}return;}
  const remote=await decode(meta);if(token!==session)return;cloudConfirmed38=true;const current=clone(submittedData40());
  const combined=baseline?reconcileGlobal(baseline,current,remote):remote;
  baseline=clone(remote);generation=gen;applySubmitted40(combined);ready=true;window.APP_READ_ONLY=email()==='visitante@senac.br';openShell();await localStore();refresh();tell('Base atualizada pela nuvem.');if(admin()){if(!same(submittedData40(),baseline)){await flush()}else{await publishRegions(remote)}for(const p of Object.values(USERS))if(inbox[p.id])await ingest(p,inbox[p.id]);}
@@ -14097,12 +14111,12 @@ let deferredRegion=null,deferredGlobal=null,refreshDeferred=false,planningEditUn
 function editingPlan(){return document.activeElement?.matches?.('#planContent input,#planContent textarea,#planContent select,#planContent [contenteditable=true],#v30-attention-text,#studentModal input,#studentModal textarea,#studentModal select')||Date.now()<planningEditUntil;}
 document.addEventListener('input',e=>{if(e.target.closest?.('#planContent'))planningEditUntil=Date.now()+900},{capture:true,passive:true});
 document.addEventListener('change',e=>{if(e.target.closest?.('#planContent'))planningEditUntil=Date.now()+900},{capture:true,passive:true});
-function releaseDeferredPlanningSync(){clearTimeout(deferredEditTimer);deferredEditTimer=setTimeout(()=>{if(editingPlan())return releaseDeferredPlanningSync();if(deferredGlobal){const d=deferredGlobal;deferredGlobal=null;serial(()=>receiveGlobal(...d)).catch(fail);return}if(deferredRegion){const d=deferredRegion;deferredRegion=null;serial(()=>receiveRegion(...d)).catch(fail);return}if(refreshDeferred){refreshDeferred=false;refresh()}},950)}
+function releaseDeferredPlanningSync(){clearTimeout(deferredEditTimer);deferredEditTimer=setTimeout(()=>{if(Date.now()<planningEditUntil)return releaseDeferredPlanningSync();if(deferredGlobal){const d=deferredGlobal;deferredGlobal=null;serial(()=>receiveGlobal(...d)).catch(fail);return}if(deferredRegion){const d=deferredRegion;deferredRegion=null;serial(()=>receiveRegion(...d)).catch(fail);return}if(refreshDeferred){refreshDeferred=false;refresh()}},950)}
 document.addEventListener('focusout',e=>{if(e.target.closest?.('#planContent,#studentModal'))releaseDeferredPlanningSync()},true);
 async function receiveRegion(doc,token){
  if(token!==session||doc.metadata.hasPendingWrites||doc.metadata.fromCache)return;
  if(!doc.exists){tell('Aguardando o administrador abrir a versão revisada para disponibilizar sua região.');return}
- if(ready&&editingPlan()){deferredRegion=[doc,token];return;}
+ if(ready&&Date.now()<planningEditUntil){deferredRegion=[doc,token];releaseDeferredPlanningSync();return;}
  const data=doc.data();
  const signature=data.chunked?String(data.storageGeneration||''):JSON.stringify([data.payload,data.ack||[],data.errors||[]]);
  if(signature===lastRegionSnapshot){cloudConfirmed38=true;tell(collabQueue.length||pending.length?'Envio recebido; aguardando confirmação administrativa.':'Região conferida com a nuvem.');return;}
@@ -14110,7 +14124,12 @@ async function receiveRegion(doc,token){
  if(token!==session)return;
  const remote=envelope.remote;cloudConfirmed38=true;
  const ack=new Set(envelope.ack||[]);acknowledgedOps=ack;collabQueue=collabQueue.filter(o=>!ack.has(o.id));pending=pending.filter(o=>!ack.has(o.id));
- let next=clone(remote);for(const o of [...collabQueue,...pending])put(next,o,o.field==='planning'?officialPlanRows(o.after,next.planning?.[o.key],next):o.after);
+ let next=clone(remote);for(const o of [...collabQueue,...pending]){
+  if(next.planning_tombstones86?.[o.key]||next.planning_tombstones86?.[o.after?.contexto])continue;
+  const current=valueAt(next,o)??null;
+  try{const value=o.field==='planning'?merge(officialPlanRows(o.before,current,next),officialPlanRows(o.after,current,next),officialPlanRows(current,current,next),'planning.'+o.key):merge(o.before,o.after,current,o.field+'.'+o.key);put(next,o,value)}catch(e){if(!String(e.message).startsWith('Conflito em '))throw e;/* A fila original permanece durável para revisão; a nuvem não é sobrescrita. */}
+ }
+ enforceArchives86(next);
  baseline=clone(remote);applySubmitted40(next);ready=true;await localStore();openShell();refresh();
  const unseenErrors=(envelope.errors||[]).filter(e=>e?.id&&!reviewedErrorIds.has(e.id));
  if(unseenErrors.length){tell('Há alterações devolvidas por conflito/validação. Abra Notificações para consultar.',true)}else tell(collabQueue.length?'Enviado; aguardando painel administrativo.':'Região sincronizada com a nuvem.');
@@ -14132,7 +14151,7 @@ window.carregarBaseAposAutenticacao=async function(){
   stops.push(ref('resposta_'+profile().id).onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveRegion(d,token)),fail));
  }else{
   stops.push(ref('dados_principais').onSnapshot({includeMetadataChanges:true},d=>enqueue(()=>receiveGlobal(d,token)),fail));
-  if(admin())for(const p of Object.values(USERS))stops.push(ref('colaboracao_'+p.id).onSnapshot(d=>{if(d.exists&&!d.metadata?.hasPendingWrites&&!d.metadata?.fromCache){inbox[p.id]=d.data();enqueue(()=>ingest(p,d.data()))}},fail));
+  if(admin())for(const p of Object.values(USERS))stops.push(ref('colaboracao_'+p.id).onSnapshot({includeMetadataChanges:true},d=>{if(d.exists&&!d.metadata?.hasPendingWrites&&!d.metadata?.fromCache){inbox[p.id]=d.data();enqueue(()=>ingest(p,d.data()))}},fail));
  }
  document.getElementById('globalLoader')?.classList.add('hidden');scheduleResume39();
 };
@@ -14180,7 +14199,7 @@ function requester(n){
  const m=DB.workflow_planejamento?.[n.contexto],sender=m?.enviadoPor||m?.historico?.findLast?.(h=>['enviado_aprovacao','criado'].includes(h.acao))?.por;
  return USERS[sender]?.nome||Object.values(USERS).find(p=>p.id===m?.responsavelId)?.nome||n.solicitanteNome||m?.responsavelNome||explicit||'Não informado';
 }
-function refreshActions(){window.installPlanningActions54?.();renderAttention();renderSave40();
+function refreshActions(){const audit85=document.getElementById('visitAuditButton85');if(audit85)audit85.hidden=!admin();window.installPlanningActions54?.();renderAttention();renderSave40();
  window.renderControleProcessosV26?.();
  document.querySelectorAll('button[onclick*="openRateioModal"],button[onclick*="openEmailModal"]').forEach(b=>{const code=b.getAttribute('onclick')||'',rateio=code.includes('openRateioModal'),feedback=code.includes('feedback'),allowed=actionAllowed(rateio?'openRateioModal':'openEmailModal',feedback?'feedback':'agendamento');b.disabled=!allowed;b.title=allowed?'Ação disponível':(rateio||feedback?'Disponível para visitas marcadas como Realizada':'Disponível após aprovação administrativa do planejamento');b.setAttribute('aria-disabled',String(!allowed))});
  const title=document.getElementById('activePlanTitle');if(title&&STATE.planContext)title.textContent=STATE.planContext;
@@ -14345,6 +14364,37 @@ for(const name of ['aprovarWorkflow','devolverWorkflow','solicitarExclusaoWorkfl
  const fn=window[name];if(typeof fn!=='function')continue;
  window[name]=async function(...args){const before=clone(name==="aprovarWorkflow"?submittedData40():DB);const promise=fn.apply(this,args),after=name==="aprovarWorkflow"?planSnapshot40(args[0]||STATE.planContext):clone(DB);const result=await promise;await finishAction40(before,after,admin());return result;};
 }
+window.abrirAuditoriaVisitas85=function(){
+ if(!admin()||!ready)return;const report=window.SenacVisits85.scan(submittedData40());document.getElementById('visitAudit85')?.remove();const modal=document.createElement('div');modal.id='visitAudit85';modal.className='wf-modal open';const box=document.createElement('div');box.className='wf-box';
+ const title=document.createElement('h3');title.textContent='Conferência de visitas realizadas';box.append(title);const summary=document.createElement('p');summary.id='visitAuditSummary85';summary.textContent=report.rows+' registros realizados analisados · '+report.repairs.length+' visitas recuperáveis · '+report.issues.length+' divergências preservadas · '+report.skipped.length+' registros sem conclusão/aprovação.';box.append(summary);
+ const list=document.createElement('div');list.className='wf-list';for(const p of report.repairs)list.append(card(p.name,[['Visita',(p.index+1)+'ª · '+p.date],['Planejamento',p.ctx]]));for(const p of report.issues)list.append(card('Conferir: '+p.name,[['Motivo',p.reason],['Planejamento',p.ctx]]));box.append(list);
+ const download=()=>{const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));a.href=url;a.download='conferencia-visitas-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+ box.append(button('Baixar relatório da conferência',download));
+ if(report.repairs.length)box.append(button('Recuperar visitas identificadas',async()=>{const source=clone(submittedData40()),fresh=window.SenacVisits85.scan(source);if(!fresh.repairs.length){summary.textContent='Nenhuma recuperação pendente.';return}exportLocal();const before=clone(DB),after=clone(DB);window.SenacVisits85.apply(after,fresh);bindStudents(after);applyData(after);await finishAction40(before,clone(DB),true);refresh();summary.textContent=fresh.repairs.length+' visitas recuperadas neste dispositivo. Envio à nuvem solicitado; acompanhe a confirmação no topo. '+fresh.issues.length+' divergências preservadas.';list.replaceChildren();report.applied=fresh.repairs.length;report.appliedAt=new Date().toISOString();}));box.append(button('Fechar',()=>modal.remove()));modal.append(box);document.body.append(modal);
+};
+
+function enforceArchives86(data){
+ for(const ctx of Object.keys(data.planning_tombstones86||{}))for(const field of maps.concat('planning_processos','cadastro_planejamento'))if(data[field])delete data[field][ctx];
+ return data;
+}
+window.arquivarPlanejamento86=async function(ctx){
+ if(!admin()||!ready||!DB.planning?.[ctx])return false;
+ if(!confirm('Arquivar o roteiro "'+ctx+'" para todos os dispositivos? Uma cópia completa será preservada.'))return false;
+ return serial(async()=>{
+  await rebase32();const before=clone(DB),next=clone(DB);if(!next.planning?.[ctx])return false;
+  const id='archive86_'+fresh(),stamp=new Date().toISOString(),archive={por:email(),em:stamp,contexto:ctx,dados:{}};
+  for(const field of maps.concat('planning_processos','cadastro_planejamento'))if(next[field]?.[ctx]!==undefined)archive.dados[field]=clone(next[field][ctx]);
+  archive.dados.planning_attention=(next.planning_attention||[]).filter(n=>n.contexto===ctx);
+  next.planejamentos_excluidos??={};next.planejamentos_excluidos[id]=archive;
+  next.planning_tombstones86??={};next.planning_tombstones86[ctx]={id,contexto:ctx,por:email(),em:stamp,responsavelId:next.workflow_planejamento?.[ctx]?.responsavelId||window.identificarDonoRoteiroV28?.(ctx)};
+  enforceArchives86(next);applyData(next);enqueueDelta40(before,next);revision++;await localStore();
+  if(STATE.planContext===ctx)STATE.planContext=null;refresh();window.openHistoryModal?.();
+  const saved=await flush();tell(saved===false?'Roteiro arquivado neste dispositivo; envio da exclusão pendente.':'Roteiro arquivado e exclusão confirmada na nuvem.');return saved!==false;
+ }).catch(e=>{fail(e);return false});
+};
+const deleteHistoryBefore86=window.deletePlanFromHistory;
+window.deletePlanFromHistory=ctx=>admin()?window.arquivarPlanejamento86(ctx):deleteHistoryBefore86?.(ctx);
+
 function installUI(){
  const plan=document.getElementById('btnPlan');let monthly=document.getElementById('v29-monthly-tab');if(plan&&!monthly){monthly=button('Relatório Mensal',openMonthly,'tab-btn');monthly.id='v29-monthly-tab';plan.after(monthly)}
  // O menu antigo pode mover seu botão; a aba permanece disponível independentemente dele.
@@ -14353,6 +14403,7 @@ function installUI(){
  if(header&&!document.getElementById('v29-city-request')){const b=button('Solicitar ajuste de cidade',requestCity);b.id='v29-city-request';header.append(b)}
  if(header&&!document.getElementById('v297-presence')){const box=document.createElement('div');box.id='v297-presence';box.className='v297-presence';box.setAttribute('aria-label','Usuários conectados');header.append(box)}
  if(header&&!document.getElementById('v29-notifications')){const b=button('Sistema (0)',()=>showSystem59());b.id='v29-notifications';header.append(b)}
+ if(header&&!document.getElementById('visitAuditButton85')){const b=button('Conferir visitas realizadas',()=>window.abrirAuditoriaVisitas85());b.id='visitAuditButton85';b.hidden=!admin();header.append(b)}
  if(header&&!document.getElementById('v29-local-backup')){const b=button('Exportar cópia local',exportLocal);b.id='v29-local-backup';header.append(b)}
  if(header&&!document.getElementById('v40-save-all')){const b=button('Salvar alterações',()=>window.salvarAlteracoesConcluidas(),'wf-btn wf-btn-primary');b.id='v40-save-all';b.title='Concluir e enviar todos os rascunhos do administrador, incluindo cadastros';header.append(b);}
  if(header&&!document.getElementById('v29-sync')){const b=button('Sincronizar agora',()=>window.sincronizarAgoraNuvem());b.id='v29-sync';header.append(b)}
@@ -14387,12 +14438,14 @@ window.SenacGeneral57={stage:stageGeneral57,reset(){observedGeneral57=generalSna
 function visitDay54(value){if(value===null||value===undefined||value==='')return '';if(/^\d{4}-\d{2}-\d{2}/.test(String(value)))return String(value).slice(0,10);const date=new Date(value);return isNaN(date)?'':date.toISOString().slice(0,10);}
 
 function prepareConclusion54(ctx){
+ if(admin()){window.SenacVisits85.apply(DB,window.SenacVisits85.scan(DB,[ctx]));bindStudents(DB);}
  const now=new Date().toISOString();
  if(profile())for(const old of DB.solicitacoes_status_visita||[])if(old.contexto===ctx&&old.solicitadoPor===email()&&['pendente','substituido_rascunho'].includes(old.statusSolicitacao)&&old.statusSolicitado==='Realizada'){const row=DB.planning?.[ctx]?.find(x=>String(x.student?.id)===String(old.alunoId));if(row){if(old.statusSolicitacao==='pendente')row.status='Realizada';old.statusSolicitado=row.status;old.statusSolicitacao='rascunho_usuario';}}
  if(profile()){
   DB.solicitacoes_status_visita??=[];const prior=submittedData40().planning?.[ctx]||[];
   for(const row of DB.planning?.[ctx]||[]){const old=prior.find(x=>String(x.student?.id)===String(row.student?.id));
-   const changed=(row.status||'Realizar')!==(old?.status||'Realizar')||(row.status==='Realizada'&&['date','visitaTipo','obs'].some(k=>!same(row[k],old?.[k])));
+   const vi=Number(String(row.visitaTipo||'').match(/^([1-6])/)?.[1])-1,master=[...(submittedData40().quali||[]),...(submittedData40().tec||[])].find(s=>String(s.id)===String(row.student?.id)),visit=master?.visits?.[vi];
+   const changed=(row.status==='Realizada'&&(!visit?.ok||visitDay54(visit.date)!==row.date))||(row.status||'Realizar')!==(old?.status||'Realizar')||(row.status==='Realizada'&&['date','visitaTipo','obs'].some(k=>!same(row[k],old?.[k])));
    if(changed&&!DB.solicitacoes_status_visita.some(x=>x.contexto===ctx&&String(x.alunoId)===String(row.student?.id)&&x.statusSolicitacao==='rascunho_usuario'))DB.solicitacoes_status_visita.push({id:'conclusao_'+fresh(),contexto:ctx,alunoId:String(row.student.id),alunoNome:row.student.nome,statusAtual:old?.status||'Realizar',solicitadoPor:email(),solicitanteNome:profile().nome,statusSolicitacao:'rascunho_usuario',solicitadoEm:now});
   }
  }
@@ -14459,7 +14512,8 @@ function finalizeConclusions54(data,p){
 
 function changes(before,after){
  const renames=pendingRenames66(before,after);if(renames.length){before=clone(before);for(const r of renames)if(before.planning?.[r.de])movePlan66(before,r.de,r.para);}
- return baseChanges54(before,after).filter(o=>!(o.field==='solicitacoes_status_visita'&&['rascunho_usuario','concluido_usuario','substituido_rascunho'].includes(o.after?.statusSolicitacao))).map(o=>{
+ return baseChanges54(before,after).filter(o=>{if(!profile()||o.field!=='notificacoes_planejamento')return true;if(!o.after)return false;if(!o.before)return o.after.destinatario==='admin'&&o.after.solicitante===email();return o.after.destinatario===email()&&o.before.lida!==o.after.lida;}).filter(o=>!(o.field==='solicitacoes_status_visita'&&['rascunho_usuario','concluido_usuario','substituido_rascunho'].includes(o.after?.statusSolicitacao))).map(o=>{
+  if(o.field==='notificacoes_planejamento'&&profile()&&o.before)o.after={...clone(o.before),lida:!!o.after.lida};
   if(o.field==='planning'&&profile()){o.before=officialPlanRows(o.before,baseline?.planning?.[o.key],baseline||before);o.after=officialPlanRows(o.after,baseline?.planning?.[o.key],baseline||after);}
   return o;
  });
@@ -14823,7 +14877,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V84');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V86');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
