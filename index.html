@@ -3,9 +3,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="sgt-build" content="V86-SINCRONIA-2026-11-23"/>
+<meta name="sgt-build" content="V87-OUTLOOK-2026-11-24"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>S.G.T. - Gestão de Turmas - Revisão V86</title>
+<title>S.G.T. - Gestão de Turmas - Revisão V87</title>
 <link href="./manifest.webmanifest" rel="manifest"/><meta content="#004587" name="theme-color"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -4996,7 +4996,7 @@ window.updateVisitCC = function(idx, val) { if(STATE.planContext && DB.planning[
                         </div>
                         <div class="flex gap-2">
                             <button onclick="copyFromId(this, '${uniqueId}')" class="px-4 py-2 bg-white border border-slate-300 hover:border-senac-blue hover:text-senac-blue text-slate-600 rounded-lg text-xs font-bold flex items-center gap-2 transition-all"><i data-lucide="copy" class="w-4 h-4"></i> Copiar</button>
-                            <button onclick="sendMailTo('${uniqueId}', '${supervisorEmail}')" class="px-4 py-2 bg-senac-blue hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-md transition-all"><i data-lucide="mail" class="w-4 h-4"></i> Outlook</button>
+                            <button data-outlook-body="${uniqueId}" data-outlook-email="${supervisorEmail.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="sendMailTo('${uniqueId}', '${supervisorEmail}')" class="px-4 py-2 bg-senac-blue hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-md transition-all"><i data-lucide="mail" class="w-4 h-4"></i> Outlook</button>
                         </div>
                     </div>
                     <div class="relative mt-2">
@@ -14877,7 +14877,7 @@ for(const name of ['processarFrequenciaPedagogica','processarAtualizacaoSupervis
   window.SenacV29?.refreshActions();return result;
  };
 }
-document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V86');
+document.title=document.title.replace(/Versão 55 Corrigida|Revisão V55/,'Revisão V87');
 
 window.SGTV54={version:'54',pendingRenders:()=>pending.size};
 })();
@@ -14990,26 +14990,27 @@ const bodies=new Map(),escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp
 const originalBody=window.generateEmailBody;
 window.generateEmailBody=function(supervisor,items,mode){
  if(mode==='feedback'||STATE.emailVisitMode!=='online')return originalBody.apply(this,arguments);
- const responsible=window.SenacV29?.profile()?.nome||'Michel';
+ const responsible=window.SenacV29?.profile()?.nome||'Michel',plural=items.length>1;
+ const learner=plural?'dos aprendizes':'do(a) aprendiz',learners=plural?'os aprendizes':'o aprendiz';
  const names=items.map(x=>x.student.nome).join(', '),dates=[...new Set(items.map(x=>x.date).filter(Boolean))].map(x=>x.split('-').reverse().join('/')).join(' e ')||'[Data]';
  const phone=items[0]?.student?.supervisor?.tel||items[0]?.student?.supervisor?.telefone||'[contato do supervisor]';
  const p=s=>'<p>'+s+'</p>',b=s=>'<strong>'+escape(s)+'</strong>';
  const html='<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">'+
  p('Olá, '+b(supervisor)+'.<br>Tudo bem?')+
- p('Meu nome é '+b(responsible)+' e sou responsável pela supervisão da prática profissional do(a) aprendiz '+b(names)+'.')+
- p('Conforme estabelece a '+b('Portaria nº 3.872')+', os acompanhamentos da prática profissional devem ser realizados periodicamente. Desta vez, a entrevista será realizada de forma on-line, no dia '+b(dates)+'.<br>A conversa será breve e terá como objetivo acompanhar o desenvolvimento do(a) aprendiz, esclarecer possíveis dúvidas e registrar as informações relacionadas à prática profissional.')+
- p(b('Aproveito para confirmar algumas informações, a fim de formalizar o nosso agendamento:')+'<br>3. Seu contato telefônico/WhatsApp ainda é: '+escape(phone)+'<br>4. Qual é o melhor horário, no dia '+b(dates)+', para realizarmos a nossa videochamada? A reunião será realizada pelo Teams, através do link: [INSERIR LINK DO TEAMS]')+
+ p('Meu nome é '+b(responsible)+' e sou responsável pela supervisão da prática profissional '+learner+' '+b(names)+'.')+
+ p('Conforme estabelece a '+b('Portaria nº 3.872')+', os acompanhamentos da prática profissional devem ser realizados periodicamente. Desta vez, a entrevista será realizada de forma on-line, no dia '+b(dates)+'.<br>A conversa será breve e terá como objetivo acompanhar o desenvolvimento '+learner+', esclarecer possíveis dúvidas e registrar as informações relacionadas à prática profissional.')+
+ p(b('Aproveito para confirmar algumas informações, a fim de formalizar o nosso agendamento:')+'<br>1. Seu contato telefônico/WhatsApp ainda é: '+escape(phone)+'<br>2. Você pode agendar o melhor dia e horário pelo link abaixo:')+
  p('<a href="https://bookings.cloud.microsoft/book/SupervisodaPrticaProfissional@pr.senac.br/?ismsaljsauthenabled=true" target="_blank" rel="noopener">Agendar horário para supervisão da prática Online</a>')+
  p('Após a entrevista, será enviado o documento preenchido para as devidas assinaturas que poderão ser realizadas de uma das seguintes formas:')+
- p(b('1ª opção: Assinaturas físicas')+'<br>O documento será encaminhado já preenchido, para assinatura do supervisor e aprendiz nos devidos campos.<br>O supervisor da empresa deverá imprimir o documento, coletar a assinatura física do aprendiz, assinar no campo correspondente e, depois, digitalizar o documento completo para envio ao Senac, onde será impresso e assinado pelo responsável do Senac.')+
- p(b('2ª opção: Assinaturas digitais pelo GOV.BR')+'<br>O documento será encaminhado após o preenchimento para que o supervisor da empresa e o aprendiz realizem as assinaturas digitais pelo GOV.BR, posteriormente assinado pelo responsável do Senac.')+
+ p(b('1ª opção: Assinaturas físicas')+'<br>O documento será encaminhado já preenchido, para assinatura do supervisor e '+(plural?'dos aprendizes':'aprendiz')+' nos devidos campos.<br>O supervisor da empresa deverá imprimir o documento, coletar '+(plural?'as assinaturas físicas dos aprendizes':'a assinatura física do aprendiz')+', assinar no campo correspondente e, depois, digitalizar o documento completo para envio ao Senac, onde será impresso e assinado pelo responsável do Senac.')+
+ p(b('2ª opção: Assinaturas digitais pelo GOV.BR')+'<br>O documento será encaminhado após o preenchimento para que o supervisor da empresa e '+learners+' realizem as assinaturas digitais pelo GOV.BR, posteriormente assinado pelo responsável do Senac.')+
  p('É necessário escolher apenas uma modalidade para todas as assinaturas do documento. '+b('Não será permitido combinar assinaturas físicas com assinaturas digitais pelo GOV.BR no mesmo documento.'))+
- p('Para organizarmos o atendimento, peço a gentileza de confirmar:<br>O horário em que o(a) aprendiz realiza a atividade teórica:<br>O telefone ou WhatsApp atualizado do supervisor:<br>Qual é o melhor horário, na data informada, para realizarmos a videochamada:<br>'+b('Qual modalidade será utilizada para as assinaturas: física ou digital pelo GOV.BR? Caso seja escolhida a assinatura pelo GOV.BR, pedimos que confirme se o aprendiz possui cadastro e consegue realizar a assinatura digital.'))+
+ p('Para organizarmos o atendimento, peço a gentileza de confirmar:<br>'+(plural?'Os horários em que os aprendizes realizam a atividade teórica:':'O horário em que o(a) aprendiz realiza a atividade teórica:')+'<br>O telefone ou WhatsApp atualizado do supervisor:<br>Qual é o melhor horário, na data informada, para realizarmos a videochamada:<br>'+b('Qual modalidade será utilizada para as assinaturas: física ou digital pelo GOV.BR? Caso seja escolhida a assinatura pelo GOV.BR, pedimos que confirme se '+(plural?'os aprendizes possuem cadastro e conseguem realizar a assinatura digital.':'o aprendiz possui cadastro e consegue realizar a assinatura digital.')))+
  p('Agradeço a parceria e fico à disposição para esclarecimentos')+p(b('Qualquer dúvida, fico à disposição.'))+'</div>';
  const el=document.createElement('div');el.innerHTML=html.replace(/<br>/g,'\n').replace(/<\/p>/g,'\n\n</p>');const plain=el.textContent.trim().replace('Agendar horário para supervisão da prática Online','Agendar horário para supervisão da prática Online\nhttps://bookings.cloud.microsoft/book/SupervisodaPrticaProfissional@pr.senac.br/?ismsaljsauthenabled=true');bodies.set(plain,html);return plain;
 };
 const open=window.openEmailModalProcess;
-window.openEmailModalProcess=function(){const result=open.apply(this,arguments);document.querySelectorAll('#emailModal textarea').forEach(area=>{const html=bodies.get(area.value);if(!html)return;const preview=document.createElement('div');preview.dataset.emailPreview57=area.id;preview.contentEditable='true';preview.style.cssText='background:white;border:1px solid #cbd5e1;border-radius:8px;padding:14px;max-height:480px;overflow:auto';preview.innerHTML=html;area.style.display='none';area.after(preview);preview.addEventListener('input',()=>{area.value=preview.innerText})});return result;};
+window.openEmailModalProcess=function(){const result=open.apply(this,arguments);document.querySelectorAll('#emailModal textarea').forEach(area=>{const html=bodies.get(area.value);if(!html)return;const preview=document.createElement('div');preview.dataset.emailPreview57=area.id;preview.contentEditable='true';preview.style.cssText='background:white;border:1px solid #cbd5e1;border-radius:8px;padding:14px;max-height:480px;overflow:auto';preview.innerHTML=html;area.style.display='none';area.after(preview);preview.addEventListener('input',()=>{area.value=preview.innerText})});document.querySelectorAll('#emailModal [data-outlook-body]').forEach(btn=>{const area=document.getElementById(btn.dataset.outlookBody);if(!area)return;const host=document.createElement('div');host.dataset.outlookOptions87=area.id;area.parentElement.after(host);window.sendMailTo(area.id,btn.dataset.outlookEmail,host);});return result;};
 const copy=window.copyFromId;
 window.copyFromId=async function(btn,id){const area=document.getElementById(id),preview=[...document.querySelectorAll('[data-email-preview57]')].find(e=>e.dataset.emailPreview57===id),html=preview?.innerHTML||bodies.get(area?.value);if(!html)return copy.apply(this,arguments);if(navigator.clipboard?.write&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([area.value],{type:'text/plain'})})]);showToast?.('Mensagem copiada com formatação. Cole no corpo do e-mail.')}else{await navigator.clipboard.writeText(area.value);alert('Texto copiado. Este navegador não permitiu copiar a formatação.')}};
 const send=window.sendMailTo;
@@ -15112,20 +15113,22 @@ search.addEventListener('input',()=>{const terms=norm(search.value).trim().split
 }
 </style><style id="typing-performance82">#studentModal{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}</style><script id="email-options83">(function(){
 const subject=()=>STATE.emailMode==='feedback'?'Feedback Visita Senac':STATE.emailVisitMode==='online'?'Agendamento de Supervisão da Prática Profissional (Online)':'Agendamento Visita Senac';
-window.sendMailTo=function(id,email){
- const area=document.getElementById(id);if(!area)return;document.getElementById('emailChoices83')?.remove();
- const modal=document.createElement('div');modal.id='emailChoices83';modal.className='wf-modal open';modal.style.zIndex='240000';
+window.sendMailTo=function(id,email,host){
+ const area=document.getElementById(id);if(!area)return;if(!host)document.getElementById('emailChoices83')?.remove();
+ const modal=document.createElement('div');modal.id='emailChoices83';modal.className='wf-modal open';modal.style.zIndex='2147483200';
  const box=document.createElement('div');box.className='wf-box';box.style.maxWidth='580px';
- const title=document.createElement('h3');title.textContent='Abrir mensagem no Outlook';box.append(title);
+ const title=document.createElement('h3');title.textContent='Escolha como abrir no Outlook';box.append(title);
  const info=document.createElement('p');info.textContent='Revise a mensagem antes de enviar. O aplicativo depende das configurações deste computador ou celular. Se não abrir, use Outlook Web.';box.append(info);
- const body=area.value,sub=subject(),q=new URLSearchParams({to:email,subject:sub,body}).toString();
+ const sub=subject(),body=area.value,q=new URLSearchParams({to:email,subject:sub,body}).toString();
  function link(text,url){const a=document.createElement('a');a.textContent=text;a.href=url;a.className='wf-btn';a.style.cssText='display:block;margin:10px 0;min-height:44px;padding:12px;border:1px solid #94a3b8;border-radius:8px';box.append(a);return a}
  const web=link('Outlook Web','https://outlook.office.com/mail/deeplink/compose?'+q);web.target='_blank';web.rel='noopener';
- link('Novo Outlook / aplicativo do celular','mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(sub)+'&body='+encodeURIComponent(body));
- const classic=link('Outlook clássico — abrir rascunho (.eml)','#');classic.addEventListener('click',e=>{e.preventDefault();const preview=document.querySelector('[data-email-preview57="'+CSS.escape(id)+'"]');const html=preview?.innerHTML||window.SenacEmail57?.bodies.get(body);const clean=s=>String(s).replace(/[\r\n]/g,'');const content='X-Unsent: 1\r\nTo: '+clean(email)+'\r\nSubject: =?UTF-8?B?'+btoa(unescape(encodeURIComponent(sub)))+'?=\r\nMIME-Version: 1.0\r\nContent-Type: '+(html?'text/html':'text/plain')+'; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n'+btoa(unescape(encodeURIComponent(html||body))).match(/.{1,76}/g).join('\r\n');const url=URL.createObjectURL(new Blob([content],{type:'message/rfc822'}));const a=document.createElement('a');a.href=url;a.download='mensagem-supervisao.eml';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000)});
+ const app=link('Novo Outlook / aplicativo do celular','mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(sub)+'&body='+encodeURIComponent(body));
+ const classic=link('Outlook antigo / clássico — rascunho (.eml)','#');classic.addEventListener('click',e=>{e.preventDefault();const body=area.value;const preview=document.querySelector('[data-email-preview57="'+CSS.escape(id)+'"]');const html=preview?.innerHTML||window.SenacEmail57?.bodies.get(body);const clean=s=>String(s).replace(/[\r\n]/g,'');const content='X-Unsent: 1\r\nTo: '+clean(email)+'\r\nSubject: =?UTF-8?B?'+btoa(unescape(encodeURIComponent(sub)))+'?=\r\nMIME-Version: 1.0\r\nContent-Type: '+(html?'text/html':'text/plain')+'; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n'+btoa(unescape(encodeURIComponent(html||body))).match(/.{1,76}/g).join('\r\n');const url=URL.createObjectURL(new Blob([content],{type:'message/rfc822'}));const a=document.createElement('a');a.href=url;a.download='mensagem-supervisao.eml';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000)});
+ function refreshLinks87(){const body=area.value;web.href='https://outlook.office.com/mail/deeplink/compose?'+new URLSearchParams({to:email,subject:sub,body});app.href='mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(sub)+'&body='+encodeURIComponent(body)}
+ web.addEventListener('click',refreshLinks87);app.addEventListener('click',refreshLinks87);
  const note=document.createElement('p');note.textContent='Novo e clássico podem usar o mesmo aplicativo padrão. O arquivo .eml deve ser aberto no Outlook instalado. Para manter negritos e o link com texto, use Copiar e cole no corpo da mensagem.';box.append(note);
  const copy=document.createElement('button');copy.className='wf-btn';copy.textContent='Copiar mensagem';copy.onclick=()=>window.copyFromId(copy,id).catch?.(()=>{area.style.display='';area.focus();area.select();alert('Selecione e copie o texto da mensagem manualmente.')} );box.append(copy);
- const close=document.createElement('button');close.className='wf-btn';close.textContent='Fechar';close.onclick=()=>modal.remove();box.append(close);modal.append(box);document.body.append(modal);
+ const close=document.createElement('button');close.className='wf-btn';close.textContent='Fechar';close.onclick=()=>modal.remove();if(host){box.style.cssText='max-width:none;width:100%;max-height:none;border:1px solid #cbd5e1;margin-top:12px';host.replaceChildren(box);}else{box.append(close);modal.append(box);document.body.append(modal);}
 };
 })();
 </script></body>
